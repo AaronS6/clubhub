@@ -11,14 +11,15 @@ const globalForPrisma = globalThis as unknown as {
 // We cap the pool at 3 per instance + a 10s acquire timeout to stay safely
 // under the limit even if multiple instances run. The app's queries are fast
 // (parallelized in the performance pass) so 3 concurrent is plenty.
-const poolConfig = {
-  connection_limit: parseInt(process.env.PRISMA_CONNECTION_LIMIT || '3', 10),
-  pool_timeout: parseInt(process.env.PRISMA_POOL_TIMEOUT || '10', 10),
-}
+const connectionLimit = parseInt(process.env.PRISMA_CONNECTION_LIMIT || '3', 10)
+const poolTimeout = parseInt(process.env.PRISMA_POOL_TIMEOUT || '10', 10)
 
-const datasourceUrl = process.env.DATABASE_URL?.includes('?')
-  ? process.env.DATABASE_URL + `&connection_limit=${poolConfig.connection_limit}&pool_timeout=${poolConfig.pool_timeout}`
-  : process.env.DATABASE_URL + `?connection_limit=${poolConfig.connection_limit}&pool_timeout=${poolConfig.pool_timeout}`
+// Build the datasource URL with pool params. Avoid double-appending if the
+// DATABASE_URL already has query params (e.g. user added ?connection_limit=3
+// manually in the Render env var — we don't want ?...&...&connection_limit=3).
+const base = process.env.DATABASE_URL || ''
+const separator = base.includes('?') ? '&' : '?'
+const datasourceUrl = `${base}${separator}connection_limit=${connectionLimit}&pool_timeout=${poolTimeout}`
 
 // No query logging — it was logging every SQL query to stdout, which `tee`
 // writes into dev.log, growing it unbounded and consuming memory.

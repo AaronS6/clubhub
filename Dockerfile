@@ -41,10 +41,12 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/prisma ./prisma
 
 EXPOSE 3000
-
-# Startup: run the DB migration in the background (so it doesn't block the
-# port binding — Render times out if no port opens within ~60s), then start
-# the Next.js server. The server binds to PORT (set by Render) on 0.0.0.0.
 ENV HOSTNAME=0.0.0.0
 
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma & node server.js"]
+# Startup script:
+# 1. Run `prisma db push` SYNCHRONOUSLY (with retries for cold Supabase) so
+#    all tables exist before the server accepts requests. This takes ~10-20s
+#    on a fresh DB — well within Render's 60s port-scan timeout.
+# 2. Then start the Next.js server.
+# Using a shell script inline so we can retry the migration.
+CMD ["sh", "-c", "for i in 1 2 3; do node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma && break; echo 'Migration attempt '$i' failed, retrying in 3s...'; sleep 3; done && node server.js"]
