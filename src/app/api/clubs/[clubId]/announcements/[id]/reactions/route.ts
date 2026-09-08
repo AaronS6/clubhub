@@ -10,23 +10,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const announcement = await db.announcement.findUnique({ where: { id } })
-  if (!announcement || announcement.clubId !== clubId || announcement.deletedAt) {
-    return error("Announcement not found", 404)
-  }
-
+  // Parse body up front so we can fan out the announcement + existing-reaction
+  // lookups in parallel (they're independent existence checks).
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== "object") return error("Invalid input", 400)
   const emoji = typeof body.emoji === "string" ? body.emoji : ""
   if (!ALLOWED_EMOJIS.includes(emoji)) return error("Unsupported emoji", 400)
 
-  const existing = await db.announcementReaction.findUnique({
-    where: {
-      announcementId_userId: { announcementId: id, userId: c.user.id },
-    },
-  })
+  const [announcement, existing] = await Promise.all([
+    db.announcement.findUnique({ where: { id } }),
+    db.announcementReaction.findUnique({
+      where: {
+        announcementId_userId: { announcementId: id, userId: c.user.id },
+      },
+    }),
+  ])
+  if (!announcement || announcement.clubId !== clubId || announcement.deletedAt) {
+    return error("Announcement not found", 404)
+  }
 
   let myReaction: string | null = null
+  const shouldNotifyAuthor = announcement.authorId !== c.user.id
 
   if (existing) {
     if (existing.emoji === emoji) {
@@ -40,41 +44,39 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         data: { emoji },
       })
       myReaction = emoji
-      if (announcement.authorId !== c.user.id) {
-        await notify({
-          userId: announcement.authorId,
-          clubId,
-          type: "new_reaction",
-          message: `${c.user.name} reacted ${emoji} to your announcement`,
-          linkUrl: `/announcements`,
-        })
-      }
     }
   } else {
     await db.announcementReaction.create({
       data: { announcementId: id, userId: c.user.id, emoji },
     })
     myReaction = emoji
-    if (announcement.authorId !== c.user.id) {
-      await notify({
-        userId: announcement.authorId,
-        clubId,
-        type: "new_reaction",
-        message: `${c.user.name} reacted ${emoji} to your announcement`,
-        linkUrl: `/announcements`,
-      })
-    }
   }
 
-  // Recompute counts + users
-  const reactions = await db.announcementReaction.findMany({
-    where: { announcementId: id },
-    select: {
-      userId: true,
-      emoji: true,
-      user: { select: { id: true, name: true, avatarUrl: true } },
-    },
-  })
+  // notify (if swapped/added and author isn't us) + emitClubEvent + the
+  // recompute-findMany are all independent best-effort side effects.
+  const notifyPromise =
+    shouldNotifyAuthor && myReaction !== null
+      ? notify({
+          userId: announcement.authorId,
+          clubId,
+          type: "new_reaction",
+          message: `${c.user.name} reacted ${emoji} to your announcement`,
+          linkUrl: `/announcements`,
+        })
+      : Promise.resolve()
+  const [reactions] = await Promise.all([
+    db.announcementReaction.findMany({
+      where: { announcementId: id },
+      select: {
+        userId: true,
+        emoji: true,
+        user: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    }),
+    notifyPromise,
+    emitClubEvent(clubId, "announcement_reaction", { announcementId: id }),
+  ])
+
   type ReactionUser = { id: string; name: string; avatarUrl: string | null }
   type ReactionGroup = {
     emoji: string
@@ -95,8 +97,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       }
     }
   }
-
-  await emitClubEvent(clubId, "announcement_reaction", { announcementId: id })
 
   return json({
     reactions: Object.values(groups),

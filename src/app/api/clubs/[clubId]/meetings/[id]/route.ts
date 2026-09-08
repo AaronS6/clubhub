@@ -66,15 +66,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     select: { id: true, title: true, startTime: true, endTime: true, location: true },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "meeting_updated",
-    targetType: "meeting",
-    targetId: id,
-    description: `${c.user.name} updated meeting "${updated.title}"`,
-  })
-  await emitClubEvent(clubId, "meeting_updated", { meetingId: id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "meeting_updated",
+      targetType: "meeting",
+      targetId: id,
+      description: `${c.user.name} updated meeting "${updated.title}"`,
+    }),
+    emitClubEvent(clubId, "meeting_updated", { meetingId: id }),
+  ])
   return json({ meeting: updated })
 }
 
@@ -125,23 +128,25 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ clubId: stri
     cancelledIds = [id]
   }
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "meeting_cancelled",
-    targetType: "meeting",
-    targetId: id,
-    description: `${c.user.name} cancelled meeting "${meeting.title}"${scope === "series" ? " (whole series)" : ""}`,
-  })
-  await notifyClub({
-    clubId,
-    excludeUserId: c.user.id,
-    type: "meeting_cancelled",
-    message: `Meeting "${meeting.title}" was cancelled${scope === "series" ? " (whole series)" : ""}`,
-    linkUrl: `/?view=meetings`,
-  })
-
-  await emitClubEvent(clubId, "meeting_cancelled", { meetingIds: cancelledIds, scope: scope === "series" ? "series" : "single" })
+  // logActivity + notifyClub + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "meeting_cancelled",
+      targetType: "meeting",
+      targetId: id,
+      description: `${c.user.name} cancelled meeting "${meeting.title}"${scope === "series" ? " (whole series)" : ""}`,
+    }),
+    notifyClub({
+      clubId,
+      excludeUserId: c.user.id,
+      type: "meeting_cancelled",
+      message: `Meeting "${meeting.title}" was cancelled${scope === "series" ? " (whole series)" : ""}`,
+      linkUrl: `/?view=meetings`,
+    }),
+    emitClubEvent(clubId, "meeting_cancelled", { meetingIds: cancelledIds, scope: scope === "series" ? "series" : "single" }),
+  ])
 
   return json({ ok: true, cancelledIds, scope: scope === "series" ? "series" : "single" })
 }

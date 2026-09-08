@@ -111,13 +111,16 @@ async function ensureClubWideConversation(clubId: string, currentUserId: string)
 
   if (!existing) {
     // First executive becomes the "creator" of the club-wide conversation.
-    const firstExec = await db.clubMember.findFirst({
-      where: { clubId, status: "active", role: "executive" },
-      orderBy: { joinedAt: "asc" },
-      select: { userId: true },
-    })
+    // firstExec + club.findUnique are independent lookups — fan them out in parallel.
+    const [firstExec, club] = await Promise.all([
+      db.clubMember.findFirst({
+        where: { clubId, status: "active", role: "executive" },
+        orderBy: { joinedAt: "asc" },
+        select: { userId: true },
+      }),
+      db.club.findUnique({ where: { id: clubId }, select: { name: true } }),
+    ])
     const createdBy = firstExec?.userId ?? currentUserId
-    const club = await db.club.findUnique({ where: { id: clubId }, select: { name: true } })
     const name = club?.name ?? "Club chat"
     await db.conversation.create({
       data: {
@@ -132,26 +135,31 @@ async function ensureClubWideConversation(clubId: string, currentUserId: string)
 
   // Ensure ALL active club members are in the club-wide conversation. This
   // handles members who joined the club after the conversation was created.
-  const conv = await db.conversation.findFirst({
-    where: { clubId, type: "club_wide" },
-    include: { members: { select: { userId: true } } },
-  })
+  // The conv re-fetch + active-members lookup are independent — fan them out.
+  const [conv, activeMembers] = await Promise.all([
+    db.conversation.findFirst({
+      where: { clubId, type: "club_wide" },
+      include: { members: { select: { userId: true } } },
+    }),
+    db.clubMember.findMany({
+      where: { clubId, status: "active" },
+      select: { userId: true },
+    }),
+  ])
   if (!conv) return
   const existingUserIds = new Set(conv.members.map((mm) => mm.userId))
-  const activeMembers = await db.clubMember.findMany({
-    where: { clubId, status: "active" },
-    select: { userId: true },
-  })
   const missing = activeMembers.filter((m) => !existingUserIds.has(m.userId))
-  for (const m of missing) {
-    try {
-      await db.conversationMember.create({
-        data: { conversationId: conv.id, userId: m.userId, role: "member" },
-      })
-    } catch {
-      // Already exists — skip silently.
-    }
-  }
+  // Fan out the per-missing-member creates in parallel. Each is independent;
+  // failures (already-exists race) are swallowed.
+  await Promise.all(
+    missing.map((m) =>
+      db.conversationMember
+        .create({ data: { conversationId: conv.id, userId: m.userId, role: "member" } })
+        .catch(() => {
+          // Already exists — skip silently.
+        }),
+    ),
+  )
 }
 
 // POST /api/clubs/[clubId]/chat/conversations
@@ -193,14 +201,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     }
 
     // Look for an existing direct conversation between these two users in this club.
-    const mine = await db.conversationMember.findMany({
-      where: { userId: c.user.id, conversation: { clubId, type: "direct" } },
-      select: { conversationId: true },
-    })
-    const theirIds = await db.conversationMember.findMany({
-      where: { userId: otherUserId, conversation: { clubId, type: "direct" } },
-      select: { conversationId: true },
-    })
+    // The two ConversationMember lookups (mine + theirs) are independent — fan them out.
+    const [mine, theirIds] = await Promise.all([
+      db.conversationMember.findMany({
+        where: { userId: c.user.id, conversation: { clubId, type: "direct" } },
+        select: { conversationId: true },
+      }),
+      db.conversationMember.findMany({
+        where: { userId: otherUserId, conversation: { clubId, type: "direct" } },
+        select: { conversationId: true },
+      }),
+    ])
     const mineSet = new Set(mine.map((m) => m.conversationId))
     const existingId = theirIds.find((t) => mineSet.has(t.conversationId))?.conversationId
     if (existingId) {
@@ -247,25 +258,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       },
     })
     const other = created.members.find((mm) => mm.userId !== c.user.id)
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "chat_conversation_created",
-      targetType: "conversation",
-      targetId: created.id,
-      description: `${c.user.name} started a direct chat`,
-    })
-    // Notify the other participant so the conversation appears in their list.
-    await db.notification.create({
-      data: {
-        userId: otherUserId,
+    // logActivity + notification.create + emitClubEvent are independent side effects — fan them out.
+    await Promise.all([
+      logActivity({
         clubId,
-        type: "chat_message",
-        message: `${c.user.name} started a chat with you`,
-        linkUrl: "/chat",
-      },
-    })
-    await emitClubEvent(clubId, "chat_message", { conversationId: created.id })
+        actorUserId: c.user.id,
+        actionType: "chat_conversation_created",
+        targetType: "conversation",
+        targetId: created.id,
+        description: `${c.user.name} started a direct chat`,
+      }),
+      // Notify the other participant so the conversation appears in their list.
+      db.notification.create({
+        data: {
+          userId: otherUserId,
+          clubId,
+          type: "chat_message",
+          message: `${c.user.name} started a chat with you`,
+          linkUrl: "/chat",
+        },
+      }),
+      emitClubEvent(clubId, "chat_message", { conversationId: created.id }),
+    ])
     return json(
       {
         conversation: {
@@ -311,15 +325,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       },
     },
   })
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "chat_conversation_created",
-    targetType: "conversation",
-    targetId: created.id,
-    description: `${c.user.name} created group chat "${name}"`,
-  })
-  await emitClubEvent(clubId, "chat_message", { conversationId: created.id })
+  // logActivity + emitClubEvent are independent side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "chat_conversation_created",
+      targetType: "conversation",
+      targetId: created.id,
+      description: `${c.user.name} created group chat "${name}"`,
+    }),
+    emitClubEvent(clubId, "chat_message", { conversationId: created.id }),
+  ])
   return json(
     {
       conversation: {

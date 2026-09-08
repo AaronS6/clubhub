@@ -156,7 +156,7 @@ export function TeamsView() {
     queryFn: () => api(`/api/clubs/${clubId}/teams`),
     enabled: !!clubId,
     // Realtime is primary; poll only as a fallback while the socket is down.
-    refetchInterval: usePollingFallback(8000),
+    refetchInterval: usePollingFallback(30_000),
   })
 
   // Live presence — green dot on avatars of currently-online club members.

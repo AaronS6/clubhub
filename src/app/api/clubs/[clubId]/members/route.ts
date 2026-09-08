@@ -11,35 +11,39 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
   // Bounded at 500 — a club with >500 active members is far beyond this app's
   // scale (a school club is typically 10–100), but the cap protects the GET
   // from pathological growth and keeps the response payload predictable.
-  const members = await db.clubMember.findMany({
-    where: { clubId, status: "active" },
-    include: {
-      user: { select: { id: true, name: true, email: true, avatarUrl: true, bio: true } },
-    },
-    orderBy: [{ role: "desc" }, { joinedAt: "asc" }],
-    take: 500,
-  })
-  // team memberships per user (for this club) — bounded for the same reason.
-  const teamRows = await db.teamMember.findMany({
-    where: { team: { clubId } },
-    select: {
-      userId: true,
-      team: { select: { id: true, name: true } },
-    },
-    take: 5000,
-  })
+  // 3 independent queries: members (with user), team memberships, approved-hours aggregates.
+  // Fire them as a single parallel wave instead of 3 sequential round-trips.
+  const [members, teamRows, hours] = await Promise.all([
+    db.clubMember.findMany({
+      where: { clubId, status: "active" },
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true, bio: true } },
+      },
+      orderBy: [{ role: "desc" }, { joinedAt: "asc" }],
+      take: 500,
+    }),
+    // team memberships per user (for this club) — bounded for the same reason.
+    db.teamMember.findMany({
+      where: { team: { clubId } },
+      select: {
+        userId: true,
+        team: { select: { id: true, name: true } },
+      },
+      take: 5000,
+    }),
+    // approved hours per user
+    db.serviceHour.groupBy({
+      by: ["userId"],
+      where: { clubId, status: "approved" },
+      _sum: { hours: true },
+    }),
+  ])
   const teamsByUser = new Map<string, { id: string; name: string }[]>()
   for (const t of teamRows) {
     const list = teamsByUser.get(t.userId) ?? []
     list.push(t.team)
     teamsByUser.set(t.userId, list)
   }
-  // approved hours per user
-  const hours = await db.serviceHour.groupBy({
-    by: ["userId"],
-    where: { clubId, status: "approved" },
-    _sum: { hours: true },
-  })
   const hoursMap = new Map(hours.map((h) => [h.userId, h._sum.hours ?? 0]))
   return json({
     members: members.map((m) => ({
@@ -81,15 +85,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     }
     const newRole = action === "promote" ? "executive" : "member"
     await db.clubMember.update({ where: { id: target.id }, data: { role: newRole } })
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: action,
-      targetType: "user",
-      targetId: userId,
-      description: `${c.user.name} ${action === "promote" ? "promoted" : "demoted"} a member to ${newRole}`,
-    })
-    await emitClubEvent(clubId, action === "promote" ? "member_promoted" : "member_demoted", { userId })
+    // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+    await Promise.all([
+      logActivity({
+        clubId,
+        actorUserId: c.user.id,
+        actionType: action,
+        targetType: "user",
+        targetId: userId,
+        description: `${c.user.name} ${action === "promote" ? "promoted" : "demoted"} a member to ${newRole}`,
+      }),
+      emitClubEvent(clubId, action === "promote" ? "member_promoted" : "member_demoted", { userId }),
+    ])
     return json({ ok: true, role: newRole })
   }
 
@@ -105,15 +112,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
       if (execCount <= 1) return error("Cannot remove the last executive. Promote another member first.", 400)
     }
     await db.clubMember.update({ where: { id: target.id }, data: { status: "removed" } })
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "member_removed",
-      targetType: "user",
-      targetId: userId,
-      description: `${c.user.name} removed a member from the club`,
-    })
-    await emitClubEvent(clubId, "member_removed", { userId })
+    // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+    await Promise.all([
+      logActivity({
+        clubId,
+        actorUserId: c.user.id,
+        actionType: "member_removed",
+        targetType: "user",
+        targetId: userId,
+        description: `${c.user.name} removed a member from the club`,
+      }),
+      emitClubEvent(clubId, "member_removed", { userId }),
+    ])
     return json({ ok: true })
   }
 

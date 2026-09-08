@@ -46,27 +46,29 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
   // "recent" window: include meetings that ended in the last 7 days.
   const recentSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-  const meetings = await db.meeting.findMany({
-    where: {
-      clubId,
-      cancelledAt: null,
-      endTime: { gte: recentSince },
-      ...(teamId ? { teamId } : {}),
-    },
-    include: {
-      creator: { select: { id: true, name: true } },
-      team: { select: { id: true, name: true } },
-      rsvps: { select: { status: true, userId: true } },
-    },
-    orderBy: { startTime: "asc" },
-    take: 200,
-  })
-
-  const teams = await db.team.findMany({
-    where: { clubId },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  })
+  // meetings + teams are independent — fan them out in parallel.
+  const [meetings, teams] = await Promise.all([
+    db.meeting.findMany({
+      where: {
+        clubId,
+        cancelledAt: null,
+        endTime: { gte: recentSince },
+        ...(teamId ? { teamId } : {}),
+      },
+      include: {
+        creator: { select: { id: true, name: true } },
+        team: { select: { id: true, name: true } },
+        rsvps: { select: { status: true, userId: true } },
+      },
+      orderBy: { startTime: "asc" },
+      take: 200,
+    }),
+    db.team.findMany({
+      where: { clubId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ])
 
   return json({
     meetings: meetings.map((m) => {
@@ -195,23 +197,26 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   )
 
   const first = created[0]
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "meeting_created",
-    targetType: "meeting",
-    targetId: first.id,
-    description: `${c.user.name} scheduled "${title}"${isRecurring ? ` (recurring ${recurrenceRule}, ${OCCURRENCE_COUNT} occurrences)` : ""}`,
-  })
-  await notifyClub({
-    clubId,
-    excludeUserId: c.user.id,
-    type: "meeting_created",
-    message: `New meeting: "${title}" — ${start.toLocaleString()}`,
-    linkUrl: `/?view=meetings`,
-  })
-
-  await emitClubEvent(clubId, "meeting_created", { meetingIds: created.map((m) => m.id) })
+  // logActivity + notifyClub + emitClubEvent are independent best-effort side
+  // effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "meeting_created",
+      targetType: "meeting",
+      targetId: first.id,
+      description: `${c.user.name} scheduled "${title}"${isRecurring ? ` (recurring ${recurrenceRule}, ${OCCURRENCE_COUNT} occurrences)` : ""}`,
+    }),
+    notifyClub({
+      clubId,
+      excludeUserId: c.user.id,
+      type: "meeting_created",
+      message: `New meeting: "${title}" — ${start.toLocaleString()}`,
+      linkUrl: `/?view=meetings`,
+    }),
+    emitClubEvent(clubId, "meeting_created", { meetingIds: created.map((m) => m.id) }),
+  ])
 
   return json({ ok: true, ids: created.map((m) => m.id), count: created.length }, 201)
 }

@@ -302,7 +302,7 @@ export function DashboardView() {
       : 0
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    <div className="space-y-4 sm:space-y-5 min-w-0">
       {/* Row 1 — Slim hero bar --------------------------------------------- */}
       <HeroBar
         name={data.club.name}
@@ -690,14 +690,11 @@ export function DashboardView() {
       </div>
 
       {/* Row 4.5 — Recent activity (Tier 3) ------------------------------ */}
-      {/* Unified chronological feed of "what happened since I last checked":
-          task updates, new announcements, hours activity, member changes,
-          meetings, teams — pulled from the same ActivityLog table that powers
-          the dedicated Activity Log view. Realtime invalidates the
-          ["activity", clubId] query key on most event types so this stays
-          fresh; usePollingFallback(20s) keeps it current while the socket
-          is down. */}
-      <RecentActivityCard clubId={data.club.id} onNavigate={setView} />
+      {/* REMOVED per user request: "remove recent activity from the dashboard,
+          i don't have to see it, its taking too much room." The Activity Log
+          nav item still exists for users who want the full feed. The
+          RecentActivityCard component + activity API route are left in place
+          (untouched) so this can be re-enabled trivially if needed. */}
 
       {/* Row 5 — Club-wide stats mini-strip (Tier 3) ----------------------- */}
       <section

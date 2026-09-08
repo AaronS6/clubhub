@@ -72,18 +72,56 @@ interface MeResponse {
   }[]
 }
 
-const NAV: { view: View; label: string; icon: any; execOnly?: boolean }[] = [
-  { view: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { view: "announcements", label: "Announcements", icon: Megaphone },
-  { view: "tasks", label: "Tasks", icon: CheckSquare },
-  { view: "meetings", label: "Meetings", icon: CalendarDays },
-  { view: "hours", label: "Service Hours", icon: Clock },
-  { view: "chat", label: "Chat", icon: MessageSquare },
-  { view: "teams", label: "Teams", icon: Users },
-  { view: "members", label: "Members", icon: UserCog },
-  { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
-  { view: "activity", label: "Activity Log", icon: ScrollText },
+/**
+ * Sidebar navigation, organized into tiers.
+ *
+ *   Home   — always-visible, most-used surfaces. Slightly larger / more
+ *            prominent rows (the user lands here 90% of the time).
+ *   Work   — day-to-day work surfaces. Medium weight.
+ *   Manage — executive-focused admin surfaces. Smaller, muted rows so they
+ *            don't dominate the nav for regular members.
+ *
+ * Each tier is rendered under a small uppercase muted section label so the
+ * grouping is obvious. The `execOnly` items (Approvals) only render for
+ * executives; if a tier ends up with zero visible items it's skipped
+ * entirely so we don't show an empty section header.
+ */
+interface NavItem { view: View; label: string; icon: any; execOnly?: boolean }
+interface NavTier { id: string; label: string; items: NavItem[] }
+
+const NAV_TIERS: NavTier[] = [
+  {
+    id: "home",
+    label: "Home",
+    items: [
+      { view: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { view: "announcements", label: "Announcements", icon: Megaphone },
+      { view: "chat", label: "Chat", icon: MessageSquare },
+    ],
+  },
+  {
+    id: "work",
+    label: "Work",
+    items: [
+      { view: "tasks", label: "Tasks", icon: CheckSquare },
+      { view: "meetings", label: "Meetings", icon: CalendarDays },
+      { view: "hours", label: "Service Hours", icon: Clock },
+    ],
+  },
+  {
+    id: "manage",
+    label: "Manage",
+    items: [
+      { view: "teams", label: "Teams", icon: Users },
+      { view: "members", label: "Members", icon: UserCog },
+      { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
+      { view: "activity", label: "Activity Log", icon: ScrollText },
+    ],
+  },
 ]
+
+/** Flat list of every nav item (used for `?view=` validation + filtering). */
+const NAV: NavItem[] = NAV_TIERS.flatMap((t) => t.items)
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
@@ -147,7 +185,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (clubs.length === 0) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
-        <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-club-subtle to-background p-6">
+        <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/40 p-6">
           <div className="w-full max-w-md text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-club text-club-foreground shadow-sm">
               <Sparkles className="h-7 w-7" />
@@ -171,7 +209,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const isExec = currentClub?.role === "executive"
-  const navItems = NAV.filter((n) => !n.execOnly || isExec)
 
   const clubSwitcher = (
     <ClubSwitcher
@@ -183,43 +220,67 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   const navList = (
-    <nav className="flex flex-col gap-0.5 px-2.5 py-2" aria-label="Primary">
-      {navItems.map((item) => {
-        const Icon = item.icon
-        const active = view === item.view
+    <nav className="flex flex-col gap-3 px-2.5 py-3" aria-label="Primary">
+      {NAV_TIERS.map((tier) => {
+        const items = tier.items.filter((n) => !n.execOnly || isExec)
+        if (items.length === 0) return null
+        // Visual weight per tier: Home is most prominent, Manage is muted.
+        const weight = tier.id === "home" ? "home" : tier.id === "work" ? "work" : "manage"
         return (
-          <button
-            key={item.view}
-            onClick={() => { setView(item.view); setMobileNavOpen(false) }}
-            className={cn(
-              "group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors w-full text-left",
-              active
-                ? "bg-club-muted text-club"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            )}
-            aria-current={active ? "page" : undefined}
-          >
-            {/* Active indicator — subtle 2px accent bar pinned to the left
-                edge of the row. Tier-2 weight: reinforces the active state
-                without competing with content. Hidden when inactive. */}
-            <span
-              aria-hidden
-              className={cn(
-                "absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-club transition-opacity",
-                active ? "opacity-100" : "opacity-0"
-              )}
-            />
-            <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-colors", active ? "text-club" : "text-muted-foreground/80 group-hover:text-foreground")} />
-            {item.label}
-            {item.execOnly && <ShieldCheck className="ml-auto h-3 w-3 text-muted-foreground/50" />}
-          </button>
+          <div key={tier.id} className="space-y-0.5">
+            <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+              {tier.label}
+            </div>
+            {items.map((item) => {
+              const Icon = item.icon
+              const active = view === item.view
+              return (
+                <button
+                  key={item.view}
+                  onClick={() => { setView(item.view); setMobileNavOpen(false) }}
+                  className={cn(
+                    "group relative flex items-center gap-2.5 rounded-md w-full text-left transition-colors",
+                    weight === "home" && "px-3 py-2 text-sm font-semibold",
+                    weight === "work" && "px-3 py-1.5 text-sm font-medium",
+                    weight === "manage" && "px-3 py-1.5 text-[13px] font-medium text-muted-foreground",
+                    active
+                      ? "bg-club-muted text-club"
+                      : weight === "manage"
+                        ? "hover:bg-accent hover:text-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {/* Active indicator — subtle 2px accent bar pinned to the
+                      left edge of the row. Hidden when inactive. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-club transition-opacity",
+                      active ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <Icon className={cn(
+                    "shrink-0 transition-colors",
+                    weight === "home" ? "h-[18px] w-[18px]" : "h-4 w-4",
+                    active ? "text-club" : "text-muted-foreground/80 group-hover:text-foreground"
+                  )} />
+                  <span className="flex-1 truncate">{item.label}</span>
+                  {item.execOnly && <ShieldCheck className="ml-auto h-3 w-3 text-muted-foreground/50" />}
+                </button>
+              )
+            })}
+          </div>
         )
       })}
     </nav>
   )
 
-  // Persistent top bar — desktop + mobile. Club switcher left, search center,
-  // bell + theme + avatar right. Sidebar is nav-only now.
+  // Persistent top bar — desktop + mobile.
+  //   LEFT:   profile avatar menu (UserMenu)
+  //   CENTER: global search trigger
+  //   RIGHT:  connection dot, keyboard help, theme toggle, notification bell
+  // The club switcher has moved to the BOTTOM of the sidebar.
   const topBar = (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30">
       {/* Mobile hamburger */}
@@ -230,23 +291,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0 flex flex-col">
-          <div className="p-3 shrink-0">{clubSwitcher}</div>
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          <div className="border-t p-2 shrink-0">
-            <UserMenu desktop />
-          </div>
+          {/* Club switcher pinned to the bottom of the mobile drawer */}
+          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
         </SheetContent>
       </Sheet>
 
-      {/* Club switcher (desktop, left of top bar; mobile uses the drawer) */}
-      <div className="hidden md:block w-60 shrink-0">{clubSwitcher}</div>
+      {/* Profile avatar menu — TOP LEFT of the top bar (desktop + mobile) */}
+      <div className="shrink-0">
+        <UserMenu compact />
+      </div>
 
-      {/* Search (center, desktop) */}
+      {/* Search (center, desktop) — bordered trigger styled to match a real
+          input. The previous outline/ring mismatched the dimensions; this
+          uses a single border + matching py-1.5 so the focus ring sits
+          flush on the box instead of offset. */}
       <button
         type="button"
         onClick={() => openGlobalSearch()}
         disabled={!currentClubId}
-        className="hidden md:flex group items-center gap-2.5 rounded-md border border-input bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto"
+        className="hidden md:flex group items-center gap-2.5 h-9 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
         aria-label="Open search"
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
@@ -257,12 +321,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </button>
 
       {/* Mobile: club name fills the gap */}
-      <div className="md:hidden font-semibold truncate flex-1 px-1">
+      <div className="md:hidden font-semibold truncate flex-1 px-1 min-w-0">
         {currentClub?.clubName}
       </div>
 
-      {/* Right side: search icon (mobile), theme, bell */}
-      <div className="flex items-center gap-0.5 ml-auto">
+      {/* Right side: search icon (mobile), connection, keyboard, theme, bell */}
+      <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -299,11 +363,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {topBar}
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">
+          {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Account menu pinned to the bottom of the sidebar */}
-          <div className="border-t p-2">
-            <UserMenu desktop />
-          </div>
+          {/* Club switcher pinned to the BOTTOM of the sidebar (moved here
+              from the top bar per the user's request). */}
+          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col">
@@ -552,7 +616,7 @@ function ClubSwitcher({
   )
 }
 
-function UserMenu({ desktop }: { desktop?: boolean }) {
+function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }) {
   const { data: session } = useSession()
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security">("profile")
@@ -582,11 +646,27 @@ function UserMenu({ desktop }: { desktop?: boolean }) {
     setShowSettings(true)
   }
 
+  // `compact` is the top-bar avatar — small, circular, just the avatar with a
+  // chevron. `desktop` is the old full-width sidebar row (now only used in
+  // contexts that haven't migrated to the new top-bar layout, kept for
+  // backwards compatibility).
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          {desktop ? (
+          {compact ? (
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
+              aria-label="Account menu"
+            >
+              <Avatar className="h-8 w-8 shrink-0">
+                <AvatarImage src={user?.image ?? undefined} alt={user?.name} />
+                <AvatarFallback className="text-xs">{initials(user?.name)}</AvatarFallback>
+              </Avatar>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            </button>
+          ) : desktop ? (
             <button
               type="button"
               className="flex items-center gap-2.5 w-full rounded-md px-2 py-2 text-left hover:bg-accent transition-colors"
@@ -611,7 +691,7 @@ function UserMenu({ desktop }: { desktop?: boolean }) {
             </Button>
           )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align={compact ? "start" : "end"} className="w-56">
           <DropdownMenuLabel className="truncate normal-case font-normal">
             <div className="text-sm font-medium truncate">{user?.name}</div>
             <div className="text-caption truncate">{user?.email}</div>
@@ -884,86 +964,80 @@ function NotificationsTab({ userEmail }: { userEmail: string }) {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-3">
-        <div>
-          <Label className="text-sm font-semibold">Email delivery</Label>
-          <p className="text-xs text-muted-foreground mt-1">
-            Emails are sent to <span className="font-medium text-foreground">{userEmail || "your account email"}</span>.
-          </p>
-        </div>
+    <div className="space-y-4">
+      {/* Email delivery mode — kept as the two radio cards; this is the only
+          binary choice that benefits from the larger card affordance. */}
+      <div className="space-y-2">
+        <Label className="text-sm font-semibold">Email delivery</Label>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Sent to <span className="font-medium text-foreground">{userEmail || "your account email"}</span>.
+        </p>
         <RadioGroup
           value={prefs.emailMode}
           onValueChange={(v) => setMode(v as "instant" | "digest")}
-          className="grid grid-cols-2 gap-3"
+          className="grid grid-cols-2 gap-2"
         >
           <label
             htmlFor="mode-instant"
             className={cn(
-              "flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors",
+              "flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors text-sm",
               prefs.emailMode === "instant" ? "border-club bg-club-subtle" : "border-border hover:bg-accent/50",
             )}
           >
-            <RadioGroupItem value="instant" id="mode-instant" className="mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium">Instant</div>
-              <div className="text-xs text-muted-foreground">Send me an email as soon as something happens.</div>
-            </div>
+            <RadioGroupItem value="instant" id="mode-instant" />
+            <span className="font-medium">Instant</span>
           </label>
           <label
             htmlFor="mode-digest"
             className={cn(
-              "flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors",
+              "flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors text-sm",
               prefs.emailMode === "digest" ? "border-club bg-club-subtle" : "border-border hover:bg-accent/50",
             )}
           >
-            <RadioGroupItem value="digest" id="mode-digest" className="mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="text-sm font-medium">Daily digest</div>
-              <div className="text-xs text-muted-foreground">Bundle notifications into one email per day.</div>
-            </div>
+            <RadioGroupItem value="digest" id="mode-digest" />
+            <span className="font-medium">Daily digest</span>
           </label>
         </RadioGroup>
       </div>
 
+      {/* Compact per-type table — one row per notification type, with
+          In-app and Email toggles side by side. Replaces the previous
+          two tall stacked lists (which doubled the vertical length). */}
       <div className="space-y-2">
-        <Label className="text-sm font-semibold">Email notifications</Label>
-        <div className="rounded-md border divide-y">
+        <Label className="text-sm font-semibold">Per type</Label>
+        <div className="rounded-md border overflow-hidden">
+          {/* Header row */}
+          <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1.5 bg-muted/40 border-b text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span>Type</span>
+            <span className="w-14 text-center">In-app</span>
+            <span className="w-14 text-center">Email</span>
+          </div>
+          {/* Rows */}
           {ALL_NOTIF_TYPES.map((type) => {
             const meta = NOTIF_TYPE_META[type]
             return (
-              <div key={type} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div
+                key={type}
+                className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-2 border-b last:border-b-0"
+              >
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{meta.label}</div>
-                  <div className="text-xs text-muted-foreground truncate">{meta.description}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{meta.description}</div>
                 </div>
-                <Switch
-                  checked={prefs.email[type]}
-                  onCheckedChange={(v) => toggleEmail(type, v)}
-                  aria-label={`Email me about ${meta.label}`}
-                />
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">In-app notifications</Label>
-        <p className="text-xs text-muted-foreground">Show these in the bell menu. (Recommended: leave all on.)</p>
-        <div className="rounded-md border divide-y">
-          {ALL_NOTIF_TYPES.map((type) => {
-            const meta = NOTIF_TYPE_META[type]
-            return (
-              <div key={type} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{meta.label}</div>
+                <div className="w-14 flex justify-center">
+                  <Switch
+                    checked={prefs.inApp[type]}
+                    onCheckedChange={(v) => toggleInApp(type, v)}
+                    aria-label={`In-app ${meta.label}`}
+                  />
                 </div>
-                <Switch
-                  checked={prefs.inApp[type]}
-                  onCheckedChange={(v) => toggleInApp(type, v)}
-                  aria-label={`Show in-app ${meta.label}`}
-                />
+                <div className="w-14 flex justify-center">
+                  <Switch
+                    checked={prefs.email[type]}
+                    onCheckedChange={(v) => toggleEmail(type, v)}
+                    aria-label={`Email ${meta.label}`}
+                  />
+                </div>
               </div>
             )
           })}

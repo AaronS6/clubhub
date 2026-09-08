@@ -12,32 +12,37 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const conv = await db.conversation.findUnique({ where: { id: conversationId } })
-  if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-
-  const membership = await db.conversationMember.findUnique({
-    where: { conversationId_userId: { conversationId, userId: c.user.id } },
-  })
-  if (!membership) return error("Not a member of this conversation", 403)
-
-  const message = await db.message.findUnique({ where: { id: messageId } })
-  if (!message || message.conversationId !== conversationId) {
-    return error("Message not found", 404)
-  }
-  if (message.deletedAt) return error("Cannot react to a deleted message", 400)
-
+  // Parse body up front so we can fan out all independent lookups in one wave.
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== "object") return error("Invalid input", 400)
   const emoji = typeof body.emoji === "string" ? body.emoji : ""
   if (!ALLOWED_EMOJIS.includes(emoji)) return error("Unsupported emoji", 400)
 
-  const existing = await db.messageReaction.findUnique({
-    where: {
-      messageId_userId: { messageId, userId: c.user.id },
-    },
-  })
+  // conv (existence + club scope), membership (caller auth), message (existence
+  // + scope + not-deleted), and the caller's existing reaction row are 4
+  // independent lookups — fan them out as a single parallel wave.
+  const [conv, membership, message, existing] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+    db.message.findUnique({ where: { id: messageId } }),
+    db.messageReaction.findUnique({
+      where: {
+        messageId_userId: { messageId, userId: c.user.id },
+      },
+    }),
+  ])
+
+  if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
+  if (!membership) return error("Not a member of this conversation", 403)
+  if (!message || message.conversationId !== conversationId) {
+    return error("Message not found", 404)
+  }
+  if (message.deletedAt) return error("Cannot react to a deleted message", 400)
 
   let myReaction: string | null = null
+  const shouldNotifyAuthor = message.authorId !== c.user.id
 
   if (existing) {
     if (existing.emoji === emoji) {
@@ -51,43 +56,39 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         data: { emoji },
       })
       myReaction = emoji
-      if (message.authorId !== c.user.id) {
-        await notify({
-          userId: message.authorId,
-          clubId,
-          type: "new_reaction",
-          message: `${c.user.name} reacted ${emoji} to your message`,
-          linkUrl: "/chat",
-        })
-      }
     }
   } else {
     await db.messageReaction.create({
       data: { messageId, userId: c.user.id, emoji },
     })
     myReaction = emoji
-    if (message.authorId !== c.user.id) {
-      await notify({
-        userId: message.authorId,
-        clubId,
-        type: "new_reaction",
-        message: `${c.user.name} reacted ${emoji} to your message`,
-        linkUrl: "/chat",
-      })
-    }
   }
 
-  await emitClubEvent(clubId, "chat_message", { conversationId })
-
-  // Recompute reactions for the response.
-  const reactions = await db.messageReaction.findMany({
-    where: { messageId },
-    select: {
-      userId: true,
-      emoji: true,
-      user: { select: { id: true, name: true, avatarUrl: true } },
-    },
-  })
+  // notify (if we swapped/added and author isn't us) + emitClubEvent + the
+  // recompute-findMany are all independent best-effort side effects. The
+  // findMany is the response payload source; notify/emit are fire-and-forget.
+  const notifyPromise =
+    shouldNotifyAuthor && myReaction !== null
+      ? notify({
+          userId: message.authorId,
+          clubId,
+          type: "new_reaction",
+          message: `${c.user.name} reacted ${emoji} to your message`,
+          linkUrl: "/chat",
+        })
+      : Promise.resolve()
+  const [reactions] = await Promise.all([
+    db.messageReaction.findMany({
+      where: { messageId },
+      select: {
+        userId: true,
+        emoji: true,
+        user: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    }),
+    notifyPromise,
+    emitClubEvent(clubId, "chat_message", { conversationId }),
+  ])
 
   type ReactionUser = { id: string; name: string; avatarUrl: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }

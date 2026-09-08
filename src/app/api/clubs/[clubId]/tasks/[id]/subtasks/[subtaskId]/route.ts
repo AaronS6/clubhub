@@ -10,11 +10,13 @@ export async function PATCH(
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const task = await db.task.findUnique({ where: { id } })
+  // task + subtask are independent existence checks — fan them out in parallel.
+  const [task, existing] = await Promise.all([
+    db.task.findUnique({ where: { id } }),
+    db.subtask.findUnique({ where: { id: subtaskId } }),
+  ])
   if (!task || task.clubId !== clubId || task.deletedAt)
     return error("Task not found", 404)
-
-  const existing = await db.subtask.findUnique({ where: { id: subtaskId } })
   if (!existing || existing.taskId !== id)
     return error("Subtask not found", 404)
 
@@ -49,11 +51,13 @@ export async function DELETE(
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const task = await db.task.findUnique({ where: { id } })
+  // task + subtask are independent existence checks — fan them out in parallel.
+  const [task, existing] = await Promise.all([
+    db.task.findUnique({ where: { id } }),
+    db.subtask.findUnique({ where: { id: subtaskId } }),
+  ])
   if (!task || task.clubId !== clubId || task.deletedAt)
     return error("Task not found", 404)
-
-  const existing = await db.subtask.findUnique({ where: { id: subtaskId } })
   if (!existing || existing.taskId !== id)
     return error("Subtask not found", 404)
 

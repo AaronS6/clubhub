@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { api } from "@/lib/api/client"
-import { Loader2 } from "lucide-react"
+import { Loader2, ShieldCheck } from "lucide-react"
+import { ADMIN_PASSCODE } from "@/lib/admin-passcode"
 
 const ACCENT_PRESETS = ["#16a34a", "#0ea5e9", "#f97316", "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#ec4899"]
 
@@ -25,22 +26,27 @@ export function CreateClubDialog({
   const [description, setDescription] = useState("")
   const [accentColor, setAccentColor] = useState(ACCENT_PRESETS[0])
   const [clubPassword, setClubPassword] = useState("")
+  const [adminPasscode, setAdminPasscode] = useState("")
   const [loading, setLoading] = useState(false)
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return toast.error("Club name is required")
     if (clubPassword.length < 4) return toast.error("Club password must be at least 4 characters")
+    if (adminPasscode !== ADMIN_PASSCODE) {
+      return toast.error("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
+    }
     setLoading(true)
     try {
       await api("/api/clubs", {
         method: "POST",
-        json: { name, description, accentColor, clubPassword },
+        json: { name, description, accentColor, clubPassword, adminPasscode },
       })
       toast.success("Club created! You are now an executive.")
       setName("")
       setDescription("")
       setClubPassword("")
+      setAdminPasscode("")
       onCreated()
       onOpenChange(false)
     } catch (err: any) {
@@ -96,6 +102,22 @@ export function CreateClubDialog({
               minLength={4}
             />
             <p className="text-xs text-muted-foreground">A 6-character club code will be auto-generated.</p>
+          </div>
+          <div className="space-y-2 rounded-md border border-club/30 bg-club-subtle p-3">
+            <Label className="flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-club" />
+              Admin passcode *
+            </Label>
+            <Input
+              type="password"
+              value={adminPasscode}
+              onChange={(e) => setAdminPasscode(e.target.value)}
+              placeholder="Enter the admin passcode"
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Required to create a new club. Ask your ClubHub admin if you don&apos;t have it.
+            </p>
           </div>
           <DialogFooter>
             <Button type="submit" variant="club" disabled={loading}>

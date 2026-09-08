@@ -126,12 +126,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   if (description && description.length > 5000)
     return error("Description is too long (max 5000 chars)", 400)
 
-  // Validate references if provided.
-  if (teamId) {
+  // Validate references if provided. team + member checks are independent — fan them out.
+  if (teamId && assignedToUserId) {
+    const [team, member] = await Promise.all([
+      db.team.findUnique({ where: { id: teamId } }),
+      db.clubMember.findUnique({
+        where: { clubId_userId: { clubId, userId: assignedToUserId } },
+      }),
+    ])
+    if (!team || team.clubId !== clubId) return error("Team not found", 400)
+    if (!member || member.status !== "active")
+      return error("Assignee is not an active member of this club", 400)
+  } else if (teamId) {
     const team = await db.team.findUnique({ where: { id: teamId } })
     if (!team || team.clubId !== clubId) return error("Team not found", 400)
-  }
-  if (assignedToUserId) {
+  } else if (assignedToUserId) {
     const member = await db.clubMember.findUnique({
       where: { clubId_userId: { clubId, userId: assignedToUserId } },
     })
@@ -162,26 +171,31 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "task_created",
-    targetType: "task",
-    targetId: task.id,
-    description: `${c.user.name} created task "${task.title}"`,
-  })
-
-  if (assignedToUserId && assignedToUserId !== c.user.id) {
-    await notify({
-      userId: assignedToUserId,
+  // logActivity + notify (if assigned to someone other than creator) + emitClubEvent
+  // are independent best-effort side effects — fan them out in parallel.
+  const sideEffects: Promise<unknown>[] = [
+    logActivity({
       clubId,
-      type: "task_assigned",
-      message: `${c.user.name} assigned you a task: "${task.title}"`,
-      linkUrl: `?view=tasks&taskId=${task.id}`,
-    })
+      actorUserId: c.user.id,
+      actionType: "task_created",
+      targetType: "task",
+      targetId: task.id,
+      description: `${c.user.name} created task "${task.title}"`,
+    }),
+    emitClubEvent(clubId, "task_created", { taskId: task.id }),
+  ]
+  if (assignedToUserId && assignedToUserId !== c.user.id) {
+    sideEffects.push(
+      notify({
+        userId: assignedToUserId,
+        clubId,
+        type: "task_assigned",
+        message: `${c.user.name} assigned you a task: "${task.title}"`,
+        linkUrl: `?view=tasks&taskId=${task.id}`,
+      }),
+    )
   }
-
-  await emitClubEvent(clubId, "task_created", { taskId: task.id })
+  await Promise.all(sideEffects)
 
   return json(
     {

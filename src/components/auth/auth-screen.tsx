@@ -6,7 +6,6 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Users,
   Clock,
@@ -14,6 +13,7 @@ import {
   Megaphone,
   Loader2,
   Sparkles,
+  ArrowRight,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -78,8 +78,9 @@ export function AuthScreen() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      {/* Left: value proposition (hidden on small screens) */}
-      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-gradient-to-br from-emerald-50 via-background to-background dark:from-emerald-950/30 dark:via-background dark:to-background border-r border-border">
+      {/* Left: value proposition (hidden on small screens).
+          Solid colors only — the user explicitly hates gradients. */}
+      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/30 border-r border-border">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
             <Users className="h-5 w-5" />
@@ -88,6 +89,10 @@ export function AuthScreen() {
         </div>
 
         <div className="max-w-md">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-club-muted px-2.5 py-1 text-caption-medium font-medium text-club mb-5">
+            <Sparkles className="h-3 w-3" />
+            For student leaders & volunteer coordinators
+          </div>
           <h2 className="text-3xl lg:text-[2.5rem] lg:leading-[1.15] font-semibold tracking-tight">
             Run your clubs like a team.
           </h2>
@@ -97,17 +102,17 @@ export function AuthScreen() {
             in one place.
           </p>
 
-          <ul className="mt-8 space-y-4">
+          <ul className="mt-8 space-y-3.5">
             {VALUE_PROPS.map((v) => {
               const Icon = v.icon
               return (
                 <li key={v.title} className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card border border-border text-club">
-                    <Icon className="h-4.5 w-4.5" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card border border-border text-club shadow-sm">
+                    <Icon className="h-[18px] w-[18px]" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-card-title">{v.title}</div>
-                    <div className="text-caption mt-0.5">{v.body}</div>
+                    <div className="text-caption mt-0.5 text-muted-foreground">{v.body}</div>
                   </div>
                 </li>
               )
@@ -115,7 +120,7 @@ export function AuthScreen() {
           </ul>
         </div>
 
-        <p className="text-caption">
+        <p className="text-caption text-muted-foreground">
           Built for student leaders & volunteer coordinators.
         </p>
       </aside>
@@ -171,17 +176,18 @@ export function AuthScreen() {
                 />
               </div>
               <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Sign in
               </Button>
               <p className="text-body text-center text-muted-foreground">
                 Don&apos;t have an account?{" "}
                 <button
                   type="button"
-                  className="text-club hover:underline font-medium"
+                  className="text-club hover:underline font-medium inline-flex items-center gap-0.5"
                   onClick={() => setAuthView("signup")}
                 >
                   Sign up
+                  <ArrowRight className="h-3 w-3" />
                 </button>
               </p>
             </form>
@@ -226,24 +232,25 @@ export function AuthScreen() {
                 </p>
               </div>
               <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
-                {loading && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Create account
               </Button>
               <p className="text-body text-center text-muted-foreground">
                 Already have an account?{" "}
                 <button
                   type="button"
-                  className="text-club hover:underline font-medium"
+                  className="text-club hover:underline font-medium inline-flex items-center gap-0.5"
                   onClick={() => setAuthView("login")}
                 >
                   Sign in
+                  <ArrowRight className="h-3 w-3" />
                 </button>
               </p>
             </form>
           )}
         </div>
 
-        <p className="text-caption text-center mt-10">
+        <p className="text-caption text-center mt-10 text-muted-foreground">
           By continuing you agree to use ClubHub responsibly.
         </p>
       </main>

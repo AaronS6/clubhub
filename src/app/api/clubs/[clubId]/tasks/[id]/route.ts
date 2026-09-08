@@ -52,15 +52,18 @@ export async function PATCH(
         _count: { select: { comments: true } },
       },
     })
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "task_status_changed",
-      targetType: "task",
-      targetId: id,
-      description: `${c.user.name} moved task "${existing.title}" to ${newStatus.replace("_", " ")}`,
-    })
-    await emitClubEvent(clubId, "task_status_changed", { taskId: id })
+    // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+    await Promise.all([
+      logActivity({
+        clubId,
+        actorUserId: c.user.id,
+        actionType: "task_status_changed",
+        targetType: "task",
+        targetId: id,
+        description: `${c.user.name} moved task "${existing.title}" to ${newStatus.replace("_", " ")}`,
+      }),
+      emitClubEvent(clubId, "task_status_changed", { taskId: id }),
+    ])
     return json({ task: serializeTask(updated) })
   }
 
@@ -93,7 +96,26 @@ export async function PATCH(
       return error("Description is too long (max 5000 chars)", 400)
     data.description = description?.trim() || null
   }
-  if (teamId !== undefined) {
+  if (teamId !== undefined && assignedToUserId !== undefined) {
+    // Both reference checks are independent — fan them out in parallel.
+    const [team, member] = await Promise.all([
+      teamId
+        ? db.team.findUnique({ where: { id: teamId } })
+        : Promise.resolve(null),
+      assignedToUserId
+        ? db.clubMember.findUnique({
+            where: { clubId_userId: { clubId, userId: assignedToUserId } },
+          })
+        : Promise.resolve(null),
+    ])
+    if (teamId && (!team || team.clubId !== clubId)) return error("Team not found", 400)
+    if (teamId) data.teamId = teamId
+    if (assignedToUserId && (!member || member.status !== "active"))
+      return error("Assignee is not an active member of this club", 400)
+    if (assignedToUserId) data.assignedToUserId = assignedToUserId
+    if (!teamId) data.teamId = null
+    if (!assignedToUserId) data.assignedToUserId = null
+  } else if (teamId !== undefined) {
     if (teamId) {
       const team = await db.team.findUnique({ where: { id: teamId } })
       if (!team || team.clubId !== clubId) return error("Team not found", 400)
@@ -101,8 +123,7 @@ export async function PATCH(
     } else {
       data.teamId = null
     }
-  }
-  if (assignedToUserId !== undefined) {
+  } else if (assignedToUserId !== undefined) {
     if (assignedToUserId) {
       const member = await db.clubMember.findUnique({
         where: { clubId_userId: { clubId, userId: assignedToUserId } },
@@ -143,47 +164,53 @@ export async function PATCH(
     },
   })
 
-  // Activity + notification on assignment change.
+  // Activity + notification on assignment change. logActivity/notify/emitClubEvent are best-effort
+  // independent side effects — fire them in parallel rather than sequentially.
+  const sideEffects: Promise<unknown>[] = []
   if (
     assignedToUserId !== undefined &&
     assignedToUserId !== existing.assignedToUserId
   ) {
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "task_assigned",
-      targetType: "task",
-      targetId: id,
-      description: assignedToUserId
-        ? `${c.user.name} assigned "${existing.title}" to ${updated.assignee?.name ?? "a member"}`
-        : `${c.user.name} unassigned "${existing.title}"`,
-    })
-    if (assignedToUserId && assignedToUserId !== c.user.id) {
-      await notify({
-        userId: assignedToUserId,
+    sideEffects.push(
+      logActivity({
         clubId,
-        type: "task_assigned",
-        message: `${c.user.name} assigned you a task: "${existing.title}"`,
-        linkUrl: `?view=tasks&taskId=${id}`,
-      })
+        actorUserId: c.user.id,
+        actionType: "task_assigned",
+        targetType: "task",
+        targetId: id,
+        description: assignedToUserId
+          ? `${c.user.name} assigned "${existing.title}" to ${updated.assignee?.name ?? "a member"}`
+          : `${c.user.name} unassigned "${existing.title}"`,
+      }),
+    )
+    if (assignedToUserId && assignedToUserId !== c.user.id) {
+      sideEffects.push(
+        notify({
+          userId: assignedToUserId,
+          clubId,
+          type: "task_assigned",
+          message: `${c.user.name} assigned you a task: "${existing.title}"`,
+          linkUrl: `?view=tasks&taskId=${id}`,
+        }),
+      )
     }
   }
-  if (
-    status !== undefined &&
-    status !== existing.status
-  ) {
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "task_status_changed",
-      targetType: "task",
-      targetId: id,
-      description: `${c.user.name} moved task "${existing.title}" to ${status.replace("_", " ")}`,
-    })
-    await emitClubEvent(clubId, "task_status_changed", { taskId: id })
+  if (status !== undefined && status !== existing.status) {
+    sideEffects.push(
+      logActivity({
+        clubId,
+        actorUserId: c.user.id,
+        actionType: "task_status_changed",
+        targetType: "task",
+        targetId: id,
+        description: `${c.user.name} moved task "${existing.title}" to ${status.replace("_", " ")}`,
+      }),
+      emitClubEvent(clubId, "task_status_changed", { taskId: id }),
+    )
   } else {
-    await emitClubEvent(clubId, "task_updated", { taskId: id })
+    sideEffects.push(emitClubEvent(clubId, "task_updated", { taskId: id }))
   }
+  await Promise.all(sideEffects)
 
   return json({ task: serializeTask(updated) })
 }
@@ -207,15 +234,18 @@ export async function DELETE(
     return error("Only executives or the assignee can delete this task", 403)
 
   await db.task.update({ where: { id }, data: { deletedAt: new Date() } })
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "task_deleted",
-    targetType: "task",
-    targetId: id,
-    description: `${c.user.name} deleted task "${existing.title}"`,
-  })
-  await emitClubEvent(clubId, "task_deleted", { taskId: id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "task_deleted",
+      targetType: "task",
+      targetId: id,
+      description: `${c.user.name} deleted task "${existing.title}"`,
+    }),
+    emitClubEvent(clubId, "task_deleted", { taskId: id }),
+  ])
   return json({ ok: true })
 }
 

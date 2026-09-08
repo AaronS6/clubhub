@@ -62,16 +62,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "announcement_updated",
-    targetType: "announcement",
-    targetId: id,
-    description: `${c.user.name} updated an announcement: ${updated.title}`,
-  })
-
-  await emitClubEvent(clubId, "announcement_updated", { announcementId: id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "announcement_updated",
+      targetType: "announcement",
+      targetId: id,
+      description: `${c.user.name} updated an announcement: ${updated.title}`,
+    }),
+    emitClubEvent(clubId, "announcement_updated", { announcementId: id }),
+  ])
 
   type ReactionUser = { id: string; name: string; avatarUrl: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
@@ -129,16 +131,18 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: str
     data: { deletedAt: new Date() },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "announcement_deleted",
-    targetType: "announcement",
-    targetId: id,
-    description: `${c.user.name} deleted an announcement: ${announcement.title}`,
-  })
-
-  await emitClubEvent(clubId, "announcement_deleted", { announcementId: id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "announcement_deleted",
+      targetType: "announcement",
+      targetId: id,
+      description: `${c.user.name} deleted an announcement: ${announcement.title}`,
+    }),
+    emitClubEvent(clubId, "announcement_deleted", { announcementId: id }),
+  ])
 
   return json({ ok: true })
 }

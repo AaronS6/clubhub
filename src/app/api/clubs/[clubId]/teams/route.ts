@@ -124,37 +124,41 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "team_created",
-    targetType: "team",
-    targetId: team.id,
-    description: `${c.user.name} created team "${team.name}"`,
-  })
-
-  // Notify all other members of the club about the new team (best-effort).
-  try {
-    const members = await db.clubMember.findMany({
-      where: { clubId, status: "active", userId: { not: c.user.id } },
-      select: { userId: true },
-    })
-    if (members.length > 0) {
-      await db.notification.createMany({
-        data: members.map((m) => ({
-          userId: m.userId,
-          clubId,
-          type: "new_team",
-          message: `A new team "${team.name}" was created.`,
-          linkUrl: "?view=teams",
-        })),
-      })
-    }
-  } catch (e) {
-    console.error("notify new team failed", e)
-  }
-
-  await emitClubEvent(clubId, "team_created", { teamId: team.id })
+  // logActivity + notify-members (best-effort try/catch) + emitClubEvent are
+  // independent side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "team_created",
+      targetType: "team",
+      targetId: team.id,
+      description: `${c.user.name} created team "${team.name}"`,
+    }),
+    emitClubEvent(clubId, "team_created", { teamId: team.id }),
+    // Notify all other members of the club about the new team (best-effort).
+    (async () => {
+      try {
+        const members = await db.clubMember.findMany({
+          where: { clubId, status: "active", userId: { not: c.user.id } },
+          select: { userId: true },
+        })
+        if (members.length > 0) {
+          await db.notification.createMany({
+            data: members.map((m) => ({
+              userId: m.userId,
+              clubId,
+              type: "new_team",
+              message: `A new team "${team.name}" was created.`,
+              linkUrl: "?view=teams",
+            })),
+          })
+        }
+      } catch (e) {
+        console.error("notify new team failed", e)
+      }
+    })(),
+  ])
 
   return json({ team }, 201)
 }

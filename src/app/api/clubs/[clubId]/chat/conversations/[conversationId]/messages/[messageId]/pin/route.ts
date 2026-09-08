@@ -10,12 +10,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const conv = await db.conversation.findUnique({ where: { id: conversationId } })
+  // conv + membership + message are 3 independent existence checks — fan them out.
+  const [conv, membership, message] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+    db.message.findUnique({ where: { id: messageId } }),
+  ])
   if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-
-  const membership = await db.conversationMember.findUnique({
-    where: { conversationId_userId: { conversationId, userId: c.user.id } },
-  })
   if (!membership) return error("Not a member of this conversation", 403)
 
   const isOwner = membership.role === "owner"
@@ -24,7 +27,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     return error("Only the conversation owner or an executive can pin messages", 403)
   }
 
-  const message = await db.message.findUnique({ where: { id: messageId } })
   if (!message || message.conversationId !== conversationId) {
     return error("Message not found", 404)
   }
@@ -41,14 +43,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     await db.message.update({ where: { id: messageId }, data: { pinnedAt: null } })
   }
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: pinned ? "chat_message_pinned" : "chat_message_unpinned",
-    targetType: "message",
-    targetId: messageId,
-    description: `${c.user.name} ${pinned ? "pinned" : "unpinned"} a chat message`,
-  })
-  await emitClubEvent(clubId, "chat_message", { conversationId })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: pinned ? "chat_message_pinned" : "chat_message_unpinned",
+      targetType: "message",
+      targetId: messageId,
+      description: `${c.user.name} ${pinned ? "pinned" : "unpinned"} a chat message`,
+    }),
+    emitClubEvent(clubId, "chat_message", { conversationId }),
+  ])
   return json({ ok: true, pinnedAt: pinned ? new Date().toISOString() : null })
 }

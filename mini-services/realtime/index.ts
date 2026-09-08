@@ -70,8 +70,10 @@ function broadcastPresence(clubId: string) {
 }
 
 io.on("connection", (socket) => {
+  console.log(`[realtime] socket connected: ${socket.id}`)
   socket.on("auth", (payload: { userId: string; clubIds: string[] }) => {
     if (!payload?.userId) return
+    console.log(`[realtime] auth: socket=${socket.id} user=${payload.userId} clubs=${payload.clubIds?.length ?? 0}`)
     const clubSet = new Set(payload.clubIds ?? [])
     socketPresence.set(socket.id, { userId: payload.userId, clubIds: clubSet })
     socket.join(`user:${payload.userId}`)
@@ -181,7 +183,8 @@ io.on("connection", (socket) => {
       })
     }
   })
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
+    console.log(`[realtime] socket disconnected: ${socket.id} reason=${reason}`)
     // Broadcast chat_typing:stop for any conversation this socket was typing
     // in (handles the "closed tab mid-typing" case). The helper fans out to
     // all clubs the user was in.

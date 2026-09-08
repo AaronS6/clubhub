@@ -142,6 +142,8 @@ model ServiceHour {
   reviewer User?             @relation("ServiceHourReviewer", fields: [reviewedBy], references: [id])
 
   @@index([clubId, status])
+  @@index([clubId, userId, status])
+  @@index([clubId, submittedAt])
   @@index([userId])
 }
 
@@ -250,6 +252,7 @@ model Task {
   comments    TaskComment[]
 
   @@index([clubId, status])
+  @@index([clubId, assignedToUserId])
   @@index([assignedToUserId])
   @@index([teamId])
 }

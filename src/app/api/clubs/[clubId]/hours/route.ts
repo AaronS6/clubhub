@@ -130,37 +130,42 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     include: { category: { select: { id: true, name: true } } },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "hours_submitted",
-    targetType: "service_hour",
-    targetId: entry.id,
-    description: `${c.user.name} submitted ${hours} service hour(s)`,
-  })
-
-  // Notify executives
-  try {
-    const execs = await db.clubMember.findMany({
-      where: { clubId, status: "active", role: "executive" },
-      select: { userId: true },
-    })
-    if (execs.length > 0) {
-      await db.notification.createMany({
-        data: execs.map((e) => ({
-          userId: e.userId,
-          clubId,
-          type: "hours_submitted",
-          message: `${c.user.name} submitted ${hours} service hour(s) for review`,
-          linkUrl: "/?view=approvals",
-        })),
-      })
-    }
-  } catch (e) {
-    console.error("notify execs failed", e)
-  }
-
-  await emitClubEvent(clubId, "hours_submitted", { hourId: entry.id })
+  // Fan out: logActivity, notify-executives (best-effort try/catch), and the
+  // realtime emit are independent side effects — run them in parallel.
+  // The execs.findMany is fanned into the same wave as logActivity+emit since
+  // it doesn't depend on entry (only clubId+c.user.name+hours, all known now).
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "hours_submitted",
+      targetType: "service_hour",
+      targetId: entry.id,
+      description: `${c.user.name} submitted ${hours} service hour(s)`,
+    }),
+    emitClubEvent(clubId, "hours_submitted", { hourId: entry.id }),
+    (async () => {
+      try {
+        const execs = await db.clubMember.findMany({
+          where: { clubId, status: "active", role: "executive" },
+          select: { userId: true },
+        })
+        if (execs.length > 0) {
+          await db.notification.createMany({
+            data: execs.map((e) => ({
+              userId: e.userId,
+              clubId,
+              type: "hours_submitted",
+              message: `${c.user.name} submitted ${hours} service hour(s) for review`,
+              linkUrl: "/?view=approvals",
+            })),
+          })
+        }
+      } catch (e) {
+        console.error("notify execs failed", e)
+      }
+    })(),
+  ])
 
   return json({ entry }, 201)
 }

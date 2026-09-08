@@ -145,7 +145,8 @@ export function MembersView() {
     queryFn: () => api(`/api/clubs/${clubId}/members`),
     enabled: !!clubId,
     // Realtime is primary; poll only as a fallback while the socket is down.
-    refetchInterval: usePollingFallback(8000),
+    // Members list is low-urgency — 30s is plenty as a fallback.
+    refetchInterval: usePollingFallback(30_000),
   })
 
   // Live presence — green dot on avatars of currently-online club members.
@@ -724,16 +725,21 @@ function MemberRow({
     >
       <TableCell>
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-            <AvatarFallback className="text-xs">{initials(member.user.name)}</AvatarFallback>
+          {/* Avatar wrapper is `relative` so the presence dot can be positioned
+              on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
+              and would clip it). */}
+          <span className="relative inline-flex shrink-0">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
+              <AvatarFallback className="text-xs">{initials(member.user.name)}</AvatarFallback>
+            </Avatar>
             {online.has(member.user.id) && (
               <span
                 aria-label="Online"
                 className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-background"
               />
             )}
-          </Avatar>
+          </span>
           <div className="min-w-0">
             <div className="font-medium truncate flex items-center gap-1.5">
               {member.user.name}
@@ -879,16 +885,21 @@ function MemberMobileCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-            <AvatarFallback className="text-sm">{initials(member.user.name)}</AvatarFallback>
+          {/* Avatar wrapper is `relative` so the presence dot can be positioned
+              on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
+              and would clip it). */}
+          <span className="relative inline-flex shrink-0">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
+              <AvatarFallback className="text-sm">{initials(member.user.name)}</AvatarFallback>
+            </Avatar>
             {online.has(member.user.id) && (
               <span
                 aria-label="Online"
                 className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-background"
               />
             )}
-          </Avatar>
+          </span>
           <div className="min-w-0">
             <div className="text-body-medium truncate flex items-center gap-1.5">
               {member.user.name}
@@ -990,18 +1001,24 @@ function MemberDetailSheet({
       >
         <SheetHeader className="px-5 pt-5 pb-3 border-b">
           <div className="flex items-center gap-3">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-              <AvatarFallback className="text-base">
-                {initials(member.user.name)}
-              </AvatarFallback>
+            {/* Avatar wrapper is `relative` so the presence dot can be positioned
+                on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
+                and would clip it). This is the most visible spot for the dot,
+                so it's the one the user noticed was being cut off. */}
+            <span className="relative inline-flex shrink-0">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
+                <AvatarFallback className="text-base">
+                  {initials(member.user.name)}
+                </AvatarFallback>
+              </Avatar>
               {online.has(member.user.id) && (
                 <span
                   aria-label="Online"
                   className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-club ring-2 ring-background"
                 />
               )}
-            </Avatar>
+            </span>
             <div className="min-w-0">
               <SheetTitle className="truncate text-base">{member.user.name}</SheetTitle>
               <SheetDescription className="truncate">{member.user.email}</SheetDescription>

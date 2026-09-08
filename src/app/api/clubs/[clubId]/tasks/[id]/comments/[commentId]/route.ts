@@ -10,11 +10,13 @@ export async function DELETE(
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const task = await db.task.findUnique({ where: { id } })
+  // task + comment are independent existence checks — fan them out in parallel.
+  const [task, comment] = await Promise.all([
+    db.task.findUnique({ where: { id } }),
+    db.taskComment.findUnique({ where: { id: commentId } }),
+  ])
   if (!task || task.clubId !== clubId || task.deletedAt)
     return error("Task not found", 404)
-
-  const comment = await db.taskComment.findUnique({ where: { id: commentId } })
   if (!comment || comment.taskId !== id)
     return error("Comment not found", 404)
 

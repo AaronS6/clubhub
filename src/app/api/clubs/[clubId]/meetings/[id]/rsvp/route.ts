@@ -30,16 +30,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     select: { id: true, status: true },
   })
 
-  // Recompute counts after the upsert.
-  const rsvps = await db.meetingRsvp.findMany({ where: { meetingId: id }, select: { status: true } })
+  // Recompute counts after the upsert, in parallel with the realtime emit
+  // (emit is fire-and-forget; findMany is the response source).
+  const [rsvps] = await Promise.all([
+    db.meetingRsvp.findMany({ where: { meetingId: id }, select: { status: true } }),
+    emitClubEvent(clubId, "meeting_rsvp", { meetingId: id, userId: c.user.id, status: rsvp.status }),
+  ])
   const counts = { going: 0, notGoing: 0, maybe: 0 }
   for (const r of rsvps) {
     if (r.status === "going") counts.going++
     else if (r.status === "not_going") counts.notGoing++
     else if (r.status === "maybe") counts.maybe++
   }
-
-  await emitClubEvent(clubId, "meeting_rsvp", { meetingId: id, userId: c.user.id, status: rsvp.status })
 
   return json({ ok: true, rsvp, rsvpCounts: counts })
 }

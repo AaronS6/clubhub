@@ -72,33 +72,40 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     data: { proofFileUrl: null },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: status === "approved" ? "hours_approved" : "hours_rejected",
-    targetType: "service_hour",
-    description: `${c.user.name} bulk ${status} ${entries.length} service hour entr${entries.length === 1 ? "y" : "ies"}`,
-  })
-
-  // Notify each submitter (collapse by user — sum their approved/rejected hours)
+  // Notify each submitter (collapse by user — sum their approved/rejected hours).
+  // Fan out all notify() calls in parallel — each is best-effort and independent.
   const userHours = new Map<string, number>()
   for (const e of entries) {
     userHours.set(e.userId, (userHours.get(e.userId) ?? 0) + e.hours)
   }
+  const notifyPromises: Promise<void>[] = []
   for (const [userId, totalHours] of userHours) {
-    await notify({
-      userId,
-      clubId,
-      type: status === "approved" ? "hours_approved" : "hours_rejected",
-      message:
-        status === "approved"
-          ? `${totalHours} of your service hour(s) were approved${comment ? `: ${comment}` : ""}`
-          : `${totalHours} of your service hour(s) were rejected${comment ? `: ${comment}` : ""}`,
-      linkUrl: "/?view=hours",
-    })
+    notifyPromises.push(
+      notify({
+        userId,
+        clubId,
+        type: status === "approved" ? "hours_approved" : "hours_rejected",
+        message:
+          status === "approved"
+            ? `${totalHours} of your service hour(s) were approved${comment ? `: ${comment}` : ""}`
+            : `${totalHours} of your service hour(s) were rejected${comment ? `: ${comment}` : ""}`,
+        linkUrl: "/?view=hours",
+      }),
+    )
   }
 
-  await emitClubEvent(clubId, status === "approved" ? "hours_approved" : "hours_rejected", { hourIds: entries.map((e) => e.id) })
+  // logActivity + the notify fan-out + emitClubEvent are independent — fan them out.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: status === "approved" ? "hours_approved" : "hours_rejected",
+      targetType: "service_hour",
+      description: `${c.user.name} bulk ${status} ${entries.length} service hour entr${entries.length === 1 ? "y" : "ies"}`,
+    }),
+    emitClubEvent(clubId, status === "approved" ? "hours_approved" : "hours_rejected", { hourIds: entries.map((e) => e.id) }),
+    ...notifyPromises,
+  ])
 
   return json({ ok: true, reviewed: entries.length })
 }

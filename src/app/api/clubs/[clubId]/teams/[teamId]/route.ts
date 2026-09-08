@@ -54,16 +54,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
     select: { id: true, name: true, description: true, createdAt: true },
   })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "team_updated",
-    targetType: "team",
-    targetId: team.id,
-    description: `${c.user.name} updated team "${updated.name}"`,
-  })
-
-  await emitClubEvent(clubId, "team_updated", { teamId: team.id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "team_updated",
+      targetType: "team",
+      targetId: team.id,
+      description: `${c.user.name} updated team "${updated.name}"`,
+    }),
+    emitClubEvent(clubId, "team_updated", { teamId: team.id }),
+  ])
 
   return json({ team: updated })
 }
@@ -81,16 +83,18 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   // team_members cascade on Team delete; tasks & meetings have onDelete: SetNull
   await db.team.delete({ where: { id: team.id } })
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "team_deleted",
-    targetType: "team",
-    targetId: team.id,
-    description: `${c.user.name} deleted team "${team.name}"`,
-  })
-
-  await emitClubEvent(clubId, "team_deleted", { teamId: team.id })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "team_deleted",
+      targetType: "team",
+      targetId: team.id,
+      description: `${c.user.name} deleted team "${team.name}"`,
+    }),
+    emitClubEvent(clubId, "team_deleted", { teamId: team.id }),
+  ])
 
   return json({ ok: true })
 }

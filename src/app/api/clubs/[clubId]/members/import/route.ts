@@ -235,6 +235,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   // Track emails seen in this upload so we don't add the same user twice.
   const seenEmails = new Set<string>()
 
+  // First pass: validate + collect unique emails (so we can pre-fetch all
+  // existing users in a single query rather than N per-row findUnique calls).
+  interface RowCandidate {
+    rowNumber: number
+    name: string
+    email: string // lowercased
+    rawEmail: string // original case for display
+  }
+  const candidates: RowCandidate[] = []
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]
     const rowNumber = i + 2 // header is row 1
@@ -262,77 +271,143 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       continue
     }
     seenEmails.add(email)
+    candidates.push({ rowNumber, name: rawName, email, rawEmail })
+  }
 
-    // Look up an existing user with this email.
-    const existingUser = await db.user.findUnique({
-      where: { email },
-      select: { id: true, name: true, email: true },
-    })
+  // Pre-fetch all existing users (by email) + their club memberships in 2
+  // PARALLEL queries. Previously this was 2N sequential per-row findUnique
+  // calls (one user lookup + one membership lookup per CSV row); now it's a
+  // single parallel wave.
+  //   - usersByEmail: every user matching any candidate email (regardless of
+  //     whether they're in this club yet — needed to distinguish "pending
+  //     invite" (no user) from "new membership" (user exists, no membership)).
+  //   - membershipByEmail: existing memberships for this club, filtered by
+  //     user.email, so we know who's already active / removed.
+  const uniqueEmails = candidates.map((c) => c.email)
+  const [usersWithEmail, memberships] = uniqueEmails.length === 0
+    ? [await Promise.resolve([]), await Promise.resolve([])]
+    : await Promise.all([
+        db.user.findMany({
+          where: { email: { in: uniqueEmails } },
+          select: { id: true, name: true, email: true },
+        }),
+        db.clubMember.findMany({
+          where: { clubId, user: { email: { in: uniqueEmails } } },
+          select: {
+            id: true,
+            userId: true,
+            status: true,
+            role: true,
+            user: { select: { email: true } },
+          },
+        }),
+      ])
+  const userByEmail = new Map(usersWithEmail.map((u) => [u.email, u]))
+  // Index memberships by lowercased email for O(1) lookup during the second pass.
+  const membershipByEmail = new Map(memberships.map((m) => [m.user.email, m]))
 
+  // Second pass: classify each candidate using the in-memory maps. Collect
+  // mutation tasks (reactivations + new creates) + notify targets for batched
+  // execution after the loop.
+  const reactivations: { membershipId: string; userId: string; name: string; rawEmail: string }[] = []
+  const newMemberships: { userId: string; name: string; rawEmail: string }[] = []
+  const notifyTargets: { userId: string; message: string }[] = []
+
+  for (const cand of candidates) {
+    const existingUser = userByEmail.get(cand.email)
     if (!existingUser) {
-      pendingInvites.push({ name: rawName, email: rawEmail })
+      // No user with this email at all → pending invite (no DB row to create).
+      pendingInvites.push({ name: cand.name, email: cand.rawEmail })
       continue
     }
-
-    const existingMembership = await db.clubMember.findUnique({
-      where: { clubId_userId: { clubId, userId: existingUser.id } },
-    })
+    const existingMembership = membershipByEmail.get(cand.email)
 
     if (existingMembership && existingMembership.status === "active") {
-      alreadyMembers.push({ email: rawEmail })
+      alreadyMembers.push({ email: cand.rawEmail })
       continue
     }
 
     if (existingMembership && existingMembership.status === "removed") {
-      // Reactivate as a member (reset role for cleanliness).
-      await db.clubMember.update({
-        where: { id: existingMembership.id },
-        data: { status: "active", role: "member" },
-      })
-      added.push({ name: rawName, email: rawEmail })
-      // Let the user know they were re-added.
-      await notify({
+      // Reactivate as a member (reset role for cleanliness) — batched below.
+      reactivations.push({
+        membershipId: existingMembership.id,
         userId: existingUser.id,
-        clubId,
-        type: "new_member",
+        name: cand.name,
+        rawEmail: cand.rawEmail,
+      })
+      added.push({ name: cand.name, email: cand.rawEmail })
+      notifyTargets.push({
+        userId: existingUser.id,
         message: `You were re-added to ${c.club.name}`,
-        linkUrl: "/?view=dashboard",
       })
       continue
     }
 
-    // No membership at all — create one.
-    await db.clubMember.create({
-      data: { clubId, userId: existingUser.id, role: "member" },
-    })
-    added.push({ name: rawName, email: rawEmail })
-    await notify({
+    // User exists but has no membership in this club → create one (batched below).
+    newMemberships.push({
       userId: existingUser.id,
-      clubId,
-      type: "new_member",
+      name: cand.name,
+      rawEmail: cand.rawEmail,
+    })
+    added.push({ name: cand.name, email: cand.rawEmail })
+    notifyTargets.push({
+      userId: existingUser.id,
       message: `You were added to ${c.club.name}`,
-      linkUrl: "/?view=dashboard",
     })
   }
 
-  const club = await db.club.findUnique({
-    where: { id: clubId },
-    select: { clubCode: true },
-  })
-
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "bulk_member_import",
-    targetType: "club",
-    targetId: clubId,
-    description: `${c.user.name} imported members (added ${added.length}, already ${alreadyMembers.length}, pending ${pendingInvites.length}, invalid ${invalid.length})`,
-  })
-
-  // Only emit when membership actually changed.
-  if (added.length > 0) {
-    await emitClubEvent(clubId, "new_member", { added: added.length })
+  // Execute mutations in parallel: bulk reactivation + bulk create.
+  const mutationPromises: Promise<unknown>[] = []
+  if (reactivations.length > 0) {
+    mutationPromises.push(
+      db.clubMember.updateMany({
+        where: { id: { in: reactivations.map((r) => r.membershipId) } },
+        data: { status: "active", role: "member" },
+      }),
+    )
   }
+  if (newMemberships.length > 0) {
+    mutationPromises.push(
+      db.clubMember.createMany({
+        data: newMemberships.map((n) => ({
+          clubId,
+          userId: n.userId,
+          role: "member",
+        })),
+      }),
+    )
+  }
+  await Promise.all(mutationPromises)
+
+  // Fan out the per-target notify calls in parallel (each is best-effort).
+  await Promise.all(
+    notifyTargets.map((t) =>
+      notify({
+        userId: t.userId,
+        clubId,
+        type: "new_member",
+        message: t.message,
+        linkUrl: "/?view=dashboard",
+      }),
+    ),
+  )
+
+  // club.findUnique (for clubCode) + logActivity + emitClubEvent are independent — fan them out.
+  const [club] = await Promise.all([
+    db.club.findUnique({ where: { id: clubId }, select: { clubCode: true } }),
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "bulk_member_import",
+      targetType: "club",
+      targetId: clubId,
+      description: `${c.user.name} imported members (added ${added.length}, already ${alreadyMembers.length}, pending ${pendingInvites.length}, invalid ${invalid.length})`,
+    }),
+    // Only emit when membership actually changed.
+    added.length > 0
+      ? emitClubEvent(clubId, "new_member", { added: added.length })
+      : Promise.resolve(),
+  ])
 
   const result: ImportResult = {
     added,

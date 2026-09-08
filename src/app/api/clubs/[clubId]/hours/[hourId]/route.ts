@@ -46,6 +46,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
   if (!entry) return error("Entry not found", 404)
   if (entry.status !== "pending") return error("Entry has already been reviewed", 400)
 
+  // Single update covers both the review fields AND nulling out proofFileUrl —
+  // previously this was two sequential update calls on the same row.
   const updated = await db.serviceHour.update({
     where: { id: hourId },
     data: {
@@ -53,6 +55,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
       reviewComment: comment,
       reviewedBy: c.user.id,
       reviewedAt: new Date(),
+      ...(entry.proofFileUrl ? { proofFileUrl: null } : {}),
     },
     include: {
       category: { select: { id: true, name: true } },
@@ -61,34 +64,31 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
     },
   })
 
-  // delete proof file + null out proofFileUrl
-  await deleteProofFile(entry.proofFileUrl)
-  if (entry.proofFileUrl) {
-    await db.serviceHour.update({ where: { id: hourId }, data: { proofFileUrl: null } })
-    updated.proofFileUrl = null
-  }
-
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: status === "approved" ? "hours_approved" : "hours_rejected",
-    targetType: "service_hour",
-    targetId: hourId,
-    description: `${c.user.name} ${status} ${entry.hours} service hour(s) submitted by ${updated.user?.name ?? "a member"}`,
-  })
-
-  await notify({
-    userId: entry.userId,
-    clubId,
-    type: status === "approved" ? "hours_approved" : "hours_rejected",
-    message:
-      status === "approved"
-        ? `Your ${entry.hours} service hour(s) were approved${comment ? `: ${comment}` : ""}`
-        : `Your ${entry.hours} service hour(s) were rejected${comment ? `: ${comment}` : ""}`,
-    linkUrl: "/?view=hours",
-  })
-
-  await emitClubEvent(clubId, status === "approved" ? "hours_approved" : "hours_rejected", { hourId })
+  // Best-effort proof-file deletion runs in parallel with the side-effects wave
+  // (logActivity + notify + emitClubEvent) — it reads from `entry.proofFileUrl`
+  // in memory and doesn't depend on the DB row.
+  await Promise.all([
+    deleteProofFile(entry.proofFileUrl),
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: status === "approved" ? "hours_approved" : "hours_rejected",
+      targetType: "service_hour",
+      targetId: hourId,
+      description: `${c.user.name} ${status} ${entry.hours} service hour(s) submitted by ${updated.user?.name ?? "a member"}`,
+    }),
+    notify({
+      userId: entry.userId,
+      clubId,
+      type: status === "approved" ? "hours_approved" : "hours_rejected",
+      message:
+        status === "approved"
+          ? `Your ${entry.hours} service hour(s) were approved${comment ? `: ${comment}` : ""}`
+          : `Your ${entry.hours} service hour(s) were rejected${comment ? `: ${comment}` : ""}`,
+      linkUrl: "/?view=hours",
+    }),
+    emitClubEvent(clubId, status === "approved" ? "hours_approved" : "hours_rejected", { hourId }),
+  ])
 
   return json({ entry: updated })
 }
@@ -114,19 +114,25 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: str
     return error("You can only delete pending entries", 400)
   }
 
-  await deleteProofFile(entry.proofFileUrl)
-  await db.serviceHour.delete({ where: { id: hourId } })
+  // deleteProofFile reads entry.proofFileUrl in memory; the DB row delete is
+  // independent of the file unlink. Fan them out in parallel.
+  await Promise.all([
+    deleteProofFile(entry.proofFileUrl),
+    db.serviceHour.delete({ where: { id: hourId } }),
+  ])
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "hours_deleted",
-    targetType: "service_hour",
-    targetId: hourId,
-    description: `${c.user.name} deleted a ${entry.status} service hours entry (${entry.hours}h)`,
-  })
-
-  await emitClubEvent(clubId, "hours_submitted", { hourId })
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "hours_deleted",
+      targetType: "service_hour",
+      targetId: hourId,
+      description: `${c.user.name} deleted a ${entry.status} service hours entry (${entry.hours}h)`,
+    }),
+    emitClubEvent(clubId, "hours_submitted", { hourId }),
+  ])
 
   return json({ ok: true })
 }

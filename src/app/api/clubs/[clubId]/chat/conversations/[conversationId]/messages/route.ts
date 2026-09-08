@@ -34,10 +34,6 @@ function parseMentions(text: string, members: { user: { id: string; name: string
   for (const m of members) {
     lowerByName.set(m.user.name.toLowerCase(), m.user.id)
   }
-  // @Name terminated by whitespace, end of string, or punctuation (other than
-  // . _ - which can appear inside an identifier). Names with spaces aren't
-  // supported in v1 — the picker inserts `@FirstName LastName ` but the parse
-  // only matches the first token, which is fine for notifications.
   const re = /(?:^|\s)@([A-Za-z0-9._-]+[A-Za-z0-9])/g
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
@@ -80,6 +76,17 @@ function serialize(m: RawMessage, myUserId: string) {
   }
 }
 
+const messageIncludes = {
+  author: { select: { id: true, name: true, avatarUrl: true } },
+  reactions: {
+    select: {
+      emoji: true,
+      userId: true,
+      user: { select: { id: true, name: true, avatarUrl: true } },
+    },
+  },
+} as const
+
 // GET /api/clubs/[clubId]/chat/conversations/[conversationId]/messages
 //   ?before=<messageId>  → older messages (for scroll-up pagination)
 //   ?after=<messageId>   → newer messages (for polling/updates)
@@ -89,89 +96,76 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string;
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const conv = await db.conversation.findUnique({ where: { id: conversationId } })
+  // Fetch conv + membership in parallel (both needed for validation).
+  const [conv, membership] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+  ])
   if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-
-  const membership = await db.conversationMember.findUnique({
-    where: { conversationId_userId: { conversationId, userId: c.user.id } },
-  })
   if (!membership) return error("Not a member of this conversation", 403)
 
   const url = new URL(req.url)
   const before = url.searchParams.get("before")
   const after = url.searchParams.get("after")
 
-  const messageIncludes = {
-    author: { select: { id: true, name: true, avatarUrl: true } },
-    reactions: {
-      select: {
-        emoji: true,
-        userId: true,
-        user: { select: { id: true, name: true, avatarUrl: true } },
-      },
-    },
-  } as const
-
-  let messages: RawMessage[] = []
-
   if (before) {
-    // Cursor: createdAt of the message with id=before. Fetch messages older than that.
     const cursor = await db.message.findUnique({ where: { id: before }, select: { createdAt: true } })
     if (!cursor) return json({ messages: [], hasMore: false })
-    messages = await db.message.findMany({
-      where: { conversationId, createdAt: { lt: cursor.createdAt } },
-      orderBy: { createdAt: "desc" },
-      take: PAGE_SIZE,
-      include: messageIncludes,
-    })
-    // Reverse so oldest-first for display.
+    // Fetch messages + hasMore count in parallel.
+    const [messages, olderCount] = await Promise.all([
+      db.message.findMany({
+        where: { conversationId, createdAt: { lt: cursor.createdAt } },
+        orderBy: { createdAt: "desc" },
+        take: PAGE_SIZE,
+        include: messageIncludes,
+      }),
+      db.message.count({
+        where: { conversationId, createdAt: { lt: cursor.createdAt } },
+      }),
+    ])
     messages.reverse()
-    // Check if there are older messages still.
-    const hasMore = messages.length > 0
-      ? (await db.message.count({
-          where: { conversationId, createdAt: { lt: messages[0].createdAt } },
-        })) > 0
-      : false
+    // hasMore = there are messages older than the oldest in this batch.
+    const hasMore = messages.length > 0 && olderCount > PAGE_SIZE
     return json({ messages: messages.map((m) => serialize(m, c.user.id)), hasMore })
   }
 
   if (after) {
     const cursor = await db.message.findUnique({ where: { id: after }, select: { createdAt: true } })
     if (!cursor) return json({ messages: [], hasMore: false })
-    messages = await db.message.findMany({
-      where: { conversationId, createdAt: { gt: cursor.createdAt } },
-      orderBy: { createdAt: "asc" },
-      take: PAGE_SIZE * 2,
-      include: messageIncludes,
-    })
-    // Mark as read since the user is presumably at the bottom fetching updates.
-    await db.conversationMember.update({
-      where: { conversationId_userId: { conversationId, userId: c.user.id } },
-      data: { lastReadAt: new Date() },
-    })
+    // Fetch messages + mark-as-read in parallel.
+    const [messages] = await Promise.all([
+      db.message.findMany({
+        where: { conversationId, createdAt: { gt: cursor.createdAt } },
+        orderBy: { createdAt: "asc" },
+        take: PAGE_SIZE * 2,
+        include: messageIncludes,
+      }),
+      db.conversationMember.update({
+        where: { conversationId_userId: { conversationId, userId: c.user.id } },
+        data: { lastReadAt: new Date() },
+      }),
+    ])
     return json({ messages: messages.map((m) => serialize(m, c.user.id)), hasMore: false })
   }
 
-  // No cursor — latest PAGE_SIZE messages.
-  messages = await db.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: "desc" },
-    take: PAGE_SIZE,
-    include: messageIncludes,
-  })
+  // No cursor — latest PAGE_SIZE messages + hasMore count + mark-as-read, all parallel.
+  const [messages, olderCount] = await Promise.all([
+    db.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE,
+      include: messageIncludes,
+    }),
+    db.message.count({ where: { conversationId } }),
+    db.conversationMember.update({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+      data: { lastReadAt: new Date() },
+    }),
+  ])
   messages.reverse()
-
-  // Mark as read (only when fetching latest, not when paginating older).
-  await db.conversationMember.update({
-    where: { conversationId_userId: { conversationId, userId: c.user.id } },
-    data: { lastReadAt: new Date() },
-  })
-
-  const hasMore = messages.length > 0
-    ? (await db.message.count({
-        where: { conversationId, createdAt: { lt: messages[0].createdAt } },
-      })) > 0
-    : false
+  const hasMore = olderCount > PAGE_SIZE
 
   return json({ messages: messages.map((m) => serialize(m, c.user.id)), hasMore })
 }
@@ -183,12 +177,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const conv = await db.conversation.findUnique({ where: { id: conversationId } })
+  // Fetch conv + membership in parallel.
+  const [conv, membership] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+  ])
   if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-
-  const membership = await db.conversationMember.findUnique({
-    where: { conversationId_userId: { conversationId, userId: c.user.id } },
-  })
   if (!membership) return error("Not a member of this conversation", 403)
 
   // Rate limit: 30 messages per user per minute per conversation.
@@ -209,52 +205,30 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   if (!trimmed) return error("Message body cannot be empty", 400)
   if (trimmed.length > 8000) return error("Message must be 8000 characters or fewer", 400)
 
-  const created = await db.message.create({
-    data: { conversationId, authorId: c.user.id, body: trimmed },
-    include: {
-      author: { select: { id: true, name: true, avatarUrl: true } },
-      reactions: {
-        select: {
-          emoji: true,
-          userId: true,
-          user: { select: { id: true, name: true, avatarUrl: true } },
-        },
-      },
-    },
-  })
+  // Create message + bump conversation.updatedAt + fetch other members + club
+  // members (for @mention parsing) — all independent, run in parallel.
+  const [created, , otherMembers, clubMembers] = await Promise.all([
+    db.message.create({
+      data: { conversationId, authorId: c.user.id, body: trimmed },
+      include: messageIncludes,
+    }),
+    db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
+    db.conversationMember.findMany({
+      where: { conversationId, userId: { not: c.user.id } },
+      select: { userId: true, lastReadAt: true, joinedAt: true },
+    }),
+    db.clubMember.findMany({
+      where: { clubId, status: "active" },
+      select: { user: { select: { id: true, name: true } } },
+    }),
+  ])
 
-  // Bump conversation.updatedAt so it sorts first in the list.
-  await db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } })
-
-  // Fan out a notification to the OTHER members of THIS conversation. Rules:
-  // - Direct/group: notify all members except the author.
-  // - Club-wide: only notify members who have NEVER opened the conversation
-  //   (i.e. lastReadAt === joinedAt, meaning they never fetched messages).
-  //
-  // IMPORTANT: the `where` MUST scope by `conversationId`. An earlier version
-  // omitted it (only filtered `userId != author`), which would notify every
-  // ConversationMember row in the database — leaking the conversation's name
-  // and preview to users who aren't even in it. Scoping by `conversationId`
-  // ensures only actual members of THIS conversation are notified.
-  const otherMembers = await db.conversationMember.findMany({
-    where: { conversationId, userId: { not: c.user.id } },
-    select: { userId: true, lastReadAt: true, joinedAt: true },
-  })
-
-  // Parse @mentions and notify each mentioned user (excluding the author).
-  // Uses the type `new_comment` per the spec (keeps the notify pipeline
-  // simple — the frontend already knows how to render this type).
-  const clubMembers = await db.clubMember.findMany({
-    where: { clubId, status: "active" },
-    select: { user: { select: { id: true, name: true } } },
-  })
   const mentionedUserIds = parseMentions(trimmed, clubMembers)
-
   const preview = trimmed.length > 80 ? trimmed.slice(0, 80) + "…" : trimmed
   const notifyPayload = (recipientId: string) => ({
     userId: recipientId,
     clubId,
-    type: "chat_message",
+    type: "chat_message" as const,
     message:
       conv.type === "direct"
         ? `${c.user.name}: ${preview}`
@@ -264,48 +238,53 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     linkUrl: "/chat",
   })
 
+  // Build the full notification fan-out list (chat messages + mentions),
+  // then fire them all in parallel. Each notify() is independent.
+  const notifyTasks: Promise<unknown>[] = []
+
   if (conv.type === "club_wide") {
-    // Only notify members who have never opened the conversation. We detect
-    // "never opened" by comparing lastReadAt to joinedAt — both default to
-    // now() at creation time, so an exact equality means no GET has updated
-    // lastReadAt since the row was created.
+    // Only notify members who have never opened the conversation.
     for (const m of otherMembers) {
       if (m.lastReadAt.getTime() === m.joinedAt.getTime()) {
-        await notify(notifyPayload(m.userId))
+        notifyTasks.push(notify(notifyPayload(m.userId)))
       }
     }
   } else {
     for (const m of otherMembers) {
-      await notify(notifyPayload(m.userId))
+      notifyTasks.push(notify(notifyPayload(m.userId)))
     }
   }
 
-  // Mention notifications: a separate, distinct message so the recipient
-  // sees they were @-mentioned (not just that a new message arrived).
+  // Mention notifications (distinct type so the recipient sees they were @-mentioned).
   for (const mentionedId of mentionedUserIds) {
-    if (mentionedId === c.user.id) continue // never self-notify
-    await notify({
-      userId: mentionedId,
-      clubId,
-      type: "new_comment",
-      message: `${c.user.name} mentioned you in chat`,
-      linkUrl: "/chat",
-    })
+    if (mentionedId === c.user.id) continue
+    notifyTasks.push(
+      notify({
+        userId: mentionedId,
+        clubId,
+        type: "new_comment",
+        message: `${c.user.name} mentioned you in chat`,
+        linkUrl: "/chat",
+      }),
+    )
   }
 
-  await logActivity({
-    clubId,
-    actorUserId: c.user.id,
-    actionType: "chat_message_sent",
-    targetType: "message",
-    targetId: created.id,
-    description:
-      conv.type === "direct"
-        ? `${c.user.name} sent a direct message`
-        : `${c.user.name} sent a message in ${conv.name ?? "club chat"}`,
-  })
-
-  await emitClubEvent(clubId, "chat_message", { conversationId })
+  // Fire all notifications + activity log + realtime emit in parallel.
+  await Promise.all([
+    Promise.all(notifyTasks),
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "chat_message_sent",
+      targetType: "message",
+      targetId: created.id,
+      description:
+        conv.type === "direct"
+          ? `${c.user.name} sent a direct message`
+          : `${c.user.name} sent a message in ${conv.name ?? "club chat"}`,
+    }),
+    emitClubEvent(clubId, "chat_message", { conversationId }),
+  ])
 
   return json({ message: serialize(created, c.user.id) }, 201)
 }

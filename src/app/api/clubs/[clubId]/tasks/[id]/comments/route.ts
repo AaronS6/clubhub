@@ -10,17 +10,19 @@ export async function GET(
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
 
-  const task = await db.task.findUnique({ where: { id } })
+  // task (existence + scope) + comments are independent — fan them out in parallel.
+  const [task, comments] = await Promise.all([
+    db.task.findUnique({ where: { id } }),
+    db.taskComment.findMany({
+      where: { taskId: id },
+      orderBy: { createdAt: "asc" },
+      include: {
+        author: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    }),
+  ])
   if (!task || task.clubId !== clubId || task.deletedAt)
     return error("Task not found", 404)
-
-  const comments = await db.taskComment.findMany({
-    where: { taskId: id },
-    orderBy: { createdAt: "asc" },
-    include: {
-      author: { select: { id: true, name: true, avatarUrl: true } },
-    },
-  })
 
   return json({
     comments: comments.map((cmt) => ({
