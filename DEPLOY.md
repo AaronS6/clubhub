@@ -1,27 +1,24 @@
 # Deploying ClubHub — Step-by-Step (100% Free)
 
-This guide deploys the entire app to **Render's free tier** using:
-- **PostgreSQL** database (free, 1GB)
-- **Web service** for the Next.js app (free, 512MB RAM)
-- **Background worker** for the realtime socket.io service (free, 512MB RAM)
+This guide deploys the entire app using:
+- **Supabase** for PostgreSQL (free, 500MB, pauses but never deletes data)
+- **Render** for the Next.js web service (free, 512MB RAM)
+- **Render** for the realtime socket.io service (free, 512MB RAM)
 
-Total cost: **$0/month**. The free tier sleeps after 15 min of inactivity and
-wakes on the next request (takes ~30s). For a club tool with light traffic,
-this is perfectly fine.
+Total cost: **$0/month**
 
 ---
 
 ## Prerequisites
 
-1. A **GitHub account** (free).
-2. Your ClubHub code pushed to a **GitHub repository** (public or private).
-3. A **Render account** (free, sign up at render.com with your GitHub account).
+1. A **GitHub account** (free)
+2. Your ClubHub code pushed to a **GitHub repository**
+3. A **Render account** (free — sign up at render.com with GitHub)
+4. A **Supabase account** (free — sign up at supabase.com with GitHub)
 
 ---
 
 ## Step 1: Push your code to GitHub
-
-If you haven't already, create a GitHub repo and push:
 
 ```bash
 git init
@@ -32,73 +29,64 @@ git remote add origin https://github.com/YOUR_USERNAME/clubhub.git
 git push -u origin main
 ```
 
-**Important**: Make sure `.env` is in `.gitignore` (it is by default). Never
-commit your real secrets. The `.env.example` file is committed as a reference.
+> **Important**: `.env` is in `.gitignore` (never commit real secrets). The `.env.example` file is committed as a reference.
 
 ---
 
-## Step 2: Create the PostgreSQL database on Render
+## Step 2: Create the Supabase database
 
-1. Go to **https://dashboard.render.com** and sign in with GitHub.
-2. Click **New +** → **PostgreSQL**.
-3. Fill in:
-   - **Name**: `clubhub-db`
-   - **Database**: `clubhub` (leave blank to auto-create)
-   - **User**: `clubhub` (leave blank to auto-create)
-   - **Region**: closest to you
-   - **Plan**: **Free** (1GB storage, 90 days — recreated on activity)
-4. Click **Create Database**.
-5. Once created, copy the **Internal Database URL** — you'll need it in Step 4.
-   It looks like: `postgresql://clubhub:password@host.render.com:5432/clubhub`
-
----
-
-## Step 3: Deploy the realtime worker service
-
-The realtime socket.io service runs as a background worker (it holds persistent
-WebSocket connections, so it can't be serverless).
-
-1. In the Render dashboard, click **New +** → **Worker**.
+1. Go to **https://supabase.com** → sign in → **New Project**
 2. Fill in:
+   - **Name**: `clubhub`
+   - **Database Password**: generate a strong one, **save it somewhere safe** (you'll need it)
+   - **Region**: closest to you
+   - **Plan**: **Free**
+3. Click **Create new project** (takes ~2 min)
+4. Once ready, go to **Project Settings** (gear icon) → **Database** → **Connection string** → select **URI**
+5. Copy the **Connection string**. It looks like:
+   ```
+   postgresql://postgres.[your-project-ref]:[YOUR-PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
+   ```
+6. Replace `[YOUR-PASSWORD]` with the password you saved in step 2.
+7. Add `?connection_limit=3&pool_timeout=10` to the end of the URL (keeps us under Supabase's connection limit). Your final URL should look like:
+   ```
+   postgresql://postgres.abc123:yourpassword@aws-0-us-east-1.pooler.supabase.com:6543/postgres?connection_limit=3&pool_timeout=10
+   ```
+   This is your **`DATABASE_URL`** — keep it handy, you'll paste it into Render in Step 5.
+
+> **Why Supabase is great**: It's real PostgreSQL (zero schema changes), 500MB is plenty for a club app, and if it pauses after 7 days of inactivity, **your data is preserved** — just log into the Supabase dashboard (or the app will auto-wake it on the next query).
+
+---
+
+## Step 3: Deploy the realtime service on Render
+
+The realtime socket.io service needs its own public URL so browsers can connect via WebSocket.
+
+1. Go to **https://dashboard.render.com** → **New +** → **Web Service**
+2. Connect your GitHub repo
+3. Fill in:
    - **Name**: `clubhub-realtime`
-   - **Region**: same as your database
+   - **Region**: same as your Supabase region
    - **Plan**: **Free**
    - **Runtime**: **Docker**
    - **Dockerfile Path**: `mini-services/realtime/Dockerfile`
    - **Docker Build Context Directory**: `mini-services/realtime`
-3. Under **Environment Variables**, add:
+4. Under **Environment Variables**, add:
    - `REALTIME_TOKEN` → click **Generate** to create a random secret. **Copy this value** — you'll need it for the web service.
+   - `PORT` → `3003`
    - `EMIT_PORT` → `3004`
-4. Click **Create Worker**. It will build and start.
-5. Once running, note the worker's **internal hostname** (shown on the service
-   page sidebar): something like `clubhub-realtime`. The web service will reach
-   the emit API at `http://clubhub-realtime:3004/emit`.
-
-> **Note**: Render free workers don't have a public URL by default. For the
-> browser to connect via WebSocket, you need a public URL. Two options:
-> - **Option A (simplest)**: Use Render's internal service discovery — the web
->   service talks to the worker internally via `http://clubhub-realtime:3004/emit`.
->   The browser connects via the web service's domain (you'd proxy `/socket.io`
->   or just accept that realtime falls back to polling). This is the simplest
->   free setup.
-> - **Option B (full realtime)**: Deploy the realtime service as a **Web Service**
->   instead of a Worker (so it gets a public URL). This uses a second free web
->   service slot (Render allows multiple free services). The browser connects
->   directly to `wss://clubhub-realtime.onrender.com`.
-
-**Recommended: Option B** for full realtime. Create it as a **Web Service** (not
-Worker), plan **Free**, runtime **Docker**, same Dockerfile. Set `PORT=3003`.
-Render gives it a public URL like `https://clubhub-realtime.onrender.com`.
+5. Click **Create Web Service**. It builds in ~2 min.
+6. Once deployed, Render gives you a public URL like `https://clubhub-realtime.onrender.com`. **Copy this URL** — you'll need it for `NEXT_PUBLIC_REALTIME_URL` in Step 5.
 
 ---
 
-## Step 4: Deploy the Next.js web service
+## Step 4: Deploy the Next.js web service on Render
 
-1. In the Render dashboard, click **New +** → **Web Service**.
-2. Connect your GitHub repo.
+1. In the Render dashboard → **New +** → **Web Service**
+2. Connect the same GitHub repo
 3. Fill in:
    - **Name**: `clubhub-web`
-   - **Region**: same as your database
+   - **Region**: same as Supabase
    - **Plan**: **Free**
    - **Runtime**: **Docker**
    - **Dockerfile Path**: `./Dockerfile`
@@ -106,33 +94,26 @@ Render gives it a public URL like `https://clubhub-realtime.onrender.com`.
 
    | Key | Value |
    |-----|-------|
-   | `DATABASE_URL` | *(paste the Internal Database URL from Step 2)* |
-   | `NEXTAUTH_SECRET` | *(click Generate — a random base64 string)* |
-   | `NEXTAUTH_URL` | `https://clubhub-web.onrender.com` *(your web service's public URL — update after first deploy if different)* |
+   | `DATABASE_URL` | *(paste your Supabase connection string from Step 2, with the `?connection_limit=3&pool_timeout=10` suffix)* |
+   | `NEXTAUTH_SECRET` | *(click **Generate** — a random base64 string)* |
+   | `NEXTAUTH_URL` | `https://clubhub-web.onrender.com` *(update after first deploy if Render assigned a different name)* |
    | `ADMIN_CLUB_PASSCODE` | `buildtogether12$` *(or your custom passcode)* |
-   | `REALTIME_TOKEN` | *(paste the same value you generated in Step 3)* |
-   | `REALTIME_EMIT_URL` | `http://clubhub-realtime:3004/emit` *(internal URL to the worker's emit API)* |
-   | `NEXT_PUBLIC_REALTIME_URL` | `https://clubhub-realtime.onrender.com` *(the worker's PUBLIC URL — only if you used Option B in Step 3; otherwise leave blank and realtime falls back to polling)* |
+   | `REALTIME_TOKEN` | *(paste the SAME value you generated in Step 3)* |
+   | `REALTIME_EMIT_URL` | `http://clubhub-realtime:3004/emit` *(internal URL — uses Render's service discovery)* |
+   | `NEXT_PUBLIC_REALTIME_URL` | `https://clubhub-realtime.onrender.com` *(the realtime service's PUBLIC URL from Step 3)* |
    | `NODE_ENV` | `production` |
 
-5. Click **Create Web Service**. The first build takes ~3-5 minutes.
-6. Once deployed, Render gives you a public URL like
-   `https://clubhub-web.onrender.com`. Visit it — you should see the ClubHub
-   landing page.
-7. **Update `NEXTAUTH_URL`** to match the exact URL Render assigned (if it
-   differs from what you guessed), then redeploy.
+5. Click **Create Web Service**. First build takes ~3-5 min.
+6. Once deployed, visit your web URL → you should see the ClubHub landing page.
+7. If Render assigned a different name than `clubhub-web`, update `NEXTAUTH_URL` to match, then redeploy.
 
 ---
 
 ## Step 5: Initialize the database
 
-The Dockerfile's startup command runs `npx prisma db push --accept-data-loss`
-automatically on every deploy, which creates all the tables. So the database
-is ready as soon as the first deploy completes — no manual step needed.
+The Dockerfile's startup command runs `npx prisma db push --accept-data-loss` automatically on every deploy — this creates all the tables. So the database is ready as soon as the first deploy completes. **No manual step needed.**
 
-If you ever need to reset the database, you can run the same command from the
-Render shell (Shell tab on the web service):
-
+If you ever need to reset the database (e.g. wipe test data), open the Render shell (Shell tab on the web service) and run:
 ```bash
 npx prisma db push --accept-data-loss
 ```
@@ -141,60 +122,56 @@ npx prisma db push --accept-data-loss
 
 ## Step 6: Verify
 
-1. Visit your web URL (`https://clubhub-web.onrender.com`).
-2. Click **Sign up**, create an account.
-3. Click **Create a club**, enter the admin passcode (`buildtogether12$`).
-4. You should land on the dashboard as an executive.
-5. Open a second browser (incognito), sign up as a different user, join the
-   club with the code + password. Verify realtime sync works (create a task in
-   one session, watch it appear in the other).
+1. Visit your web URL: `https://clubhub-web.onrender.com`
+2. Click **Sign up** → create an account
+3. Click **Create a club** → enter the admin passcode: `buildtogether12$`
+4. You should land on the dashboard as an executive
+5. Open a second browser (incognito) → sign up as a different user → join the club with the code + password → verify realtime sync (create a task in one session, watch it appear in the other within ~1-2 seconds)
 
 ---
 
-## Free tier limitations to know
+## Free tier limitations
 
-- **Cold starts**: Free web services sleep after 15 min of inactivity. The first
-  request after sleep takes ~30s to wake up. Subsequent requests are fast.
-- **Database expiry**: Free PostgreSQL databases are deleted after 90 days of
-  inactivity. To prevent this, visit your app at least once every 90 days (or
-  upgrade to the $7/month plan for persistent storage).
-- **750 hours/month**: Free tier includes 750 instance-hours per month across
-  all free services — enough for one always-on web service + one always-on
-  worker without exceeding the limit.
-- **512MB RAM**: Sufficient for a club app. If you see OOM errors, you may need
-  the paid tier.
+- **Web service cold starts**: Render free web services sleep after 15 min of inactivity → first request after sleep takes ~30s. Subsequent requests are fast.
+- **Supabase pausing**: Free Supabase projects pause after 7 days of inactivity. **Your data is preserved** — the app will auto-wake it on the next query (takes ~2-3s), or log into the Supabase dashboard to unpause manually. To prevent pausing, visit your app at least once a week.
+- **750 Render instance-hours/month**: Enough for 1 web service + 1 realtime service always-on without exceeding the limit.
 
 ---
 
 ## Optional: Email notifications
 
-Email is optional (the app gracefully no-ops without it). To enable:
+Email is optional — the app gracefully no-ops without it. To enable:
 
-1. Sign up at **https://resend.com** (free tier: 100 emails/day).
-2. Get an API key.
+1. Sign up at **https://resend.com** (free tier: 100 emails/day)
+2. Get an API key
 3. Add to your web service env vars:
    - `RESEND_API_KEY` → your key
-   - `EMAIL_FROM` → `ClubHub <onboarding@resend.dev>` (sandbox sender; only
-     delivers to your Resend account email. Verify your domain to send to anyone.)
+   - `EMAIL_FROM` → `ClubHub <onboarding@resend.dev>` (Resend sandbox sender — only delivers to your account's verified email. Verify your domain at Resend to send to anyone.)
 
 ---
 
 ## Troubleshooting
 
-**Build fails on Render**: Check the build logs. The most common issue is a
-missing env var. The `postinstall` script runs `prisma generate` automatically.
+**Build fails on Render**: Check the build logs. Common issues:
+- Missing env var — make sure all 8 are set in the web service
+- Prisma client not generated — the `postinstall` script handles this, but if it fails, add `npx prisma generate` to the build manually
 
-**Database connection errors**: Make sure `DATABASE_URL` is set to the
-**Internal** Database URL (not the external one) for lower latency. Both work.
+**Database connection errors**:
+- Make sure `DATABASE_URL` has the `?connection_limit=3&pool_timeout=10` suffix
+- Make sure you replaced `[YOUR-PASSWORD]` with the actual password
+- Use the **pooler** connection (port `6543`), not the direct connection (port `5432`)
 
-**Realtime not working**: If you used Option A (no public realtime URL), the
-app falls back to polling (every 5-30s depending on the view). It still works,
-just not instant. For full realtime, use Option B and set
-`NEXT_PUBLIC_REALTIME_URL`.
+**Realtime not working** (changes don't sync live):
+- If `NEXT_PUBLIC_REALTIME_URL` is wrong/unset, the app **falls back to polling** (every 5-30s) — it still works, just not instant
+- Check the realtime service logs — it should show `[realtime] socket connected` when the browser connects
 
-**"Taking a moment to load" screen**: This means the `/api/me` call is slow
-(usually a cold-start database connection). Click Retry — it should resolve
-once the database connection warms up.
+**"Taking a moment to load" screen**:
+- This means the `/api/me` call is slow (usually a Supabase cold start or Render cold start)
+- Click **Retry** — it should resolve once the connections warm up
+
+**Can't create a club**:
+- Make sure `ADMIN_CLUB_PASSCODE` is set to `buildtogether12$` (or your custom value) in the web service env vars
+- The passcode is checked server-side — the dialog sends it to `/api/clubs/verify-admin-passcode`
 
 ---
 
@@ -202,14 +179,14 @@ once the database connection warms up.
 
 | Service | Var | Value |
 |---------|-----|-------|
-| Web | `DATABASE_URL` | Render Postgres internal URL |
-| Web | `NEXTAUTH_SECRET` | Random base64 string |
-| Web | `NEXTAUTH_URL` | `https://your-app.onrender.com` |
+| **Web** | `DATABASE_URL` | Supabase pooler connection string (port 6543) + `?connection_limit=3&pool_timeout=10` |
+| Web | `NEXTAUTH_SECRET` | Random base64 (click Generate in Render) |
+| Web | `NEXTAUTH_URL` | `https://your-web-name.onrender.com` |
 | Web | `ADMIN_CLUB_PASSCODE` | `buildtogether12$` |
 | Web | `REALTIME_TOKEN` | Same as realtime service |
 | Web | `REALTIME_EMIT_URL` | `http://clubhub-realtime:3004/emit` |
-| Web | `NEXT_PUBLIC_REALTIME_URL` | `https://clubhub-realtime.onrender.com` (or leave blank) |
+| Web | `NEXT_PUBLIC_REALTIME_URL` | `https://clubhub-realtime.onrender.com` |
 | Web | `NODE_ENV` | `production` |
-| Realtime | `REALTIME_TOKEN` | Same as web service |
+| **Realtime** | `REALTIME_TOKEN` | Same as web service |
 | Realtime | `PORT` | `3003` |
 | Realtime | `EMIT_PORT` | `3004` |
