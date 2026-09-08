@@ -233,11 +233,15 @@ const emitServer = createServer(async (req: IncomingMessage, res: ServerResponse
   res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }))
 })
 
-const WS_PORT = 3003
-const EMIT_PORT = 3004
+// Ports — read from env so the service works in container environments
+// (Render, Fly.io, etc.). Locally defaults to 3003 (ws) + 3004 (emit).
+// In production, Render exposes ONE external port (PORT) for the WebSocket
+// server so browsers can reach it; the emit API runs on EMIT_PORT internally.
+const WS_PORT = parseInt(process.env.PORT || process.env.WS_PORT || "3003", 10)
+const EMIT_PORT = parseInt(process.env.EMIT_PORT || "3004", 10)
 
-wsServer.listen(WS_PORT, () => console.log(`Realtime (socket.io) on port ${WS_PORT}`))
-emitServer.listen(EMIT_PORT, () => console.log(`Realtime emit API on port ${EMIT_PORT}`))
+wsServer.listen(WS_PORT, "0.0.0.0", () => console.log(`Realtime (socket.io) on port ${WS_PORT}`))
+emitServer.listen(EMIT_PORT, "0.0.0.0", () => console.log(`Realtime emit API on port ${EMIT_PORT}`))
 
 const shutdown = (srv: HttpServer, name: string) => srv.close(() => console.log(`${name} closed`))
 process.on("SIGTERM", () => { shutdown(wsServer, "ws"); shutdown(emitServer, "emit") })

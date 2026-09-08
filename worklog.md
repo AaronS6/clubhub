@@ -1238,3 +1238,25 @@ Stage Summary:
 - Files modified (main): `src/app/layout.tsx` (viewport export), `src/components/app-shell.tsx` (safe-area padding on header + footer), `src/components/views/tasks-view.tsx` (TouchSensor, drag handle, board delete, mobile status dropdown, New Task dialog sheet treatment).
 - Files modified (subagent): announcements-view, activity-view, teams-view, notifications-view, hours-view, members-view, meetings-view, create-club-dialog, app-shell (NotificationBell only).
 - Lint clean. Dev server healthy.
+
+---
+Task ID: R8 (Production deployment prep)
+Agent: main (Z.ai Code)
+Task: Swap to PostgreSQL, remove demo data, externalize config for production, verify build, write deployment guide
+
+Work Log:
+- **Database swap**: Changed `prisma/schema.prisma` datasource from `sqlite` to `postgresql`. Schema is fully Postgres-compatible (no SQLite-specific types). Removed the old SQLite DB file (`db/custom.db`) and `prisma/migrations` folder — all demo data wiped (39 users, 11 clubs, 19 tasks, etc. all gone).
+- **Realtime service externalized**: Updated `mini-services/realtime/index.ts` to read `PORT` and `EMIT_PORT` from env vars (defaults to 3003/3004 for local dev). Binds to `0.0.0.0` so it works in containers. Updated `src/lib/realtime-server.ts` to read `REALTIME_EMIT_URL` from env (for the Next.js app to reach the worker's emit API). Updated `src/lib/realtime-client.ts` to read `NEXT_PUBLIC_REALTIME_URL` from env (for the browser to connect to the realtime service's public WebSocket URL). Falls back to the sandbox gateway path if unset.
+- **Build hardened**: Fixed `next.config.ts` already has `ignoreBuildErrors: false` + `reactStrictMode: true` (from R5). Fixed real type errors that were previously hidden: `Map` constructor typing in dashboard route, `apiUpload` generic parameter in api/client.ts. Updated `tsconfig.json` to exclude `examples/`, `mini-services/`, `tests/`, `scripts/`, `skills/`, `tool-results/`, `agent-ctx/` (they're separate projects / not part of the app and were causing build failures). Added `postinstall: prisma generate` to package.json so the Prisma client is generated on deploy. Updated `build` script to run `prisma generate` first. Changed `start` to use `node` (not `bun`) for broader compatibility. Added `start` script to the realtime mini-service.
+- **Docker setup**: Created `Dockerfile` (multi-stage build for the Next.js web service — builds with bun, runs with node, copies standalone output, runs `prisma db push` on startup then `node server.js`). Created `mini-services/realtime/Dockerfile` (bun-based, runs the socket.io service). Created `.dockerignore` to keep build context small. Created `render.yaml` Render Blueprint for one-click deployment.
+- **Environment**: Created `.env.example` documenting all env vars (DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL, REALTIME_TOKEN, REALTIME_EMIT_URL, NEXT_PUBLIC_REALTIME_URL, ADMIN_CLUB_PASSCODE, RESEND_API_KEY, EMAIL_FROM). Updated `.gitignore` to exclude the db folder, standalone build, and tool-results/agent-ctx.
+- **Deployment guide**: Created `DEPLOY.md` with step-by-step Render deployment instructions (PostgreSQL database, realtime worker, Next.js web service), all env vars documented, free-tier limitations explained, troubleshooting section.
+
+Stage Summary:
+- Production build succeeds (`bun run build` — 21s, standalone output verified).
+- Lint clean.
+- All demo data removed.
+- Schema swapped to PostgreSQL.
+- All config externalized to env vars.
+- Dockerfiles + render.yaml + DEPLOY.md created.
+- Ready to deploy to Render free tier.

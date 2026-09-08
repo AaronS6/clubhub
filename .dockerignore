@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+dev.log
+realtime.log
+*.log
+db
+upload
+download
+tool-results
+agent-ctx
+.zscripts
+tests
+skills

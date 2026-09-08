@@ -52,3 +52,13 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Local SQLite database (dev only — production uses Postgres)
+/db/
+
+# Build artifacts
+/.next/standalone
+
+# Tool results + agent context (not part of the app)
+/tool-results/
+/agent-ctx/

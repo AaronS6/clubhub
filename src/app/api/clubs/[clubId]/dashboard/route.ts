@@ -186,7 +186,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
   ])
 
   // ---- Build response (pure in-memory, no DB) ----
-  const userMap = new Map(topUsers.map((u) => [u.id, u]))
+  const userMap = new Map<string, { id: string; name: string; avatarUrl: string | null }>(
+    topUsers.map((u) => [u.id, u] as const)
+  )
   const leaderboard = [...hoursByUser]
     .sort((a, b) => (b._sum.hours ?? 0) - (a._sum.hours ?? 0))
     .slice(0, 5)

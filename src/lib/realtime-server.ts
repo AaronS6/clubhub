@@ -4,7 +4,10 @@
  * This is best-effort: if the realtime service is down we just skip (the app
  * still works via polling). Called from API routes after a DB mutation.
  */
-const REALTIME_URL = "http://localhost:3004/emit"
+// In production, the realtime mini-service runs as a separate Render background
+// worker. The Next.js app reaches its emit API via an internal URL
+// (REALTIME_EMIT_URL env var). Locally it's http://localhost:3004/emit.
+const REALTIME_URL = process.env.REALTIME_EMIT_URL || "http://localhost:3004/emit"
 const INTERNAL_TOKEN = process.env.REALTIME_TOKEN || "dev-realtime-token"
 
 type EmitInput =

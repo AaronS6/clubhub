@@ -1,12 +1,13 @@
 // Multi-Club Management Platform — Prisma schema
-// SQLite datasource (single-instance friendly; swap to postgres later via datasource only).
+// PostgreSQL datasource (production). SQLite was used for local dev; the
+// swap to Postgres only required changing the datasource provider + url.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

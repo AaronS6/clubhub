@@ -30,7 +30,7 @@ function safeParse(text: string) {
 }
 
 /** Upload a file (multipart) to a given path. */
-export async function apiUpload(path: string, formData: FormData): Promise<any> {
+export async function apiUpload<T = any>(path: string, formData: FormData): Promise<T> {
   const res = await fetch(path, { method: "POST", body: formData, credentials: "same-origin" })
   const text = await res.text()
   const data = text ? safeParse(text) : null
@@ -38,5 +38,5 @@ export async function apiUpload(path: string, formData: FormData): Promise<any> 
     const message = data && typeof data === "object" && "error" in data ? (data as any).error : `Upload failed (${res.status})`
     throw new Error(message)
   }
-  return data
+  return data as T
 }
