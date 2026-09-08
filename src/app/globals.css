@@ -1,0 +1,312 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =========================================================================
+   ClubHub Design System
+   Philosophy: Notion / Linear — restraint over decoration. Typography and
+   spacing create hierarchy; color is used sparingly and intentionally.
+   ========================================================================= */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-geist-mono);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Per-club accent color — set dynamically by ClubAccentProvider.
+     Falls back to a warm emerald. Use bg-club / text-club-foreground / ring-club. */
+  --color-club: var(--club-accent, #10b981);
+  --color-club-foreground: var(--club-accent-foreground, #ffffff);
+  --color-club-muted: var(--club-accent-muted, rgba(16, 185, 129, 0.12));
+  --color-club-subtle: var(--club-accent-subtle, rgba(16, 185, 129, 0.08));
+
+  /* Semantic status colors — soft tinted backgrounds with readable text */
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-fg: var(--status-pending-fg);
+  --color-status-approved: var(--status-approved);
+  --color-status-approved-fg: var(--status-approved-fg);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-rejected-fg: var(--status-rejected-fg);
+  --color-status-progress: var(--status-progress);
+  --color-status-progress-fg: var(--status-progress-fg);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Neutral scale — warm-tinted grays (very slight warm shift, Notion-like) */
+  --background: oklch(0.992 0.002 95);
+  --foreground: oklch(0.18 0.005 95);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.005 95);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.005 95);
+
+  /* Primary = the default club accent (warm emerald). Overridden per-club. */
+  --primary: oklch(0.62 0.15 160);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.965 0.003 95);
+  --secondary-foreground: oklch(0.28 0.006 95);
+  --muted: oklch(0.965 0.003 95);
+  --muted-foreground: oklch(0.52 0.008 95);
+  --accent: oklch(0.955 0.004 95);
+  --accent-foreground: oklch(0.28 0.006 95);
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.91 0.004 95);
+  --input: oklch(0.91 0.004 95);
+  --ring: oklch(0.62 0.15 160);
+
+  /* Default club accent (overridden at runtime) */
+  --club-accent: #10b981;
+  --club-accent-foreground: #ffffff;
+  --club-accent-muted: rgba(16, 185, 129, 0.12);
+  --club-accent-subtle: rgba(16, 185, 129, 0.06);
+
+  /* Status palette — soft, low-saturation tints (Notion-style chips) */
+  --status-pending: oklch(0.95 0.05 85);
+  --status-pending-fg: oklch(0.45 0.11 70);
+  --status-approved: oklch(0.94 0.06 155);
+  --status-approved-fg: oklch(0.42 0.11 155);
+  --status-rejected: oklch(0.95 0.04 22);
+  --status-rejected-fg: oklch(0.5 0.16 25);
+  --status-progress: oklch(0.94 0.05 240);
+  --status-progress-fg: oklch(0.46 0.13 245);
+
+  --chart-1: oklch(0.62 0.15 160);
+  --chart-2: oklch(0.6 0.12 240);
+  --chart-3: oklch(0.65 0.15 50);
+  --chart-4: oklch(0.6 0.18 300);
+  --chart-5: oklch(0.68 0.15 0);
+
+  --sidebar: oklch(0.985 0.002 95);
+  --sidebar-foreground: oklch(0.28 0.006 95);
+  --sidebar-primary: oklch(0.62 0.15 160);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.95 0.004 95);
+  --sidebar-accent-foreground: oklch(0.28 0.006 95);
+  --sidebar-border: oklch(0.92 0.004 95);
+  --sidebar-ring: oklch(0.62 0.15 160);
+}
+
+.dark {
+  --background: oklch(0.16 0.004 95);
+  --foreground: oklch(0.93 0.004 95);
+  --card: oklch(0.205 0.005 95);
+  --card-foreground: oklch(0.93 0.004 95);
+  --popover: oklch(0.205 0.005 95);
+  --popover-foreground: oklch(0.93 0.004 95);
+
+  --primary: oklch(0.7 0.15 160);
+  --primary-foreground: oklch(0.16 0.004 95);
+  --secondary: oklch(0.255 0.006 95);
+  --secondary-foreground: oklch(0.93 0.004 95);
+  --muted: oklch(0.255 0.006 95);
+  --muted-foreground: oklch(0.66 0.008 95);
+  --accent: oklch(0.28 0.006 95);
+  --accent-foreground: oklch(0.93 0.004 95);
+  --destructive: oklch(0.68 0.19 22);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.7 0.15 160);
+
+  --status-pending: oklch(0.32 0.06 85);
+  --status-pending-fg: oklch(0.82 0.09 85);
+  --status-approved: oklch(0.3 0.07 155);
+  --status-approved-fg: oklch(0.82 0.1 155);
+  --status-rejected: oklch(0.33 0.07 22);
+  --status-rejected-fg: oklch(0.8 0.12 22);
+  --status-progress: oklch(0.32 0.07 240);
+  --status-progress-fg: oklch(0.82 0.1 240);
+
+  --chart-1: oklch(0.7 0.15 160);
+  --chart-2: oklch(0.65 0.13 240);
+  --chart-3: oklch(0.7 0.15 50);
+  --chart-4: oklch(0.65 0.18 300);
+  --chart-5: oklch(0.72 0.15 0);
+
+  --sidebar: oklch(0.2 0.005 95);
+  --sidebar-foreground: oklch(0.9 0.004 95);
+  --sidebar-primary: oklch(0.7 0.15 160);
+  --sidebar-primary-foreground: oklch(0.16 0.004 95);
+  --sidebar-accent: oklch(0.27 0.006 95);
+  --sidebar-accent-foreground: oklch(0.93 0.004 95);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.7 0.15 160);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/40;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    text-rendering: optimizeLegibility;
+  }
+  /* Smooth transitions on interactive elements — subtle, not jarring */
+  button,
+  a,
+  [role="button"],
+  input,
+  textarea,
+  select {
+    transition: background-color 150ms ease, border-color 150ms ease,
+      color 150ms ease, opacity 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+  /* Refined focus rings — visible but not heavy */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background;
+  }
+  /* Tabular numbers for counts/tables — keeps layouts stable */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Type scale — weight does the heavy lifting, not size jumps */
+  .text-page-title {
+    font-size: 1.625rem;
+    line-height: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+  }
+  .text-section-title {
+    font-size: 1.0625rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .text-card-title {
+    font-size: 0.9375rem;
+    line-height: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .text-body {
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    font-weight: 400;
+  }
+  .text-body-medium {
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    font-weight: 500;
+  }
+  .text-caption {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 400;
+    color: var(--muted-foreground);
+  }
+  .text-caption-medium {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+
+  /* Status chips — soft, Notion-style */
+  .chip-pending {
+    background: var(--status-pending);
+    color: var(--status-pending-fg);
+  }
+  .chip-approved {
+    background: var(--status-approved);
+    color: var(--status-approved-fg);
+  }
+  .chip-rejected {
+    background: var(--status-rejected);
+    color: var(--status-rejected-fg);
+  }
+  .chip-progress {
+    background: var(--status-progress);
+    color: var(--status-progress-fg);
+  }
+  .chip-neutral {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  /* Card refinement — thin border, very subtle shadow only on hover for cards */
+  .card-quiet {
+    @apply border border-border bg-card rounded-xl;
+    transition: box-shadow 180ms ease, border-color 180ms ease;
+  }
+  .card-quiet:hover {
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  }
+
+  /* Fade-in for newly loaded content */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in {
+    animation: fade-in 200ms ease-out;
+  }
+}
+
+/* Thin, unobtrusive scrollbars (Notion/Linear style) */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+}

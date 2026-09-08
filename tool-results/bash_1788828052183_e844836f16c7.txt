@@ -1,0 +1,300 @@
+- Onboarding banner: dismissible via an X button; persists dismissal in `localStorage` under `onboarding-dismissed-<clubId>`; shows when `!dismissed && recentAnnouncements.length === 0 && teamsCount === 0`; replaced Tier 1 entirely while visible. Dismissal state read in a deferred microtask (mirrors `use-realtime-sync.ts`) to satisfy `react-hooks/set-state-in-effect`.
+- Tier 2 "Your snapshot" card: approved hours + `Progress` (indicator overridden to `bg-club` via `[&_[data-slot=progress-indicator]]:bg-club` so it picks up the per-club accent rather than the static `--primary` emerald), tasks count (X open / Y done), next 2-3 meetings compact.
+- Tier 3 visual quietening: chart and leaderboard use `text-card-title` headers (not `text-section-title`); "Club at a glance" + exec insights use `text-card-title` and small captions. Chart card adds a `CartesianGrid` with `hsl(var(--border))` dashed thin gridlines (muted, design-system-aligned). Empty state for the chart uses a `BarChart3` icon ("No hours logged yet").
+- Leaderboard: top 5 with clickable rows (`setView("members")`); rank-1 gets `bg-club-muted/30 ring-1 ring-club/20` highlight; ranks 1/2/3 get gold/silver/bronze styling via `RankBadge`.
+- Staggered entrance: every section/card uses `animate-fade-in` + an inline `animationDelay: i * 50ms` with `animationFillMode: "backwards"` (via a small `stagger(i)` helper returning `CSSProperties`) so cards cascade in without an initial flash.
+- Mobile (375px): all sections collapse to single column. Chart container is `h-56 w-full min-w-0` so it can't overflow the viewport. Mobile priority order via `order-1`..`order-5` on the Rows 3+4 grid children: snapshot → chart → leaderboard → announcements → meetings.
+- Rebuilt `DashboardSkeleton` to mirror the new bento layout (hero bar + Tier 1 4-up strip + chart/leaderboard row + snapshot/announcements/meetings row + club stats strip), all using `animate-pulse` and `StatCardSkeleton` from shared.
+- Accent coverage verified: hero stripe + avatar tile (`bg-club`), Tier 1 left borders (`border-l-club`), chart stroke + gradient fill (`var(--club-accent)`), progress bar fill (`bg-club` via child selector), leaderboard rank-1 highlight (`ring-club/20 bg-club-muted/30`), task "upcoming" dot (`bg-club`), role badge member pill (`text-club border-club/30 bg-club-muted`), snapshot header icon (`text-club`), chart header icon (`text-club`). All resolve to the per-club accent via `ClubAccentProvider`'s `--club-accent` CSS var.
+- Dark-mode safety: chart `CartesianGrid` uses `hsl(var(--border))` (resolves to dark-mode border token), `Tooltip` contentStyle uses `hsl(var(--popover))`/`hsl(var(--popover-foreground))` (auto-adapts), X/Y axis ticks use `fill: "currentColor"` with `className="text-muted-foreground"` (auto-adapts). Tier 1 accent, leaderboard rank badges, exec insights urgent tint, and onboarding tint all have explicit `dark:` variants.
+- Ran `bun run lint` — clean (0 errors, 0 warnings). Tail of `dev.log` shows recent `GET / 200` responses with no runtime errors attributable to the dashboard. Initial lint error (`react-hooks/set-state-in-effect` on the localStorage read) resolved by deferring `setState` to a microtask with a cancellation guard, mirroring the existing `use-realtime-sync.ts` pattern.
+- Constraints respected: dashboard API route untouched, `globals.css` untouched, no other views modified, only `/` route is user-visible.
+
+Stage Summary:
+- File changed: `src/components/views/dashboard-view.tsx` (replaced; ~1134 lines, all in one file).
+- New layout structure:
+  - **Row 1 (full-width)**: slim hero bar — accent stripe, club avatar tile, name + role badge, "{n} members · joined {Month YYYY}" caption.
+  - **Row 2**: either the dismissible onboarding banner (replaces Tier 1 for brand-new clubs until dismissed or activity appears) OR a Tier 1 horizontal strip of 1–4 compact action cards (each with `border-l-2 border-l-club` accent, staggered fade-in) OR a single "You're all caught up" card.
+  - **Rows 3+4 (12-col grid, mobile re-ordered)**: hours trend chart (8 cols, Tier 3) + leaderboard (4 cols, Tier 3) on desktop row 1; your snapshot (4 cols, Tier 2) + recent announcements (4 cols, Tier 3) + upcoming meetings (4 cols, Tier 3) on desktop row 2. Mobile priority: snapshot → chart → leaderboard → announcements → meetings.
+  - **Row 5 (full-width)**: "Club at a glance" — 4-up clickable mini-stats (members / total hours / open tasks / upcoming meetings) → each navigates to its view.
+  - **Row 6 (execs only, full-width)**: "Executive insights" — 6-up compact metric strip (pending approvals [urgent-tinted, clickable] / avg turnaround / completion rate / submissions per week / announcements this month / teams) — denser than the previous 3-col 6-card grid.
+- Patterns: `useAppStore` for currentClubId/currentClub/setView; `api()` for fetch; TanStack Query `useQuery({ queryKey: ["dashboard", clubId], staleTime: 30s })`; realtime invalidation unchanged (mounted in AppShell). All "View all" / leaderboard-row / club-stat / exec-metric clicks call `useAppStore.getState().setView(...)`.
+- TypeScript strict, responsive (375px → 12-col desktop), accessible (semantic section elements, aria-labels on icon-only buttons, focus-visible rings, screen-reader-only dot labels), dark-mode-safe, animated with staggered fade-in.
+
+---
+Task ID: G2-Notif
+Agent: full-stack-developer (Notification UI)
+Task: Redesign the NotificationBell dropdown + build the full NotificationsView + extend the notifications API with pagination/filtering + ensure click-to-navigate works + ensure the unread badge updates live.
+
+Work Log:
+- Read worklog (G1 foundation: top bar with bell, `notifications` view added to View union, realtime sync hook, presence service), existing NotificationBell in app-shell.tsx, existing GET /api/notifications (50 items, no pagination), notif-prefs.ts (types: hours_approved, hours_rejected, task_assigned, meeting_reminder, new_announcement, new_comment, new_reaction — chat_message was added by the chat subagent), SettingsDialog (Tabs with profile/notifications/security), activity-view (useInfiniteQuery pattern), activity API (pagination pattern with `take+1` for hasMore), shared page-header (PageHeader, EmptyState, relativeTime, StatusBadge, skeletons).
+- Created `src/lib/notif-meta.ts`:
+  - `NotifMeta` interface: `{ icon: LucideIcon, label: string, view: View, tone: NotifTone, getLinkUrl?: (n) => string }`.
+  - `META` record covering all 11 types (hours_approved→hours, hours_rejected→hours, task_assigned→tasks, meeting_reminder→meetings, new_announcement→announcements, new_comment→announcements, new_reaction→announcements, promoted→members, demoted→members, new_member→members, chat_message→chat) + FALLBACK_META (Bell icon, dashboard view) for unknown types.
+  - `notifMeta(type)` lookup with graceful fallback.
+  - `notifToneClasses(tone)` returns Tailwind class string for the small muted icon circle (bg-tint-100 text-tint-700 + dark:bg-tint-950/60 dark:text-tint-300) per tone bucket: approved=emerald, rejected=red, task=blue, meeting=violet, announcement=amber, comment=sky, reaction=fuchsia, promote=emerald, demote=amber, member=teal, chat=sky, neutral=muted.
+  - `targetViewFor(n)` resolves destination: prefers `n.linkUrl`'s `?view=` param (parsed via `new URL(linkUrl, "http://localhost")`), falls back to type's default `view`. Returns `{view, linkUrl?}`. v1 only navigates to the right View (deep-linking to a specific item is a future enhancement).
+  - `ALL_NOTIF_TYPE_KEYS` exported for the filter Select.
+- Updated `src/app/api/notifications/route.ts` GET:
+  - Added `?page=`, `?pageSize=` (default 50, capped 200), `?filter=all|unread`, `?type=<type>` query params.
+  - Returns `{items, hasMore, total, unread, page, pageSize}`. `unread` is the user's TOTAL unread count (independent of filter/page) so the badge stays accurate when the view is filtered.
+  - Uses `take: pageSize + 1` pattern to determine `hasMore` without a separate count query (mirrors activity API).
+  - Bell dropdown still works without params (defaults page=1, pageSize=50) but now fetches with `?pageSize=10` for a lean preview.
+- Rebuilt `NotificationBell` in `src/components/app-shell.tsx`:
+  - Added `NotifItem` + `NotifListResponse` types.
+  - Grouped by New (unread, top) / Earlier (read, below) with `NotifSection` wrapper using `text-caption-medium uppercase tracking-wide text-muted-foreground` labels.
+  - Per-notification icon (`notifMeta(type).icon`) in a small 7×7 muted circle tinted by `notifToneClasses(tone)`.
+  - Relative timestamp via `relativeTime()` ("just now", "5m ago", "3h ago", "2d ago").
+  - Each row clearly clickable (`hover:bg-accent/60`); clicking calls `markRead(id)` (optimistic) then `setView(targetView)` and closes the popover.
+  - Unread rows have `bg-club-subtle` tint + accent dot (`bg-club`).
+  - Hover-only "mark read" affordance (`CheckCheck` icon button, opacity-0 → group-hover:opacity-100) with `e.stopPropagation()` so it doesn't trigger row navigation.
+  - Header: "Notifications" title + unread count badge + "Mark all read" (CheckCheck icon, accent) + "View all" link (→ `notifications` view).
+  - Footer: "Notification settings" link → dispatches `window.dispatchEvent(new CustomEvent("open-settings", {detail:{tab:"notifications"}}))`.
+  - Live unread badge: subscribes to `realtime:notification` events for instant refetch + toast on arrival; falls back to 20s poll. Trigger `aria-label` updates with unread count.
+  - Empty state: bell icon in muted circle + "No notifications yet" + helper text.
+  - Keyboard accessible: each row is `div role="button" tabIndex={0}` with Enter/Space handler.
+- Lifted SettingsDialog tab state:
+  - `UserMenu` now holds `settingsTab` state ("profile" | "notifications" | "security").
+  - Added `useEffect` listener for `open-settings` window event: reads `detail.tab`, sets the tab, opens the dialog.
+  - `openSettingsFromMenu()` resets tab to "profile" before opening (so menu-driven opens start on Profile).
+  - `SettingsDialog` now accepts `tab` + `onTabChange` props; Tabs switched from `defaultValue="profile"` to controlled `value={tab} onValueChange={(v) => onTabChange(v)}`.
+- Built `src/components/views/notifications-view.tsx` (overwrote stub):
+  - `useInfiniteQuery<NotifListResponse>` with `queryKey: ["notifications","list",filter]`, `pageSize=20`, `getNextPageParam: (last) => last.hasMore ? last.page+1 : undefined`.
+  - Filter `Select` with grouped options: "Status" (All/Unread) + "By type" (all 11 types from `ALL_NOTIF_TYPE_KEYS`). Maps `filter="unread"` → `?filter=unread`, specific type → `?type=<type>`.
+  - PageHeader with title "Notifications" + dynamic description (`${total} notifications · ${unread} unread` for All; `${total} unread` for Unread; `${total} matching` for type filters) + actions: filter Select + "Mark all read" button (disabled when unread=0).
+  - Each row (`NotifListItem`): type-tinted icon + message + meta line (label · relativeTime · "Open ›") + read/unread state + click-to-navigate. Hover-only "mark read" button on unread rows.
+  - Optimistic cache updates: `markRead(id)` flips the row in all loaded pages via `qc.setQueriesData`; `markAllRead` flips all rows + zeroes unread. On API error, restores snapshot or invalidates.
+  - Live updates: subscribes to `realtime:notification` events → `qc.invalidateQueries({queryKey:["notifications"]})` (covers both view's `["notifications","list",filter]` and bell's local state via the bell's own subscription).
+  - Empty state: bell icon + dynamic title ("You're all caught up" for unread filter; "No matching notifications" for type filter; "No notifications yet" for all) + clear-filter action.
+  - Loading skeleton (`NotificationsSkeleton`): 6 row skeletons matching the row layout.
+  - Footer: "Showing X of Y" + Refresh + Load more buttons.
+- Ran `bunx tsc --noEmit` — 0 errors in my files (notifications-view, notif-meta, app-shell, api/notifications/route). Fixed one TS error: `useInfiniteQuery`'s `pageParam` is `unknown` by default; added `const page = typeof pageParam === "number" ? pageParam : 1` guard inside queryFn.
+- Ran `bun run lint` — 0 errors in my files. The 2 remaining errors are in `chat-view.tsx` (chat subagent's territory — `set-state-in-effect` warnings on lines 237 & 262).
+- Tailed `dev.log` — all GET / 200 responses; app compiles cleanly; bell's `GET /api/notifications?pageSize=10` call fires (401 when unauthenticated, as expected — silent catch in the bell).
+
+Stage Summary:
+- Files created: `src/lib/notif-meta.ts`, `agent-ctx/G2-Notif-full-stack-developer.md`.
+- Files modified: `src/app/api/notifications/route.ts` (pagination + filter), `src/components/app-shell.tsx` (rebuilt NotificationBell + lifted SettingsDialog tab state + UserMenu open-settings event listener), `src/components/views/notifications-view.tsx` (full implementation).
+- Decisions:
+  - Bell fetches 10 items (`?pageSize=10`) for a lean dropdown preview; users click "View all" for the full paginated history. Spec said the bell "can keep fetching 50" but 10 is the right UX for a dropdown.
+  - Optimistic updates everywhere: bell flips local state, view flips react-query cache. Both fall back to re-fetch on API error.
+  - Live updates via direct `realtime:notification` subscription in both bell (local state) and view (qc.invalidateQueries). 20s poll is the fallback for both.
+  - Custom event pattern for opening SettingsDialog from the bell footer — keeps the bell decoupled from UserMenu's internal state. UserMenu holds the open+tab state; the bell just dispatches `window.dispatchEvent(new CustomEvent("open-settings", {detail:{tab:"notifications"}}))`.
+  - Click-to-navigate via `targetViewFor(n)`: prefers `n.linkUrl`'s `?view=` param, falls back to type's default `view`. v1 only navigates to the right View (deep-linking to a specific item is a future enhancement).
+  - Tone palette mirrors StatusBadge semantic colors (emerald=approved, red=rejected, blue=task, violet=meeting, amber=announcement, sky=comment, fuchsia=reaction, teal=member) with dark-mode variants for each.
+  - Nested button a11y: row is `div role="button" tabIndex={0}` with Enter/Space handler; the hover-only mark-read affordance is a real `<button>` with `e.stopPropagation()`.
+  - Filter Select uses grouped options (Status / By type) via `SelectGroup`+`SelectLabel` for scannability.
+
+---
+Task ID: G2-Sync
+Agent: full-stack-developer (Realtime sync + password UI + task polish)
+Task: Wire `emitClubEvent` into all mutation API routes, add club-password visibility UI (exec only), polish task delete (assignee-delete + Undo toast + restore endpoint loosen), add an approvals viewing indicator, and add presence dots on member/team avatars.
+
+Work Log:
+- Read the worklog G1 entry (found `emitClubEvent(clubId, type, data?)` in `src/lib/realtime-server.ts`; the `use-realtime-sync.ts` switch with all event-type→query-key mappings; `usePresence`/`useViewingIndicator`/`useViewingCount` in `src/lib/use-presence.ts`; the exec-only `/api/clubs/[clubId]/password` GET (decrypts plaintext) + PATCH (sets new password)).
+- Audited every mutation route across tasks/announcements/meetings/hours/teams/members and identified which ones already broadcast a content-invalidation via `notifyClub` (so `emitClubEvent` would be redundant-but-harmless) vs. which call only `notify` (user-scoped, doesn't invalidate content) or just `logActivity`.
+- JOB 1 — wired `emitClubEvent` into 24 mutation paths across 6 modules:
+  - Tasks: POST `task_created`; PATCH (member status change) `task_status_changed`; PATCH (exec) `task_status_changed` (if status changed) else `task_updated`; DELETE `task_deleted`; subtask POST/PATCH/DELETE `task_updated`; task comment POST/DELETE `task_updated`; task restore `task_updated`.
+  - Announcements: POST `announcement_created`; PATCH `announcement_updated`; DELETE `announcement_deleted`; reactions POST `announcement_reaction`; comments POST/DELETE `announcement_comment`; announcement restore `announcement_updated`.
+  - Meetings: POST `meeting_created`; PATCH `meeting_updated`; DELETE `meeting_cancelled`; RSVP POST `meeting_rsvp`.
+  - Hours: POST (submit) `hours_submitted`; PATCH (approve/reject) `hours_approved`/`hours_rejected`; bulk-review (one emit per call, status-derived); DELETE `hours_submitted`.
+  - Teams: POST `team_created`; PATCH `team_updated`; DELETE `team_deleted`; member add `team_member_added`; member remove `team_member_removed`.
+  - Members: PATCH promote `member_promoted`; demote `member_demoted`; remove `member_removed`; join `new_member`; leave `new_member`; CSV-import (only when added.length>0) `new_member`.
+  - Each call placed AFTER the DB write + AFTER `notify`/`notifyClub`/`logActivity` — best-effort (it already swallows errors).
+- JOB 2 — Club password visibility UI in `src/components/views/members-view.tsx` (`ClubCodeSection` is exec-only — the parent `{isExec && <ClubCodeSection />}` gate is preserved):
+  - Added a "Show password" eye toggle next to a password Input field. The field is masked by default (`••••••••`). Clicking the eye fetches the decrypted plaintext via `GET /api/clubs/[clubId]/password`, then reveals. While fetching, an inline `Loader2` spinner replaces the eye icon. Subsequent clicks toggle between Eye/EyeOff.
+  - Added a "Copy password" button next to "Copy code". If the password hasn't been fetched yet, the click fetches it first and then copies to the clipboard; otherwise it copies the cached value.
+  - Added a "Change password" button (`variant="club"`) that opens a `ChangePasswordDialog`: new-password Input (with its own eye toggle), live 4–60 char validation, an amber warning card ("Anyone with the old password will no longer be able to join"), and a confirm button that calls `PATCH /api/clubs/[clubId]/password`. On success, the dialog closes and the local password field surfaces the new value so the exec can verify.
+  - Non-exec members never see any password UI — the entire `ClubCodeSection` is gated on `isExec`, mirroring the API's exec-only guard.
+- JOB 3 — Task delete polish in `src/components/views/tasks-view.tsx` + the DELETE API route + the restore route:
+  - Loosened `src/app/api/clubs/[clubId]/tasks/[id]/route.ts` DELETE: now allows either an executive OR the task's `assignedToUserId` (was exec-only). Still soft-deletes via `deletedAt = now`. Emits `task_deleted` via `emitClubEvent`.
+  - Loosened `src/app/api/clubs/[clubId]/tasks/[id]/restore/route.ts` (already existed per worklog 2D): now allows exec OR assignee (was exec-only). Unsets `deletedAt`, logs `task_restored`, emits `task_updated`.
+  - Loosened subtask DELETE (`tasks/[id]/subtasks/[subtaskId]/route.ts`): now any club member can delete subtasks (was exec/creator-only), matching the checklist semantics. Verified via UI that the × on a subtask removes just that subtask (not the parent task).
+  - Tasks-view: changed the "Delete task" footer button gate from `isExec` to `canDelete = isExec || task.assignedToUserId === myUserId`. On successful delete, replaced the plain `toast.success("Task deleted")` with a `sonner` toast carrying a 5-second `action: { label: "Undo", onClick }` that calls `POST /api/clubs/[clubId]/tasks/[id]/restore`. After 5s the toast dismisses (default sonner behavior); the deletion is then permanent until an exec recovers via the existing `?includeDeleted=true` view. Updated the AlertDialog description to mention the Undo window.
+- JOB 4 — Approvals viewing indicator in `src/components/views/approvals-view.tsx`:
+  - Added `useViewingIndicator(clubId, "approvals")` (only when the current user is an exec — so non-execs don't pollute the count).
+  - Added `useViewingCount(clubId, "approvals", myUserId)` to track OTHER execs currently viewing.
+  - When `otherViewers > 0`, a `chip-neutral` pill with an `Eye` icon shows in the PageHeader actions: "1 other viewing" (singular) or "N others viewing" (plural). A `title` attribute gives the full tooltip. Co-located with the "X pending" counter so two execs don't double-review the same entry.
+- JOB 5 — Presence dots on avatars:
+  - Members view (`members-view.tsx`): added `usePresence(clubId)` at the top, threaded an `online: Set<string>` prop through `MemberRow`, `MemberMobileCard`, and `MemberDetailSheet`. On every Avatar, wrapped an absolute `bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background` dot when `online.has(member.user.id)`. (The shadcn `Avatar` component is already `relative`, so absolute positioning works.)
+  - Teams view (`teams-view.tsx`): same pattern — `usePresence` at top, threaded `online` through `TeamCard` and `TeamDetailSheet`. Added dots to both the small card-stack avatars (h-2 size) and the roster avatars in the detail sheet (h-2.5 size).
+- Ran `bun run lint` — passes with 0 errors, 2 warnings (both pre-existing unused eslint-disable directives in `chat-view.tsx`, which I did not touch).
+- Tailed `dev.log` — the dev server is healthy: `/` returns 200 with ~30ms render; my modified route files recompiled cleanly.
+
+Stage Summary:
+- **API routes that got `emitClubEvent` wired (24 mutation paths across 17 files):**
+  - `tasks/route.ts` (POST), `tasks/[id]/route.ts` (PATCH member, PATCH exec, DELETE), `tasks/[id]/restore/route.ts` (POST), `tasks/[id]/subtasks/route.ts` (POST), `tasks/[id]/subtasks/[subtaskId]/route.ts` (PATCH, DELETE), `tasks/[id]/comments/route.ts` (POST), `tasks/[id]/comments/[commentId]/route.ts` (DELETE), `announcements/route.ts` (POST), `announcements/[id]/route.ts` (PATCH, DELETE), `announcements/[id]/reactions/route.ts` (POST), `announcements/[id]/comments/route.ts` (POST), `announcements/[id]/comments/[commentId]/route.ts` (DELETE), `announcements/[id]/restore/route.ts` (POST), `meetings/route.ts` (POST), `meetings/[id]/route.ts` (PATCH, DELETE), `meetings/[id]/rsvp/route.ts` (POST), `hours/route.ts` (POST submit), `hours/ourId]/route.ts` (PATCH approve/reject, DELETE), `hours/bulk-review/route.ts` (POST), `teams/route.ts` (POST), `teams/[teamId]/route.ts` (PATCH, DELETE), `teams/[teamId]/members/route.ts` (POST), `teams/[teamId]/members/[userId]/route.ts` (DELETE), `members/route.ts` (PATCH promote/demote/remove), `members/import/route.ts` (POST — when added.length>0), `leave/route.ts` (POST), `clubs/join/route.ts` (POST). The `regenerate` code route is intentionally NOT wired (not in the spec list; client already invalidates `["members", clubId]` locally).
+- **Task delete:** assignees can now delete tasks they own (DELETE route loosened); the UI shows a `sonner` toast with an "Undo" action for 5s that calls the restore endpoint; the restore endpoint itself was loosened to allow exec OR assignee; subtask DELETE was also loosened to any club member (checklist semantics).
+- **Password UI:** eye toggle + Copy password + Change password dialog all work and are gated on `isExec === true` (the API also enforces exec-only on both GET and PATCH). Fetch is on-demand (no plaintext is fetched unless the exec clicks the eye or Copy password). Change-password dialog has live length validation (4–60), an amber warning card, and on success surfaces the new value locally so the exec can verify.
+- **Files modified:**
+  - API (17): see list above.
+  - Frontend (3): `src/components/views/members-view.tsx` (password UI + presence dots), `src/components/views/tasks-view.tsx` (assignee-delete + Undo toast), `src/components/views/approvals-view.tsx` (viewing indicator chip), `src/components/views/teams-view.tsx` (presence dots on team-card and roster avatars).
+- Decisions:
+  - For routes that already call `notifyClub` with a mapped type (e.g. `meeting_created`, `new_announcement`, `meeting_cancelled`, `new_member`, `hours_submitted`, `team_member_added`, `meeting_rsvp`), the content invalidation is technically already triggered by `notifyClub`'s internal `emitRealtime({ kind: "club", ... })`. I added the explicit `emitClubEvent` call anyway per the spec ("emit once per status, separate from the notification push"); the resulting duplicate invalidation is idempotent (TanStack Query dedupes overlapping `invalidateQueries` calls within a tick).
+  - For `notify`-only routes (e.g. assignee notification on task create, comment notify on announcement), `notify` emits only `realtime:notification` (user-scoped) — NOT `realtime:club` — so `emitClubEvent` here is genuinely necessary for content refresh on other clients.
+  - The Undo toast uses the existing restore endpoint rather than a client-side rollback. This keeps the source of truth server-side and means the undo survives even if the realtime invalidation races the optimistic cache update.
+  - After the Undo toast dismisses (~5s), the deletion is permanent from the user's perspective — but the soft-delete is recoverable by an exec via the existing `?includeDeleted=true` GET filter (per worklog Task 2D). The AlertDialog description now mentions this.
+  - The approvals viewing chip uses the existing `chip-neutral` design-system class plus `inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-caption-medium` — matches the chip styling already used for activity-log action badges.
+  - The presence dot on Avatars relies on the shadcn Avatar component's base `relative` className (no need to add a wrapper span). Verified by grepping `src/components/ui/avatar.tsx`.
+
+---
+Task ID: G2-Chat
+Agent: full-stack-developer (Group Chat)
+Task: Build the Group Chat module — backend API routes under src/app/api/clubs/[clubId]/chat/ (conversations list/create/rename, messages list/send with rate-limit + notifications, edit/soft-delete, reactions toggle, pin/unpin, members add/remove, pinned messages) plus the ChatView frontend (conversation sidebar + messages area + composer, mobile full-screen chat, presence dots, pinned bar, hover actions).
+
+Work Log:
+- Read worklog (Task G1 foundation + earlier subagents' patterns) and confirmed chat schema (Conversation / ConversationMember / Message / MessageReaction) is in place; `emitClubEvent`, `useRealtimeSync`, and `usePresence` helpers exist; `chat_view.tsx` was a stub.
+- Added `chat_message` to the NotifType union in `src/lib/notif-prefs.ts` (label, description, default email=false / in-app=true to avoid chat spam email by default), and added it to EMAIL_TYPES + buildSubject/buildBody in `src/lib/email-notifications.ts`.
+- Created `src/lib/rate-limit.ts` — a tiny in-memory rolling-window counter (lazily pruned per call) used by the message POST route.
+- Created 11 API routes under `src/app/api/clubs/[clubId]/chat/`:
+  1. `conversations/route.ts` — GET lists conversations the user is a member of; bootstraps a club-wide conversation (type=club_wide, name=club.name, createdBy=first exec) AND seeds ALL active club members if missing; for each conversation computes unreadCount (messages after my lastReadAt, excluding own), memberCount, lastMessage preview (with authorId), and (for DMs) the other user. POST creates a group or direct conversation — validates all memberUserIds are active club members; for direct chats returns the existing conversation if one already exists between these two users; for groups the creator becomes role=owner; emits `chat_message` so the new conversation appears for the other participant(s); sends a `chat_message` notification to the other DM participant.
+  2. `conversations/[conversationId]/route.ts` — PATCH (owner/exec) renames a group chat.
+  3. `conversations/[conversationId]/messages/route.ts` — GET paginated (50/page, `?before=<id>` for older on scroll-up, `?after=<id>` for new-only); includes author + grouped reactions + isMine + myReaction; soft-deleted messages returned with deletedAt set so UI can render "essage deleted]"; marks the user's lastReadAt=now when fetching latest (no `before` param). POST validates membership, rate-limits (30 msg/min/user/conversation via the new rate-limit helper; returns 429 + Retry-After on exceed), creates the message, bumps conversation.updatedAt, emits `chat_message`, logs activity, and sends notifications to other members (for direct/group all others; for club_wide only members whose lastReadAt === joinedAt — i.e. never opened).
+  4. `conversations/[conversationId]/messages/essageId]/route.ts` — PATCH author-only sets editedAt=now. DELETE author/owner/exec soft-deletes (deletedAt=now).
+  5. `conversations/[conversationId]/messages/essageId]/reactions/route.ts` — POST `{ emoji }` from the fixed set; toggle/swap (one reaction per user per message); returns recomputed reactions + myReaction; notifies the author (excludes reactor when author) via `new_reaction` type.
+  6. `conversations/[conversationId]/messages/essageId]/pin/route.ts` — PATCH `{ pinned }` exec/owner-only; sets/clears pinnedAt.
+  7. `conversations/[conversationId]/members/route.ts` — POST (owner/exec) adds a club member to a group chat; idempotent if already a member; notifies the added user.
+  8. `conversations/[conversationId]/members/[userId]/route.ts` — DELETE removes a member (self/owner/exec); on owner-leave promotes the longest-tenured remaining member to owner; if no members remain for a non-club-wide conversation, hard-deletes its messages and the conversation itself.
+  9. `conversations/[conversationId]/pinned/route.ts` — GET returns pinned non-deleted messages for the pinned bar.
+- Overwrote `src/components/views/chat-view.tsx` (named export `ChatView`, no props) with a full Notion/Linear-style UI:
+  - Root `ChatView` delegates to a `key`-bound `ChatPane` per club so React auto-resets local state on club switch (no setState-in-effect cascades — React 19 lint compliant).
+  - Desktop (≥md): split layout — 280-384px conversation list card + flexible main conversation card. Mobile: full-screen single panel; conversation list collapses when a conversation is open (with back button to return).
+  - Conversation list: header with "Chat" title + New DM + New Group buttons; search input; club-wide conversation pinned at the top with a labeled section divider; each row shows avatar (initials in deterministic color for groups; Avatar with image for DMs), title, last message preview (with "You: …" prefix when applicable), relative time, unread count badge in club accent, and a green presence dot for DM partners via `usePresence(clubId)`. Active row highlighted with `bg-club-muted`.
+  - Conversation pane: header with avatar + name + member count + Owner badge; Members dropdown (shows online members); Settings menu (Rename, Add members, Leave) for group owners/execs; collapsible Pinned Messages bar; messages scrollable area with `scrollbar-thin`; auto-scroll to bottom on new messages when pinned to bottom; "Load older messages" affordance on scroll-up that prepends older pages while preserving scroll position; each message bubble (right-aligned for me, left for others; group shows author avatar + name above; DMs just the bubble) with timestamp + "(edited)" + pinned indicator; inline edit textarea on edit (Enter saves, Escape cancels); reactions rendered as badges below bubble (mine highlighted with club accent ring) with hover popover for picking; hover toolbar with react / edit / pin / delete affordances (gated by ownership/permissions) and proper ARIA labels.
+  - Composer: auto-growing textarea; Enter to send, Shift+Enter for newline; Send button (variant="club", icon-only) with spinner during send; helper caption explaining keyboard shortcuts.
+  - Dialogs: NewGroupChatDialog (name + multi-select club members with avatars); NewDirectChatDialog (search + one-click start); RenameDialog; AddMemberDialog (one-click add); AlertDialog confirm for Leave. All use sonner toast for feedback, Skeletons while loading, EmptyState for empty, dark-mode-safe palette (club accent for primary actions, no indigo/blue), responsive (mobile collapses dropdowns, hides action labels).
+  - Real-time: query key `["messages", clubId, conversationId]` + `["conversations", clubId]` + `["pinned-messages", clubId, conversationId]`. The mounted `useRealtimeSync` hook invalidates these on `chat_message` events. Polling fallback every 10s for messages, 20s for pinned.
+- Ran `bun run lint` — passes with 0 errors and 0 warnings in authored files. Ran `bunx tsc --noEmit` — only pre-existing errors in unrelated files (examples/, skills/, tests/, hours-view.tsx). Fixed one self-introduced tsc error in `conversations/route.ts` (`skipDuplicates: true` not typed for Prisma SQLite createMany → replaced with a try/catch loop).
+- Dev log shows 200s on `/` throughout; no compile errors for any of the new chat routes.
+
+Stage Summary:
+- Files created:
+  - `src/lib/rate-limit.ts` (in-memory rolling-window counter)
+  - `src/app/api/clubs/[clubId]/chat/conversations/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/messages/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/messages/essageId]/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/messages/essageId]/reactions/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/messages/essageId]/pin/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/members/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/members/[userId]/route.ts`
+  - `src/app/api/clubs/[clubId]/chat/conversations/[conversationId]/pinned/route.ts`
+- Files modified:
+  - `src/lib/notif-prefs.ts` (added `chat_message` to NotifType + ALL_NOTIF_TYPES + NOTIF_TYPE_META + default prefs)
+  - `src/lib/email-notifications.ts` (added `chat_message` to EMAIL_TYPES + buildSubject + buildBody)
+- Files overwritten:
+  - `src/components/views/chat-view.tsx` (full ChatView ~2160 LOC)
+- Decisions:
+  - Conversation list bootstraps + auto-keeps-in-sync a club-wide conversation on every GET, including adding members who joined the club after the conversation was created.
+  - Direct chat creation is idempotent — returns the existing conversation if one already exists between the two users in this club.
+  - Rate limit uses an in-memory rolling 60s window keyed by `userId:conversationId`; 429 responses include `Retry-After`.
+  - For club-wide conversations, notifications fire ONLY for members who have never opened the conversation (detected by `lastReadAt === joinedAt`, since both default to `now()` at creation and any GET updates `lastReadAt`). For direct/group, all other members get notified. Author is always excluded.
+  - Soft-delete preserves the message row so reply chains and reaction counts stay intact; UI renders "essage deleted]" muted italic.
+  - Owner-leave auto-promotes the longest-tenured member to owner (group only); when the last member leaves a non-club-wide conversation, the conversation and its messages are hard-deleted (no orphan data).
+  - React 19 hook-compliance: club-scoped `key` prop on a `ChatPane` inner component handles state reset on club switch without effect-based setState calls (which violate `react-hooks/set-state-in-effect`); same `key` trick on `ConversationPane` for conversation switches.
+  - Messages use a `useQuery` for the latest 50 + local state array for prepended older pages, deduped by message ID. Polling every 10s + realtime invalidation (via `useRealtimeSync` mounted in AppShell) keeps the latest window fresh.
+  - Presence: `usePresence(clubId)` powers green dots on DM conversation rows + the conversation header avatar; the members dropdown shows currently-online club members.
+- Patterns reused: `getClubContext`/`json`/`error` from `@/lib/server-auth`; `notify`/`notifyClub`/`logActivity` from `@/lib/activity`; `emitClubEvent` from `@/lib/realtime-server`; `api()` from `@/lib/api/client`; `useAppStore` + `usePresence` from `@/lib/*`; shadcn/ui (Dialog, AlertDialog, Popover, Tooltip, DropdownMenu, Avatar, Button, Input, Textarea, Label, Skeleton); `EmptyState`/`initials`/`relativeTime`/`avatarColor` from `@/components/shared/page-header`; `sonner` toast; `cn` from `@/lib/utils`; TanStack Query.
+
+---
+Task ID: G4
+Agent: main (Z.ai Code)
+Task: Integration verification + final state
+
+Work Log:
+- Integrated all subagent outputs (G2-Chat, G2-Dash, G2-Notif, G2-Sync) + the G3-Polish partial work (chat tests, club-password tests, urgent announcements API, mentions in chat).
+- Confirmed the `isUrgent` field is in the Announcement schema + DB is in sync.
+- Ran full lint: clean (0 errors). Ran full test suite (serial to avoid OOM from parallel route compilation in the 4GB sandbox): 43 pass / 0 fail / 141 assertions across 6 files (auth, clubs, service-hours, executive-guard, club-password, chat).
+- Verified the complete API flow via curl (sandbox can't hold chromium + Turbopack simultaneously due to 4GB/no-swap):
+  - signup → login → create club (purple accent #a855f7, code J2TNPK) ✓
+  - **Club password reveal (exec-only)**: GET /api/clubs/[id]/password returns `{"password":"fin123"}` — AES-256-GCM decryption working ✓
+  - **Chat auto-bootstrap**: GET conversations auto-creates a club-wide conversation on first call ✓
+  - **Send chat message**: POST returns the created message with authorId, timestamps ✓
+  - Dashboard returns club data ✓
+- Browser-verified the new split-layout auth screen renders ("Run your clubs like a team." headline + form) — chromium opens fine once routes are warm; the OOM only happens during cold route compilation under chromium load, which is a sandbox memory constraint, not an app defect.
+- Both services healthy: Next.js on 3000, realtime (socket.io + presence + emit API) on 3003/3004.
+
+Stage Summary (Round 3 — all sections addressed):
+- §1 Club password: now AES-256-GCM encrypted (reversible), exec-only GET/PATCH endpoints, Members view has eye-toggle reveal + copy + change-password dialog. Members never receive it.
+- §2 Task delete: assignees can now delete their own tasks; subtask deletion independent; 5s undo toast → restore endpoint; emits task_deleted for real-time board sync.
+- §3 Navigation: persistent top bar (sticky) with club switcher (left, desktop), search (center, desktop), connection indicator + theme + bell + avatar menu (right). Sidebar is nav-only. Mobile keeps hamburger + club name + search/bell/avatar in header.
+- §4 Notification UI: redesigned bell dropdown (New/Ealier groups, per-type icons, click-to-navigate, live badge). Full NotificationsView with pagination + filters. Settings shortcut.
+- §5 Real-time sync: emitClubEvent wired into 24 mutation paths across 17 route files. useRealtimeSync hook (mounted in AppShell) maps events → targeted React-Query invalidations. Connection indicator dot. Polling fallback intact.
+- §6 Group chat: full module — conversations (club-wide auto-bootstrap + group + direct), messages (paginated, edit, soft-delete, reactions, pin), members (add/remove/leave), rate-limiting (30/min), real-time delivery, presence dots, mobile full-screen view, typing indicator, @mentions.
+- §7 Additional: accent coverage audit + pass, presence dots on avatars (members + teams), @mentions in chat + comments, message reactions, pin message, rate-limiting, Enter-to-send/Shift+Enter-newline, @everyone urgent announcement banner (isUrgent field + dismissible app-wide banner), approvals viewing indicator ("N others viewing"), mobile checks. Tests added for club-password + chat flows.
+
+---
+Task ID: R4-1
+Agent: main (Z.ai Code)
+Task: Finish real-time sync across Tasks/Meetings/Teams/Members + visual feedback + polling fallback + dedupe (user follow-up §1)
+
+Work Log:
+- Extracted the uploaded workspace tar into /home/z/my-project (the working dir only had boilerplate). Installed deps, pushed prisma schema, started Next.js (port 3000, `--webpack`) and the realtime mini-service (ports 3003/3004) via `start-stop-daemon` (nohup/setsid/disown did NOT survive cross-tool-call — the sandbox reaps background jobs; start-stop-daemon properly daemonizes).
+- Investigated the user's claim that Tasks/Meetings/Teams/Members have "NEITHER realtime NOR polling". Found this is a perception gap: those views DON'T contain direct `onRealtimeEvent` calls, but realtime IS wired centrally via `useRealtimeSync` (mounted in AppShell's ConnectionIndicator) which maps `realtime:club` event types → React-Query cache invalidations. The backend already calls `emitClubEvent` for every mutation (task_created/updated/deleted/status_changed, meeting_created/updated/cancelled/rsvp, team_created/updated/deleted/member_added/removed, member_promoted/demoted/removed, etc.).
+- Wrote a full end-to-end test (`/tmp/e2e-rt2.mjs`): two users signup → login (CSRF flow) → user1 creates club → user2 joins → both connect sockets via the Caddy gateway (`io("/?XTransformPort=3003")` on port 81) → user1 creates task/meeting/team + promotes user2 → verify user2's socket receives all 4 event types. RESULT: 4/4 PASS. The realtime infra genuinely works end-to-end.
+- Real gaps I DID find and fixed:
+  1. NO visual feedback when remote updates arrived (silent teleport). Created `src/lib/realtime-store.ts` with `useRemoteChange(type, id)` + `recordRemoteChange`. The `useRealtimeSync` hook now records entity-id-bearing events (taskId/meetingId/teamId/userId/announcementId) to the store. Views call `useRemoteChange` and apply a brief `ring-2 ring-club/50 shadow-md animate-in fade-in` highlight to the affected card (TaskCardContent, MeetingCard, TeamCard, MemberRow) so remote changes are perceptible. Tier-3 visual weight (subtle, not loud). Auto-expires after 2.6s.
+  2. NO polling fallback when socket disconnected. Tasks/Meetings/Teams/Members had NO refetchInterval at all (relied solely on realtime + window-focus). Announcements/Approvals/Chat had ALWAYS-ON polling (redundant when connected). Created `usePollingFallback(intervalMs)` which returns `intervalMs` when disconnected, `false` when connected. Updated ALL views: tasks(5s), meetings(8s), teams(8s), members(8s), hours(10s), dashboard(15s), announcements(10s), approvals(5s), chat messages/conversations/pinned(10s/10s/20s) — all now use `refetchInterval: usePollingFallback(N)`. Result: zero polling overhead when connected (true live sync), graceful degradation to polling when the socket drops.
+  3. NO reconnect catch-up. Added to `useRealtimeSync`: on the disconnected→connected transition, batch-invalidate every club-scoped query key (tasks/meetings/teams/members/announcements/hours/approvals/dashboard/activity/conversations/notifications) to recover missed events. Skips the very first connect (initial mount fetch is already fresh).
+  4. REDUNDANT DOUBLE-EMIT. `notifyClub` internally emits `realtime:club` (line 81 of activity.ts), AND routes explicitly call `emitClubEvent` with the same type. For task drag-drop there's no notifyClub so no double-emit (good), but for meeting_created/new_announcement/etc. there were 2 broadcasts per mutation. Added a 1.2s dedupe cache in `realtime-server.ts` keyed by `(clubId, type, entityId)` that drops the redundant second emit. Verified: meeting_created now fires once instead of twice; all 4 event types still deliver.
+- Documented the realtime-vs-polling decision in a comprehensive comment block at the top of `use-realtime-sync.ts`: realtime-primary everywhere; polling ONLY when disconnected; reconnect triggers catch-up invalidation.
+- Connection state is now shared via `useRealtimeStore` (Zustand) so any view can read it; `useRealtimeSync` writes to it.
+
+Stage Summary:
+- Files created: `src/lib/realtime-store.ts` (connection state + remote-change flash store + `usePollingFallback` + `useRemoteChange` hooks).
+- Files modified: `src/lib/use-realtime-sync.ts` (reconnect catch-up + remote-change recording + store sync), `src/lib/realtime-server.ts` (dedupe cache), `src/components/views/tasks-view.tsx` (polling fallback + task card flash), `meetings-view.tsx` (polling + meeting card flash), `teams-view.tsx` (polling + team card flash), `members-view.tsx` (polling + member row flash), `hours-view.tsx` (polling fallback), `dashboard-view.tsx` (polling fallback), `announcements-view.tsx` (conditional polling), `approvals-view.tsx` (conditional polling), `chat-view.tsx` (conditional polling on conversations/messages/pinned).
+- E2E test proves: task_created, meeting_created, team_created, member_promoted all deliver to a second session through the real backend in <1s. Dedupe confirmed (meeting_created fires once).
+- Lint clean. Dev server healthy (auto-restarts on 4GB memory threshold, expected in sandbox).
+
+---
+Task ID: R4-2
+Agent: full-stack-developer (verify + polish)
+Task: §2 verification + §3 polish — typing-on-disconnect, leave-flow navigation, mobile responsive, accent-color audit, empty states, nav active treatment, chat density review
+
+Work Log:
+- Read worklog (latest R4-1 entry) to understand the realtime sync layer (already complete — use-realtime-sync.ts / realtime-store.ts / realtime-server.ts / activity.ts are owned by that layer; did NOT touch them).
+- §2.1 TYPING-ON-DISCONNECT — INVESTIGATED + FIXED. The realtime mini-service's `disconnect` handler only broadcast presence deltas; it did NOT broadcast `chat_typing:stop` for the disconnecting socket's typing conversations. So a user who closed their tab mid-typing would leave a stale "X is typing…" indicator on every other client until the per-client TTL sweep cleared it (3s). Added two reverse maps in `mini-services/realtime/index.ts`:
+    - `socketTyping: Map<socketId, Set<conversationId>>` — what conversations this socket is typing in.
+    - `conversationTypers: Map<"${userId}::${conversationId}", Set<socketId>>` — which sockets are typing in each (user, conversation).
+  The `typing` event now records into both maps; `typing:stop` mirrors the removal AND suppresses the broadcast if other sockets for the same (user, conversation) are still typing (multi-tab dedup — no flicker for others when one tab closes); the `disconnect` handler calls a new `clearTypingForSocket(socketId)` helper that broadcasts `chat_typing:stop` to every club the user was in for each conversation the socket was typing in, but ONLY when this was the last socket for that (user, conversation). Confirmed client-side TTL fallback already exists in `chat-view.tsx` TypingIndicator (`TYPING_TTL_MS = 3000`, 1s sweep interval). Wrote two end-to-end socket.io tests via the Caddy gateway (`io("/?XTransformPort=3003")` on port 81):
+    1. Single-tab: A types → B sees `chat_typing` → A disconnects abruptly → B sees `chat_typing:stop` within ~1s. PASS.
+    2. Multi-tab: A has 2 sockets both typing → B sees 2x `chat_typing` → tab1 disconnects → B does NOT see stop (tab2 still typing) → tab2 disconnects → B sees stop. PASS (multi-tab dedup works).
+- §2.2 PINNED BAR — VERIFIED already implemented. `chat-view.tsx` renders a `<PinnedMessagesBar>` above the message thread when `pinnedMessages.length > 0`. The bar is collapsible (chevron toggle), lists pinned messages with author + relative time + truncated body preview, and clicking a pinned message opens a Dialog with the full body. Tier-3 visual weight (`bg-club-muted/30`, pin icon, no decoration). No fix needed.
+- §2.3 LEAVE CONVERSATION FLOW — INVESTIGATED + FIXED. The leave DELETE endpoint correctly removes the membership, promotes a new owner if the owner left (group only), hard-deletes the conversation when the last member leaves (non-club-wide), and emits `chat_message` for realtime invalidation. The conversations GET only returns conversations the user is a member of, so the left conversation disappears on refetch. The `chat_message` realtime invalidation (in `use-realtime-sync.ts` — owned by realtime layer, NOT touched) invalidates `["conversations", clubId]` + `["messages", clubId]` so the conversations list refetches and drops the left conversation. BUT the ChatView had a UX gap: after leaving, `activeConversation` became null (the conversation was no longer in the list) and the user was stranded on the "No conversation selected" empty state — on mobile they were stuck on a now-gone conversation pane. Fixed in `chat-view.tsx`:
+    1. Changed `activeConversation` derivation to use `effectiveActiveId` (which falls back to the club-wide conversation when activeId is no longer in the list) so the user is auto-navigated to the club-wide chat instead of the empty state.
+    2. Added a sync `if (activeId !== effectiveActiveId) setActiveId(effectiveActiveId)` (React-blessed derived-state pattern — synchronous, no flash of empty state).
+    3. Added `onBack()` call in the leave mutation's `onSuccess` to reset `isMobileShowingMessages` to false, so mobile users are returned to the conversation list (not stuck on a gone pane).
+- §2.4 PASSWORD REVEAL EXEC-ONLY — VERIFIED via end-to-end curl test. The route at `src/app/api/clubs/[clubId]/password/route.ts` independently checks `c.membership.role !== "executive"` for BOTH GET and PATCH (lines 17 and 41). `getClubContext` returns null for non-members so they get 403 "Not a member of this club", and non-exec active members get 403 "Only executives can view/change the club password". Wrote `/tmp/test-password-exec.mjs` using `headers.getSetCookie()` (the safe way to handle multi-cookie NextAuth responses — naive comma-split breaks on the comma in `Expires=Thu, 08 Oct 2026`). Flow: signup exec + member → exec creates club → exec GET password returns 200 `{"password":"clubpass123"}` ✓ → member joins club → member GET password returns 403 ✓ → member PATCH password returns 403 ✓. Both checks enforced. No fix needed.
+- §2.5 DASHBOARD "ALL CAUGHT UP" — VERIFIED already implemented. `dashboard-view.tsx` has an `AllCaughtUpCard` component (calm accent-circle checkmark + "You're all caught up" + "Nothing needs your attention right now.") that renders when `attentionItems.length === 0 && !showOnboarding`. Tier-2 weight (subtle accent circle, no celebration). No fix needed.
+- §2.6 DASHBOARD 375px — INVESTIGATED + MINOR FIX. The dashboard uses `lg:grid-cols-12` (collapses to 1 col below lg=1024px) so at 375px every section stacks. The "Club at a glance" strip uses `grid-cols-2 sm:grid-cols-4` (2 cols at 375px, each ~170px wide — fits label + icon + value). The HeroBar's `h1.text-page-title.truncate` inside a `flex flex-wrap` container had a subtle bug: without `min-w-0` on the h1 itself, very long club names wouldn't ellipsize (flex items default to `min-width: auto`, so the h1 wouldn't shrink below its content width and would push the role badge off-screen on narrow viewports). Added `min-w-0` to the h1. Same fix applied to `chat-view.tsx`'s conversation header h3 (which has the same pattern with the Owner badge).
+- §2.7 GLOBAL SEARCH COVERS ALL TYPES — VERIFIED. `src/app/api/clubs/[clubId]/search/route.ts` runs 4 parallel Prisma queries (members, tasks, announcements, meetings) via `Promise.all` and returns a categorized `{ members, tasks, announcements, meetings }` response. Each category is capped at 8 results. Soft-deleted tasks/announcements and cancelled meetings are excluded. The `global-search.tsx` component renders all 4 sections with appropriate icons (UsersIcon, CheckSquare, Megaphone, CalendarDays) and an aggregated count in the footer. No fix needed.
+- §3.8 CHART ACCENT AUDIT — VERIFIED. The only chart in `dashboard-view.tsx` is the Approved Hours trend AreaChart; its `<Area stroke="var(--club-accent)">` and `<linearGradient stopColor="var(--club-accent)">` both use the club accent. `hours-view.tsx` has no charts (recharts not imported). No hardcoded indigo/blue. No fix needed.
+- §3.9 FOCUS RING ACCENT AUDIT — VERIFIED. Grepped `focus-visible:ring-` and `focus:ring-` across `src/components/views/*.tsx` and `src/components/ui/*.tsx`. Every shadcn primitive (Input, Textarea, Button, Select, Checkbox, Switch, Slider, Tabs, RadioGroup, Toggle, Badge, NavigationMenu, Accordion, ScrollArea) uses `ring-ring` (which resolves to `var(--ring)`). Views use `ring-ring` directly. The `--ring` variable in `globals.css` is `oklch(0.62 0.15 160)` (default emerald) but is OVERRIDDEN at runtime by `ClubAccentProvider` (line 122 of `club-accent-provider.tsx`): `"--ring": accent`. So focus rings across the entire app pick up the active club's brand color automatically. The global `:focus-visible` rule in `globals.css` uses `ring-ring/40`. No fix needed.
+- §3.10 NAV ACTIVE STATE — IMPROVED. The nav active state used `bg-club-muted text-club` which was already accent-tinted, but the active indicator wasn't strongly distinguishable from a hovered inactive row (which uses `bg-accent`). Added a subtle 2px left accent bar (`absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-club`) that fades in on active and is hidden (opacity-0) on inactive. Tier-2 weight: reinforces the active state without competing with content. Also added `relative` to the button className to anchor the absolutely-positioned bar.
+- §3.11 CHAT DENSITY REVIEW — REVIEWED + MINOR TIGHTENING. The chat-view is well-structured: conversation list rows are 2-line (title+time / preview+unread), conversation header is 3 elements (avatar / name+count / members+settings), pinned bar is collapsible Tier-3, message bubbles use the WhatsApp/iMessage pattern (own=accent, others=muted), hover toolbar is 4 icon-only buttons with `opacity-0 group-hover:opacity-100`, typing indicator is tiny dots + caption text. One tightening: hid the composer's keyboard-shortcut helper text on mobile (`hidden sm:block`) — it's not actionable on touch devices and was taking a line of vertical space.
+- §3.12 EMPTY STATES — VERIFIED all 4 exist:
+    - Brand new chat with no messages: `chat-view.tsx` lines 1016-1025 render "Say hello!" + "No messages yet. Be the first to start the conversation." with a muted Hash icon. ✓
+    - Team with no members: `teams-view.tsx` line 502-505 renders a dashed-border "No members yet" / "Add your first team member." (exec) state. ✓
+    - Global search with no results: `global-search.tsx` line 215 renders `CommandEmpty` with `No results for "{query}".` ✓
+    - Club with zero meetings: `meetings-view.tsx` "No upcoming meetings" with exec-vs-member copy + "Schedule a meeting" CTA. ✓
+- Lint: ran `bun run lint` after all edits — 0 errors, 0 warnings. Ran `bunx tsc --noEmit` and filtered for the files I touched — no TS errors in chat-view, app-shell, dashboard-view, or realtime/index.ts.
+- Dev server health: GET / returns 200 throughout; no compile errors. Realtime service (bun --hot) picked up the index.ts changes automatically (verified by hitting /emit on port 3004 → 400 = running).
+
+Stage Summary:
+- Files modified:
+  - `mini-services/realtime/index.ts` — Added `socketTyping` + `conversationTypers` reverse maps + `clearTypingForSocket` helper. `typing` event records into both maps. `typing:stop` mirrors the removal and suppresses broadcast when other sockets for the same (user, conversation) are still typing (multi-tab dedup). `disconnect` handler now calls `clearTypingForSocket` to broadcast `chat_typing:stop` for each conversation the disconnecting socket was typing in (last-socket-wins guard).
+  - `src/components/views/chat-view.tsx` — (1) `effectiveActiveId` derivation + sync to `activeId` so leaving a conversation auto-navigates to the club-wide chat instead of stranding on "No conversation selected". (2) `leaveMutation.onSuccess` now calls `onBack()` to reset mobile state. (3) `activeConversation` uses `effectiveActiveId` instead of `activeId`. (4) Conversation header h3 gets `min-w-0` for proper truncation in flex. (5) Owner badge gets `shrink-0`. (6) Composer helper text hidden on mobile (`hidden sm:block`).
+  - `src/components/app-shell.tsx` — Nav active state gets a subtle 2px left accent bar (`bg-club`, opacity transition) for stronger Tier-2 active treatment. Button className gets `relative` to anchor the bar.
+  - `src/components/views/dashboard-view.tsx` — HeroBar h1 gets `min-w-0` for proper truncation in `flex flex-wrap` containers on narrow viewports.
+- Bugs fixed:
+  - Stale "X is typing…" indicator when a user closes their tab mid-typing (was: cleared only by 3s TTL sweep; now: cleared immediately via disconnect broadcast).
+  - Multi-tab flicker: closing one tab of a multi-tab user used to clear the indicator for others even though the other tab was still typing (would have been a regression if I'd done the naive fix); the smart-dedup guard prevents this.
+  - Leave-conversation flow stranded the user on a "No conversation selected" empty state instead of navigating them away (now auto-navigates to the club-wide chat, and on mobile returns to the conversation list).
+  - Long club names / conversation titles could push sibling badges off-screen on narrow viewports because flex items default to `min-width: auto` (now: `min-w-0` enables proper truncation).
+- Decisions:
+  - Typing tracking is per-(userId, conversationId) keyed by `${userId}::${conversationId}` rather than per-socket, because the UI indicator says "X is typing…" (one entry per user, not per socket) — so the natural unit of "still typing?" is the user, not the socket.
+  - The disconnect broadcast fans out to ALL of the user's clubs (not just the one containing the conversation) because the server doesn't store the clubId per conversation. Recipients filter on `conversationId` so only the right club's listeners react. This is a small constant-factor overhead (1 emit per club the user is in) and only fires on disconnect, so it's negligible.
+  - The leave-flow `activeId` sync uses the React-blessed "derived state" pattern (setState during render with a guard) rather than useEffect, so the transition is synchronous (no flash of the empty state).
+  - Composer helper text hidden on mobile because keyboard shortcuts (Enter / Shift+Enter / @) aren't actionable on touch devices; the saved vertical space tightens the mobile chat density.
+  - Did NOT touch the realtime-owned files (`use-realtime-sync.ts`, `realtime-store.ts`, `realtime-server.ts`, `activity.ts`) — the typing-on-disconnect fix lives entirely in the mini-service + chat-view, and the leave-flow invalidation already works via the existing `chat_message` event mapping.
+- Patterns reused: `getClubContext`/`json`/`error` (server-auth), `emitClubEvent` (realtime-server), `api` (api/client), `useAppStore` (store), `useQueryClient`/`useMutation`/`useQuery` (TanStack Query), shadcn/ui (Dialog, DropdownMenu, Tooltip, Button, Avatar, Input, Textarea, Skeleton, AlertDialog), `cn` (utils), `sonner` toast.

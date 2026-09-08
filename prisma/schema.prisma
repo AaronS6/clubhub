@@ -1,0 +1,422 @@
+// Multi-Club Management Platform — Prisma schema
+// SQLite datasource (single-instance friendly; swap to postgres later via datasource only).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users & Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  avatarUrl     String?
+  bio           String?
+  emailVerified Boolean  @default(false)
+  notifPrefs    String   @default("{}") // JSON string of notification preferences
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships         ClubMember[]
+  serviceHours        ServiceHour[]
+  reviewedServiceHours ServiceHour[] @relation("ServiceHourReviewer")
+  announcements       Announcement[]
+  comments            AnnouncementComment[]
+  reactions           AnnouncementReaction[]
+  tasksAssigned     Task[]      @relation("TaskAssignee")
+  tasksCreated      Task[]      @relation("TaskCreator")
+  taskComments      TaskComment[]
+  teamMembers       TeamMember[]
+  meetingRsvps      MeetingRsvp[]
+  meetingsCreated   Meeting[]   @relation("MeetingCreator")
+  notifications     Notification[]
+  activityLogs      ActivityLog[]
+  sessions          Session[]
+  conversationMembers ConversationMember[]
+  messages          Message[]
+  messageReactions  MessageReaction[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+}
+
+// ---------------------------------------------------------------------------
+// Clubs & Membership
+// ---------------------------------------------------------------------------
+
+model Club {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  logoUrl          String?
+  accentColor      String   @default("#16a34a") // default brandable accent
+  clubCode         String   @unique // 6-char human-friendly code
+  clubPasswordEnc  String   // AES-256-GCM encrypted join password (reversible for exec display)
+  hoursGoal        Float    @default(0) // optional per-club hours goal
+  createdBy         String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  members         ClubMember[]
+  serviceHours    ServiceHour[]
+  announcements   Announcement[]
+  meetings        Meeting[]
+  teams           Team[]
+  tasks           Task[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+  serviceCategories ServiceCategory[]
+  conversations   Conversation[]
+}
+
+model ClubMember {
+  id        String   @id @default(cuid())
+  clubId    String
+  userId    String
+  role      String   @default("member") // "member" | "executive"
+  status    String   @default("active") // "active" | "removed"
+  joinedAt  DateTime @default(now())
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId])
+}
+
+model ServiceCategory {
+  id        String   @id @default(cuid())
+  clubId    String
+  name      String
+  createdAt DateTime @default(now())
+
+  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  serviceHours ServiceHour[]
+}
+
+// ---------------------------------------------------------------------------
+// Service Hours
+// ---------------------------------------------------------------------------
+
+model ServiceHour {
+  id             String   @id @default(cuid())
+  clubId         String
+  userId         String
+  categoryId     String?
+  dateOfService  DateTime
+  hours          Float
+  reasonText     String
+  proofFileUrl   String? // deleted after review
+  status         String   @default("pending") // pending | approved | rejected
+  reviewedBy     String?
+  reviewComment  String?
+  submittedAt    DateTime @default(now())
+  reviewedAt     DateTime?
+
+  club     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category ServiceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  reviewer User?             @relation("ServiceHourReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([clubId, status])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Announcements, Reactions, Comments
+// ---------------------------------------------------------------------------
+
+model Announcement {
+  id        String   @id @default(cuid())
+  clubId    String
+  authorId  String
+  title     String
+  body      String
+  isPinned  Boolean  @default(false)
+  isUrgent  Boolean  @default(false) // exec-only banner flag — shows app-wide dismissible banner
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club       Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  author     User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions  AnnouncementReaction[]
+  comments   AnnouncementComment[]
+
+  @@index([clubId, createdAt])
+}
+
+model AnnouncementReaction {
+  id             String   @id @default(cuid())
+  announcementId String
+  userId         String
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId]) // one reaction per user per announcement (swap emoji on change)
+  @@index([announcementId])
+}
+
+model AnnouncementComment {
+  id             String   @id @default(cuid())
+  announcementId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+  deletedAt      DateTime? // soft delete -> "[comment removed]"
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Teams & Tasks
+// ---------------------------------------------------------------------------
+
+model Team {
+  id          String   @id @default(cuid())
+  clubId      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  club     Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  tasks    Task[]
+  meetings Meeting[]
+
+  @@index([clubId])
+}
+
+model TeamMember {
+  id      String   @id @default(cuid())
+  teamId  String
+  userId  String
+  joinedAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model Task {
+  id              String   @id @default(cuid())
+  clubId          String
+  teamId          String?
+  title            String
+  description      String?
+  assignedToUserId String?
+  dueDate         DateTime?
+  status          String   @default("not_started") // not_started | in_progress | done
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdById     String
+
+  club        Club       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  team        Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  assignee    User?      @relation("TaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  creator     User       @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  subtasks    Subtask[]
+  comments    TaskComment[]
+
+  @@index([clubId, status])
+  @@index([assignedToUserId])
+  @@index([teamId])
+}
+
+model Subtask {
+  id        String   @id @default(cuid())
+  taskId    String
+  title     String
+  isDone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Meetings & RSVPs
+// ---------------------------------------------------------------------------
+
+model Meeting {
+  id             String   @id @default(cuid())
+  clubId         String
+  teamId         String?
+  title          String
+  description    String?
+  location       String
+  startTime      DateTime
+  endTime        DateTime
+  isRecurring    Boolean  @default(false)
+  recurrenceRule String? // e.g. "weekly" | "biweekly" | "monthly"
+  cancelledAt    DateTime?
+  createdAt      DateTime @default(now())
+  createdById    String
+
+  club      Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  team      Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  creator   User         @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  rsvps     MeetingRsvp[]
+
+  @@index([clubId, startTime])
+}
+
+model MeetingRsvp {
+  id          String   @id @default(cuid())
+  meetingId   String
+  userId      String
+  status      String   @default("maybe") // going | not_going | maybe
+  respondedAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & Activity Log
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  clubId    String?
+  type      String // hours_approved | hours_rejected | new_announcement | task_assigned | meeting_reminder | new_comment | new_reaction | promoted | demoted | new_member
+  message   String
+  linkUrl   String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club? @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  clubId      String
+  actorUserId  String
+  actionType  String
+  targetType  String
+  targetId    String?
+  description String
+  createdAt   DateTime @default(now())
+
+  club   Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  actor  User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Group Chat — conversations, members, messages, reactions
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id        String   @id @default(cuid())
+  clubId    String
+  type      String   // "club_wide" | "group" | "direct"
+  name      String?  // group chat name; null for club_wide + direct
+  createdBy  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club      Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members   ConversationMember[]
+  messages  Message[]
+
+  @@index([clubId, updatedAt])
+}
+
+model ConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  role           String   @default("member") // "owner" for group chat creator, else "member"
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  pinnedAt       DateTime? // for pinned important messages
+
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions    MessageReaction[]
+
+  @@index([conversationId, createdAt])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId]) // one reaction per user per message (swap on change)
+  @@index([messageId])
+}

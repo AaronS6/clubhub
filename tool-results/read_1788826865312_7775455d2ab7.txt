@@ -1,0 +1,2002 @@
+     1→"use client"
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+     4→import { useSession } from "next-auth/react"
+     5→import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+     6→import { useAppStore } from "@/lib/store"
+     7→import { usePresence } from "@/lib/use-presence"
+     8→import { api } from "@/lib/api/client"
+     9→import { cn } from "@/lib/utils"
+    10→import { usePollingFallback } from "@/lib/realtime-store"
+    11→import { toast } from "sonner"
+    12→import { getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
+    13→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    14→import { Button } from "@/components/ui/button"
+    15→import { Input } from "@/components/ui/input"
+    16→import { Textarea } from "@/components/ui/textarea"
+    17→import { Label } from "@/components/ui/label"
+    18→import { Skeleton } from "@/components/ui/skeleton"
+    19→import { MentionableTextarea, type MentionableMember } from "@/components/ui/mentionable-textarea"
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogDescription,
+    24→  DialogFooter,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→} from "@/components/ui/dialog"
+    28→import {
+    29→  Popover,
+    30→  PopoverContent,
+    31→  PopoverTrigger,
+    32→} from "@/components/ui/popover"
+    33→import {
+    34→  Tooltip,
+    35→  TooltipContent,
+    36→  TooltipTrigger,
+    37→} from "@/components/ui/tooltip"
+    38→import {
+    39→  DropdownMenu,
+    40→  DropdownMenuContent,
+    41→  DropdownMenuItem,
+    42→  DropdownMenuSeparator,
+    43→  DropdownMenuTrigger,
+    44→} from "@/components/ui/dropdown-menu"
+    45→import {
+    46→  AlertDialog,
+    47→  AlertDialogAction,
+    48→  AlertDialogCancel,
+    49→  AlertDialogContent,
+    50→  AlertDialogDescription,
+    51→  AlertDialogFooter,
+    52→  AlertDialogHeader,
+    53→  AlertDialogTitle,
+    54→} from "@/components/ui/alert-dialog"
+    55→import {
+    56→  ArrowLeft,
+    57→  ChevronDown,
+    58→  Edit,
+    59→  Hash,
+    60→  Loader2,
+    61→  MessageSquarePlus,
+    62→  MoreVertical,
+    63→  Pin,
+    64→  PinOff,
+    65→  Plus,
+    66→  Search,
+    67→  Send,
+    68→  SmilePlus,
+    69→  Trash2,
+    70→  Users,
+    71→  X,
+    72→} from "lucide-react"
+    73→import {
+    74→  EmptyState,
+    75→  avatarColor,
+    76→  initials,
+    77→  relativeTime,
+    78→} from "@/components/shared/page-header"
+    79→
+    80→/* =========================================================================
+    81→   Types
+    82→   ========================================================================= */
+    83→
+    84→type ConversationType = "club_wide" | "group" | "direct"
+    85→
+    86→interface ConversationItem {
+    87→  id: string
+    88→  type: ConversationType
+    89→  name: string | null
+    90→  lastMessage: {
+    91→    id: string
+    92→    body: string
+    93→    createdAt: string
+    94→    authorId: string
+    95→    authorName: string
+    96→  } | null
+    97→  unreadCount: number
+    98→  memberCount: number
+    99→  myRole: "owner" | "member"
+   100→  otherUser: { id: string; name: string; avatarUrl: string | null } | null
+   101→  updatedAt: string
+   102→}
+   103→
+   104→interface ConversationsResponse {
+   105→  conversations: ConversationItem[]
+   106→  myUserId: string
+   107→}
+   108→
+   109→interface AuthorInfo {
+   110→  id: string
+   111→  name: string
+   112→  avatarUrl: string | null
+   113→}
+   114→
+   115→interface ReactionUser {
+   116→  id: string
+   117→  name: string
+   118→  avatarUrl: string | null
+   119→}
+   120→
+   121→interface ReactionGroup {
+   122→  emoji: string
+   123→  count: number
+   124→  users: ReactionUser[]
+   125→}
+   126→
+   127→interface MessageItem {
+   128→  id: string
+   129→  body: string
+   130→  createdAt: string
+   131→  editedAt: string | null
+   132→  deletedAt: string | null
+   133→  pinnedAt: string | null
+   134→  authorId: string
+   135→  author: AuthorInfo
+   136→  reactions: ReactionGroup[]
+   137→  myReaction: string | null
+   138→  isMine: boolean
+   139→}
+   140→
+   141→interface MessagesResponse {
+   142→  messages: MessageItem[]
+   143→  hasMore: boolean
+   144→}
+   145→
+   146→interface PinnedMessage {
+   147→  id: string
+   148→  body: string
+   149→  createdAt: string
+   150→  pinnedAt: string
+   151→  author: AuthorInfo
+   152→}
+   153→
+   154→interface MemberListItem {
+   155→  userId: string
+   156→  role?: string
+   157→  name: string
+   158→  avatarUrl: string | null
+   159→}
+   160→
+   161→interface MemberListResponse {
+   162→  members: {
+   163→    membershipId: string
+   164→    role: string
+   165→    user: { id: string; name: string; email: string; avatarUrl: string | null; bio: string | null }
+   166→  }[]
+   167→  myUserId: string
+   168→  myRole: "member" | "executive"
+   169→}
+   170→
+   171→const REACTION_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83C\uDF89", "\uD83D\uDC4F", "\uD83D\uDE02"]
+   172→const URL_REGEX = /(https?:\/\/[^\s]+)/g
+   173→const MENTION_REGEX = /@([A-Za-z0-9._-]+[A-Za-z0-9])/g
+   174→const PAGE_SIZE = 50
+   175→const POLL_INTERVAL_MS = 10_000
+   176→const TYPING_DEBOUNCE_MS = 2000
+   177→const TYPING_TTL_MS = 3000
+   178→
+   179→/* =========================================================================
+   180→   Helpers
+   181→   ========================================================================= */
+   182→
+   183→function conversationsKey(clubId: string) {
+   184→  return ["conversations", clubId] as const
+   185→}
+   186→function messagesKey(clubId: string, conversationId: string) {
+   187→  return ["messages", clubId, conversationId] as const
+   188→}
+   189→function pinnedKey(clubId: string, conversationId: string) {
+   190→  return ["pinned-messages", clubId, conversationId] as const
+   191→}
+   192→
+   193→function linkify(text: string) {
+   194→  // Combined URL + @mention renderer. Mentions get a styled span (no deep
+   195→  // link target for v1 — just visual emphasis); URLs open in a new tab.
+   196→  const parts: React.ReactNode[] = []
+   197→  // Split on URL first to avoid running mention regex over links.
+   198→  const urlSplit = text.split(URL_REGEX)
+   199→  urlSplit.forEach((chunk, i) => {
+   200→    if (/^https?:\/\//.test(chunk)) {
+   201→      parts.push(
+   202→        <a
+   203→          key={`u${i}`}
+   204→          href={chunk}
+   205→          target="_blank"
+   206→          rel="noopener noreferrer"
+   207→          className="text-club hover:underline break-all"
+   208→        >
+   209→          {chunk}
+   210→        </a>,
+   211→      )
+   212→    } else {
+   213→      // Within this non-URL chunk, split on @mentions.
+   214→      let lastIdx = 0
+   215→      const re = new RegExp(MENTION_REGEX)
+   216→      let m: RegExpExecArray | null
+   217→      while ((m = re.exec(chunk)) !== null) {
+   218→        if (m.index > lastIdx) {
+   219→          parts.push(<span key={`t${i}-${lastIdx}`}>{chunk.slice(lastIdx, m.index)}</span>)
+   220→        }
+   221→        parts.push(
+   222→          <span
+   223→            key={`m${i}-${m.index}`}
+   224→            className="text-club font-medium"
+   225→          >
+   226→            {m[0]}
+   227→          </span>,
+   228→        )
+   229→        lastIdx = m.index + m[0].length
+   230→      }
+   231→      if (lastIdx < chunk.length) {
+   232→        parts.push(<span key={`t${i}-end`}>{chunk.slice(lastIdx)}</span>)
+   233→      }
+   234→    }
+   235→  })
+   236→  return parts
+   237→}
+   238→
+   239→function conversationTitle(c: ConversationItem): string {
+   240→  if (c.type === "direct") return c.otherUser?.name ?? "Direct chat"
+   241→  return c.name ?? "Group chat"
+   242→}
+   243→
+   244→function conversationAvatarText(c: ConversationItem): string {
+   245→  if (c.type === "direct") return c.otherUser?.name ?? "?"
+   246→  return c.name ?? "G"
+   247→}
+   248→
+   249→/* =========================================================================
+   250→   ChatView (root)
+   251→   ========================================================================= */
+   252→
+   253→export function ChatView() {
+   254→  const clubId = useAppStore((s) => s.currentClubId)
+   255→  // Delegate everything to an inner component keyed by clubId so React
+   256→  // automatically resets local state (selected conversation, mobile panel)
+   257→  // when the user switches clubs — no manual effect-based resets needed.
+   258→  if (!clubId) {
+   259→    return (
+   260→      <div className="p-8 text-sm text-muted-foreground">Select a club to view chat.</div>
+   261→    )
+   262→  }
+   263→  return <ChatPane key={clubId} clubId={clubId} />
+   264→}
+   265→
+   266→function ChatPane({ clubId }: { clubId: string }) {
+   267→  const role = useAppStore((s) => s.currentClub?.role)
+   268→  const isExec = role === "executive"
+   269→  const { data: session } = useSession()
+   270→  const myUserId = session?.user?.id
+   271→
+   272→  const [activeId, setActiveId] = useState<string | null>(null)
+   273→  const [newGroupOpen, setNewGroupOpen] = useState(false)
+   274→  const [newDmOpen, setNewDmOpen] = useState(false)
+   275→  const [isMobileShowingMessages, setIsMobileShowingMessages] = useState(false)
+   276→
+   277→  // Hooks must be called unconditionally. online is empty when no club.
+   278→  const online = usePresence(clubId)
+   279→
+   280→  // Load conversation list.
+   281→  const conversationsQuery = useQuery<ConversationsResponse>({
+   282→    queryKey: conversationsKey(clubId),
+   283→    queryFn: () => api<ConversationsResponse>(`/api/clubs/${clubId}/chat/conversations`),
+   284→    // Realtime is primary (chat_message events invalidate this key); poll
+   285→    // only as a fallback while the socket is down.
+   286→    refetchInterval: usePollingFallback(POLL_INTERVAL_MS),
+   287→  })
+   288→
+   289→  const conversations = conversationsQuery.data?.conversations ?? []
+   290→  const activeConversation = useMemo(
+   291→    () => conversations.find((c) => c.id === activeId) ?? null,
+   292→    [conversations, activeId],
+   293→  )
+   294→
+   295→  // Auto-select the club-wide conversation if there is no active selection.
+   296→  // Derived state — compute synchronously rather than via effect.
+   297→  const effectiveActiveId =
+   298→    activeId && conversations.some((c) => c.id === activeId)
+   299→      ? activeId
+   300→      : conversations.find((c) => c.type === "club_wide")?.id ?? null
+   301→
+   302→  // If we don't have an active id yet, pick the club-wide one (if any).
+   303→  // This is a one-time set; once the user clicks a conversation, activeId
+   304→  // is sticky until they switch clubs (which remounts this component via
+   305→  // the key prop on the parent).
+   306→  if (activeId === null && effectiveActiveId !== null) {
+   307→    setActiveId(effectiveActiveId)
+   308→  }
+   309→
+   310→  const openConversation = (id: string) => {
+   311→    setActiveId(id)
+   312→    setIsMobileShowingMessages(true)
+   313→  }
+   314→
+   315→  const backToList = () => {
+   316→    setIsMobileShowingMessages(false)
+   317→  }
+   318→
+   319→  return (
+   320→    <div className="h-[calc(100vh-7rem)] md:h-[calc(100vh-5rem)]">
+   321→      <div className="flex h-full gap-0 md:gap-4">
+   322→        {/* Sidebar — conversation list */}
+   323→        <aside
+   324→          className={cn(
+   325→            "card-quiet w-full md:w-80 lg:w-96 flex-shrink-0 overflow-hidden flex flex-col",
+   326→            isMobileShowingMessages && "hidden md:flex",
+   327→          )}
+   328→        >
+   329→          <ConversationList
+   330→            clubId={clubId}
+   331→            conversations={conversations}
+   332→            activeId={activeId}
+   333→            onSelect={openConversation}
+   334→            online={online}
+   335→            isLoading={conversationsQuery.isLoading}
+   336→            myUserId={myUserId ?? ""}
+   337→            onNewGroup={() => setNewGroupOpen(true)}
+   338→            onNewDm={() => setNewDmOpen(true)}
+   339→          />
+   340→        </aside>
+   341→
+   342→        {/* Main area — messages */}
+   343→        <main
+   344→          className={cn(
+   345→            "card-quiet flex-1 overflow-hidden flex flex-col",
+   346→            !isMobileShowingMessages && "hidden md:flex",
+   347→          )}
+   348→        >
+   349→          {activeConversation ? (
+   350→            <ConversationPane
+   351→              key={activeConversation.id}
+   352→              clubId={clubId}
+   353→              conversation={activeConversation}
+   354→              isExec={isExec}
+   355→              myUserId={myUserId ?? ""}
+   356→              online={online}
+   357→              onBack={backToList}
+   358→              onConversationMutated={() =>
+   359→                conversationsQuery.refetch()
+   360→              }
+   361→            />
+   362→          ) : (
+   363→            <div className="flex-1 flex items-center justify-center p-6">
+   364→              <EmptyState
+   365→                icon={<MessageSquarePlus className="h-8 w-8" />}
+   366→                title="No conversation selected"
+   367→                description="Pick a conversation from the list, or start a new chat."
+   368→              />
+   369→            </div>
+   370→          )}
+   371→        </main>
+   372→      </div>
+   373→
+   374→      {/* New group chat dialog */}
+   375→      <NewGroupChatDialog
+   376→        open={newGroupOpen}
+   377→        onOpenChange={setNewGroupOpen}
+   378→        clubId={clubId}
+   379→        myUserId={myUserId ?? ""}
+   380→        onCreated={(convId) => {
+   381→          setNewGroupOpen(false)
+   382→          void conversationsQuery.refetch().then(() => {
+   383→            setActiveId(convId)
+   384→            setIsMobileShowingMessages(true)
+   385→          })
+   386→        }}
+   387→      />
+   388→
+   389→      {/* New DM dialog */}
+   390→      <NewDirectChatDialog
+   391→        open={newDmOpen}
+   392→        onOpenChange={setNewDmOpen}
+   393→        clubId={clubId}
+   394→        myUserId={myUserId ?? ""}
+   395→        onCreated={(convId) => {
+   396→          setNewDmOpen(false)
+   397→          void conversationsQuery.refetch().then(() => {
+   398→            setActiveId(convId)
+   399→            setIsMobileShowingMessages(true)
+   400→          })
+   401→        }}
+   402→      />
+   403→    </div>
+   404→  )
+   405→}
+   406→
+   407→/* =========================================================================
+   408→   ConversationList (sidebar)
+   409→   ========================================================================= */
+   410→
+   411→function ConversationList({
+   412→  clubId,
+   413→  conversations,
+   414→  activeId,
+   415→  onSelect,
+   416→  online,
+   417→  isLoading,
+   418→  myUserId,
+   419→  onNewGroup,
+   420→  onNewDm,
+   421→}: {
+   422→  clubId: string
+   423→  conversations: ConversationItem[]
+   424→  activeId: string | null
+   425→  onSelect: (id: string) => void
+   426→  online: Set<string>
+   427→  isLoading: boolean
+   428→  myUserId: string
+   429→  onNewGroup: () => void
+   430→  onNewDm: () => void
+   431→}) {
+   432→  const [search, setSearch] = useState("")
+   433→
+   434→  const clubWide = conversations.filter((c) => c.type === "club_wide")
+   435→  const others = conversations.filter((c) => c.type !== "club_wide")
+   436→
+   437→  const filteredOthers = useMemo(() => {
+   438→    const q = search.trim().toLowerCase()
+   439→    if (!q) return others
+   440→    return others.filter((c) => {
+   441→      const label =
+   442→        c.type === "direct" ? c.otherUser?.name ?? "" : c.name ?? ""
+   443→      return label.toLowerCase().includes(q)
+   444→    })
+   445→  }, [others, search])
+   446→
+   447→  return (
+   448→    <div className="flex flex-col h-full">
+   449→      {/* Header */}
+   450→      <div className="px-4 pt-4 pb-3 border-b border-border">
+   451→        <div className="flex items-center justify-between mb-3">
+   452→          <h2 className="text-section-title">Chat</h2>
+   453→          <div className="flex items-center gap-1">
+   454→            <Tooltip>
+   455→              <TooltipTrigger asChild>
+   456→                <Button
+   457→                  size="icon"
+   458→                  variant="ghost"
+   459→                  className="size-8"
+   460→                  onClick={onNewDm}
+   461→                  aria-label="New direct message"
+   462→                >
+   463→                  <MessageSquarePlus className="h-4 w-4" />
+   464→                </Button>
+   465→              </TooltipTrigger>
+   466→              <TooltipContent>New direct message</TooltipContent>
+   467→            </Tooltip>
+   468→            <Tooltip>
+   469→              <TooltipTrigger asChild>
+   470→                <Button
+   471→                  size="icon"
+   472→                  variant="club"
+   473→                  className="size-8"
+   474→                  onClick={onNewGroup}
+   475→                  aria-label="New group chat"
+   476→                >
+   477→                  <Plus className="h-4 w-4" />
+   478→                </Button>
+   479→              </TooltipTrigger>
+   480→              <TooltipContent>New group chat</TooltipContent>
+   481→            </Tooltip>
+   482→          </div>
+   483→        </div>
+   484→        <div className="relative">
+   485→          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+   486→          <Input
+   487→            value={search}
+   488→            onChange={(e) => setSearch(e.target.value)}
+   489→            placeholder="Search conversations…"
+   490→            className="pl-8 h-8 text-sm"
+   491→            aria-label="Search conversations"
+   492→          />
+   493→        </div>
+   494→      </div>
+   495→
+   496→      {/* List */}
+   497→      <div className="flex-1 overflow-y-auto scrollbar-thin">
+   498→        {isLoading ? (
+   499→          <ConversationListSkeleton />
+   500→        ) : conversations.length === 0 ? (
+   501→          <div className="p-4">
+   502→            <EmptyState
+   503→              icon={<MessageSquarePlus className="h-8 w-8" />}
+   504→              title="No conversations yet"
+   505→              description="Start a direct message or create a group chat."
+   506→              action={
+   507→                <Button variant="club" size="sm" onClick={onNewDm}>
+   508→                  <Plus className="h-4 w-4" /> Start a conversation
+   509→                </Button>
+   510→              }
+   511→            />
+   512→          </div>
+   513→        ) : (
+   514→          <>
+   515→            {/* Club-wide section */}
+   516→            {clubWide.length > 0 && (
+   517→              <div>
+   518→                <div className="px-3 pt-3 pb-1">
+   519→                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+   520→                    Club-wide
+   521→                  </span>
+   522→                </div>
+   523→                {clubWide.map((c) => (
+   524→                  <ConversationRow
+   525→                    key={c.id}
+   526→                    conversation={c}
+   527→                    active={c.id === activeId}
+   528→                    onClick={() => onSelect(c.id)}
+   529→                    online={online}
+   530→                    myUserId={myUserId}
+   531→                  />
+   532→                ))}
+   533→                <div className="border-b border-border mx-3 my-1" />
+   534→              </div>
+   535→            )}
+   536→
+   537→            {/* Other conversations */}
+   538→            <div className="pb-2">
+   539→              {filteredOthers.length === 0 ? (
+   540→                <div className="text-caption text-center py-6 px-4">
+   541→                  {search ? "No matches." : "No conversations yet."}
+   542→                </div>
+   543→              ) : (
+   544→                filteredOthers.map((c) => (
+   545→                  <ConversationRow
+   546→                    key={c.id}
+   547→                    conversation={c}
+   548→                    active={c.id === activeId}
+   549→                    onClick={() => onSelect(c.id)}
+   550→                    online={online}
+   551→                    myUserId={myUserId}
+   552→                  />
+   553→                ))
+   554→              )}
+   555→            </div>
+   556→          </>
+   557→        )}
+   558→      </div>
+   559→    </div>
+   560→  )
+   561→}
+   562→
+   563→function ConversationRow({
+   564→  conversation,
+   565→  active,
+   566→  onClick,
+   567→  online,
+   568→  myUserId,
+   569→}: {
+   570→  conversation: ConversationItem
+   571→  active: boolean
+   572→  onClick: () => void
+   573→  online: Set<string>
+   574→  myUserId: string
+   575→}) {
+   576→  const title = conversationTitle(conversation)
+   577→  const isDirect = conversation.type === "direct"
+   578→  const otherId = conversation.otherUser?.id
+   579→  const isOnline = !!otherId && online.has(otherId)
+   580→  const initialsText = isDirect
+   581→    ? conversation.otherUser?.name
+   582→    : conversation.name
+   583→
+   584→  return (
+   585→    <button
+   586→      type="button"
+   587→      onClick={onClick}
+   588→      aria-current={active ? "true" : undefined}
+   589→      className={cn(
+   590→        "w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
+   591→        active && "bg-club-muted hover:bg-club-muted",
+   592→      )}
+   593→    >
+   594→      <div className="relative shrink-0">
+   595→        {isDirect ? (
+   596→          <Avatar className="size-9">
+   597→            <AvatarImage src={conversation.otherUser?.avatarUrl ?? undefined} alt={title} />
+   598→            <AvatarFallback className={cn("text-xs", avatarColor(initialsText))}>
+   599→              {initials(initialsText)}
+   600→            </AvatarFallback>
+   601→          </Avatar>
+   602→        ) : (
+   603→          <div
+   604→            className={cn(
+   605→              "size-9 rounded-full flex items-center justify-center text-xs font-medium",
+   606→              avatarColor(initialsText),
+   607→            )}
+   608→          >
+   609→            {initials(initialsText)}
+   610→          </div>
+   611→        )}
+   612→        {isOnline && (
+   613→          <span
+   614→            className="absolute bottom-0 right-0 size-2.5 rounded-full bg-club ring-2 ring-card"
+   615→            aria-label="Online"
+   616→          />
+   617→        )}
+   618→      </div>
+   619→      <div className="flex-1 min-w-0">
+   620→        <div className="flex items-baseline justify-between gap-2">
+   621→          <span
+   622→            className={cn(
+   623→              "text-sm font-medium truncate",
+   624→              active ? "text-foreground" : "text-foreground/90",
+   625→            )}
+   626→          >
+   627→            {title}
+   628→          </span>
+   629→          {conversation.lastMessage && (
+   630→            <span className="text-[10px] text-muted-foreground shrink-0">
+   631→              {relativeTime(conversation.lastMessage.createdAt)}
+   632→            </span>
+   633→          )}
+   634→        </div>
+   635→        <div className="flex items-center justify-between gap-2 mt-0.5">
+   636→          <span className="text-xs text-muted-foreground truncate">
+   637→            {conversation.lastMessage ? (
+   638→              <>
+   639→                {conversation.lastMessage.authorId === myUserId ? (
+   640→                  <span className="text-muted-foreground/80">You: </span>
+   641→                ) : conversation.type !== "direct" && conversation.lastMessage.authorName ? (
+   642→                  <span className="text-muted-foreground/80">
+   643→                    {conversation.lastMessage.authorName.split(" ")[0]}:{" "}
+   644→                  </span>
+   645→                ) : null}
+   646→                {truncate(conversation.lastMessage.body, 40)}
+   647→              </>
+   648→            ) : (
+   649→              <span className="italic text-muted-foreground/70">No messages yet</span>
+   650→            )}
+   651→          </span>
+   652→          {conversation.unreadCount > 0 && (
+   653→            <span className="shrink-0 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-club text-club-foreground text-[10px] font-semibold tabular-nums">
+   654→              {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+   655→            </span>
+   656→          )}
+   657→        </div>
+   658→      </div>
+   659→    </button>
+   660→  )
+   661→}
+   662→
+   663→function truncate(text: string, max: number) {
+   664→  if (text.length <= max) return text
+   665→  return text.slice(0, max - 1) + "…"
+   666→}
+   667→
+   668→/* =========================================================================
+   669→   ConversationPane (main area)
+   670→   ========================================================================= */
+   671→
+   672→function ConversationPane({
+   673→  clubId,
+   674→  conversation,
+   675→  isExec,
+   676→  myUserId,
+   677→  online,
+   678→  onBack,
+   679→  onConversationMutated,
+   680→}: {
+   681→  clubId: string
+   682→  conversation: ConversationItem
+   683→  isExec: boolean
+   684→  myUserId: string
+   685→  online: Set<string>
+   686→  onBack: () => void
+   687→  onConversationMutated: () => void
+   688→}) {
+   689→  const qc = useQueryClient()
+   690→  const [renameOpen, setRenameOpen] = useState(false)
+   691→  const [addMemberOpen, setAddMemberOpen] = useState(false)
+   692→  const [leaveOpen, setLeaveOpen] = useState(false)
+   693→
+   694→  // Latest page (latest PAGE_SIZE messages).
+   695→  const latestQuery = useQuery<MessagesResponse>({
+   696→    queryKey: messagesKey(clubId, conversation.id),
+   697→    queryFn: () =>
+   698→      api<MessagesResponse>(
+   699→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages`,
+   700→      ),
+   701→    // Realtime is primary; poll only as a fallback while the socket is down.
+   702→    refetchInterval: usePollingFallback(POLL_INTERVAL_MS),
+   703→  })
+   704→
+   705→  // Older pages (loaded on scroll-up).
+   706→  const [olderPages, setOlderPages] = useState<MessageItem[][]>([])
+   707→  const [loadingOlder, setLoadingOlder] = useState(false)
+   708→  const [hasMoreOlder, setHasMoreOlder] = useState(true)
+   709→  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+   710→  const prevScrollHeightRef = useRef<number>(0)
+   711→  const pinnedBottomRef = useRef<boolean>(true)
+   712→  // NOTE: This component is keyed by conversation.id in the parent, so React
+   713→  // already remounts it (resetting local state) when switching conversations.
+   714→
+   715→  const latestMessages = latestQuery.data?.messages ?? []
+   716→  const olderMessages = useMemo(() => olderPages.flat(), [olderPages])
+   717→
+   718→  // Dedupe: drop older messages that overlap with the latest window.
+   719→  const latestIds = useMemo(() => new Set(latestMessages.map((m) => m.id)), [latestMessages])
+   720→  const allMessages = useMemo(() => {
+   721→    const older = olderMessages.filter((m) => !latestIds.has(m.id))
+   722→    return [...older, ...latestMessages]
+   723→  }, [olderMessages, latestIds, latestMessages])
+   724→
+   725→  // Auto-scroll to bottom on new messages (if user was already at the bottom).
+   726→  useEffect(() => {
+   727→    const el = scrollContainerRef.current
+   728→    if (!el) return
+   729→    if (pinnedBottomRef.current) {
+   730→      el.scrollTop = el.scrollHeight
+   731→    }
+   732→  }, [allMessages.length, conversation.id])
+   733→
+   734→  // When older messages are prepended, preserve the visible scroll position.
+   735→  useEffect(() => {
+   736→    const el = scrollContainerRef.current
+   737→    if (!el) return
+   738→    if (prevScrollHeightRef.current && prevScrollHeightRef.current > 0) {
+   739→      const delta = el.scrollHeight - prevScrollHeightRef.current
+   740→      el.scrollTop = el.scrollTop + delta
+   741→      prevScrollHeightRef.current = 0
+   742→    }
+   743→  }, [olderPages])
+   744→
+   745→  const handleScroll = useCallback(() => {
+   746→    const el = scrollContainerRef.current
+   747→    if (!el) return
+   748→    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+   749→    pinnedBottomRef.current = distanceFromBottom < 80
+   750→    if (el.scrollTop <= 40 && !loadingOlder && hasMoreOlder && latestMessages.length > 0) {
+   751→      void loadOlder()
+   752→    }
+   753→  }, [loadingOlder, hasMoreOlder, latestMessages.length])
+   754→
+   755→  async function loadOlder() {
+   756→    if (loadingOlder || !hasMoreOlder) return
+   757→    const oldest = allMessages[0]
+   758→    if (!oldest) return
+   759→    setLoadingOlder(true)
+   760→    const el = scrollContainerRef.current
+   761→    if (el) prevScrollHeightRef.current = el.scrollHeight
+   762→    try {
+   763→      const res = await api<MessagesResponse>(
+   764→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages?before=${oldest.id}`,
+   765→      )
+   766→      if (res.messages.length === 0) {
+   767→        setHasMoreOlder(false)
+   768→      } else {
+   769→        setOlderPages((prev) => [res.messages, ...prev])
+   770→        if (!res.hasMore) setHasMoreOlder(false)
+   771→      }
+   772→    } catch (e) {
+   773→      // silent
+   774→    } finally {
+   775→      setLoadingOlder(false)
+   776→    }
+   777→  }
+   778→
+   779→  function patchMessage(messageId: string, patch: Partial<MessageItem>) {
+   780→    qc.setQueryData<MessagesResponse>(messagesKey(clubId, conversation.id), (old) => {
+   781→      if (!old) return old
+   782→      return {
+   783→        ...old,
+   784→        messages: old.messages.map((m) =>
+   785→          m.id === messageId ? { ...m, ...patch } : m,
+   786→        ),
+   787→      }
+   788→    })
+   789→    setOlderPages((pages) =>
+   790→      pages.map((page) =>
+   791→        page.map((m) => (m.id === messageId ? { ...m, ...patch } : m)),
+   792→      ),
+   793→    )
+   794→  }
+   795→
+   796→  function replaceMessageReactions(
+   797→    messageId: string,
+   798→    reactions: ReactionGroup[],
+   799→    myReaction: string | null,
+   800→  ) {
+   801→    patchMessage(messageId, { reactions, myReaction })
+   802→  }
+   803→
+   804→  // Send message mutation.
+   805→  const sendMutation = useMutation({
+   806→    mutationFn: (body: string) =>
+   807→      api<{ message: MessageItem }>(
+   808→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages`,
+   809→        { method: "POST", json: { body } },
+   810→      ),
+   811→    onSuccess: (res) => {
+   812→      qc.setQueryData<MessagesResponse>(messagesKey(clubId, conversation.id), (old) => {
+   813→        if (!old) return { messages: [res.message], hasMore: false }
+   814→        // Append if not present.
+   815→        if (old.messages.some((m) => m.id === res.message.id)) return old
+   816→        return { ...old, messages: [...old.messages, res.message] }
+   817→      })
+   818→      pinnedBottomRef.current = true
+   819→      void onConversationMutated()
+   820→    },
+   821→    onError: (e: Error) => {
+   822→      toast.error(e.message)
+   823→    },
+   824→  })
+   825→
+   826→  // Edit mutation.
+   827→  const editMutation = useMutation({
+   828→    mutationFn: ({ messageId, body }: { messageId: string; body: string }) =>
+   829→      api<{ message: MessageItem }>(
+   830→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages/${messageId}`,
+   831→        { method: "PATCH", json: { body } },
+   832→      ),
+   833→    onSuccess: (res) => {
+   834→      patchMessage(res.message.id, res.message)
+   835→      void onConversationMutated()
+   836→    },
+   837→    onError: (e: Error) => toast.error(e.message),
+   838→  })
+   839→
+   840→  // Delete mutation.
+   841→  const deleteMutation = useMutation({
+   842→    mutationFn: (messageId: string) =>
+   843→      api(
+   844→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages/${messageId}`,
+   845→        { method: "DELETE" },
+   846→      ),
+   847→    onSuccess: (_res, messageId) => {
+   848→      patchMessage(messageId, { deletedAt: new Date().toISOString(), body: "" })
+   849→      void qc.invalidateQueries({ queryKey: pinnedKey(clubId, conversation.id) })
+   850→    },
+   851→    onError: (e: Error) => toast.error(e.message),
+   852→  })
+   853→
+   854→  // Reaction mutation.
+   855→  const reactionMutation = useMutation({
+   856→    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
+   857→      api<{ reactions: ReactionGroup[]; myReaction: string | null }>(
+   858→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages/${messageId}/reactions`,
+   859→        { method: "POST", json: { emoji } },
+   860→      ),
+   861→    onSuccess: (res, vars) => {
+   862→      replaceMessageReactions(vars.messageId, res.reactions, res.myReaction)
+   863→    },
+   864→    onError: (e: Error) => toast.error(e.message),
+   865→  })
+   866→
+   867→  // Pin/unpin mutation.
+   868→  const pinMutation = useMutation({
+   869→    mutationFn: ({ messageId, pinned }: { messageId: string; pinned: boolean }) =>
+   870→      api(
+   871→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/messages/${messageId}/pin`,
+   872→        { method: "PATCH", json: { pinned } },
+   873→      ),
+   874→    onSuccess: (_res, vars) => {
+   875→      patchMessage(vars.messageId, {
+   876→        pinnedAt: vars.pinned ? new Date().toISOString() : null,
+   877→      })
+   878→      void qc.invalidateQueries({ queryKey: pinnedKey(clubId, conversation.id) })
+   879→    },
+   880→    onError: (e: Error) => toast.error(e.message),
+   881→  })
+   882→
+   883→  // Leave conversation mutation.
+   884→  const leaveMutation = useMutation({
+   885→    mutationFn: () =>
+   886→      api(
+   887→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/members/${myUserId}`,
+   888→        { method: "DELETE" },
+   889→      ),
+   890→    onSuccess: () => {
+   891→      toast.success("You left the conversation")
+   892→      setLeaveOpen(false)
+   893→      void qc.invalidateQueries({ queryKey: conversationsKey(clubId) })
+   894→      onConversationMutated()
+   895→    },
+   896→    onError: (e: Error) => toast.error(e.message),
+   897→  })
+   898→
+   899→  // Pinned messages bar
+   900→  const pinnedQuery = useQuery<{ pinned: PinnedMessage[] }>({
+   901→    queryKey: pinnedKey(clubId, conversation.id),
+   902→    queryFn: () =>
+   903→      api<{ pinned: PinnedMessage[] }>(
+   904→        `/api/clubs/${clubId}/chat/conversations/${conversation.id}/pinned`,
+   905→      ),
+   906→    // Realtime is primary; poll only as a fallback while the socket is down.
+   907→    refetchInterval: usePollingFallback(POLL_INTERVAL_MS * 2),
+   908→  })
+   909→  const pinnedMessages = pinnedQuery.data?.pinned ?? []
+   910→
+   911→  const myMembership = conversation.myRole
+   912→  const canManage = myMembership === "owner" || isExec
+   913→  const canPin = canManage
+   914→
+   915→  return (
+   916→    <div className="flex flex-col h-full">
+   917→      {/* Header */}
+   918→      <div className="flex items-center gap-2 px-3 md:px-4 py-3 border-b border-border">
+   919→        <Button
+   920→          size="icon"
+   921→          variant="ghost"
+   922→          className="md:hidden size-8"
+   923→          onClick={onBack}
+   924→          aria-label="Back to conversations"
+   925→        >
+   926→          <ArrowLeft className="h-4 w-4" />
+   927→        </Button>
+   928→
+   929→        <ConversationAvatar conversation={conversation} online={online} />
+   930→
+   931→        <div className="flex-1 min-w-0">
+   932→          <div className="flex items-center gap-2">
+   933→            <h3 className="text-card-title truncate">{conversationTitle(conversation)}</h3>
+   934→            {conversation.type === "group" && myMembership === "owner" && (
+   935→              <span className="inline-flex items-center rounded-md bg-club-muted text-club px-1.5 py-0.5 text-[10px] font-semibold">
+   936→                Owner
+   937→              </span>
+   938→            )}
+   939→          </div>
+   940→          <p className="text-caption">
+   941→            {conversation.type === "direct"
+   942→              ? "Direct message"
+   943→              : `${conversation.memberCount} ${conversation.memberCount === 1 ? "member" : "members"}`}
+   944→          </p>
+   945→        </div>
+   946→
+   947→        {/* Members dropdown */}
+   948→        {conversation.type === "group" && (
+   949→          <MembersDropdown
+   950→            clubId={clubId}
+   951→            conversationId={conversation.id}
+   952→            online={online}
+   953→          />
+   954→        )}
+   955→
+   956→        {/* Settings menu */}
+   957→        {conversation.type === "group" && canManage && (
+   958→          <DropdownMenu>
+   959→            <DropdownMenuTrigger asChild>
+   960→              <Button
+   961→                size="icon"
+   962→                variant="ghost"
+   963→                className="size-8"
+   964→                aria-label="Conversation settings"
+   965→              >
+   966→                <MoreVertical className="h-4 w-4" />
+   967→              </Button>
+   968→            </DropdownMenuTrigger>
+   969→            <DropdownMenuContent align="end">
+   970→              <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+   971→                <Edit className="mr-2 h-4 w-4" /> Rename
+   972→              </DropdownMenuItem>
+   973→              <DropdownMenuItem onClick={() => setAddMemberOpen(true)}>
+   974→                <Plus className="mr-2 h-4 w-4" /> Add members
+   975→              </DropdownMenuItem>
+   976→              <DropdownMenuSeparator />
+   977→              <DropdownMenuItem
+   978→                onClick={() => setLeaveOpen(true)}
+   979→                className="text-destructive focus:text-destructive"
+   980→              >
+   981→                <X className="mr-2 h-4 w-4" /> Leave conversation
+   982→              </DropdownMenuItem>
+   983→            </DropdownMenuContent>
+   984→          </DropdownMenu>
+   985→        )}
+   986→      </div>
+   987→
+   988→      {/* Pinned bar */}
+   989→      {pinnedMessages.length > 0 && (
+   990→        <PinnedMessagesBar pinned={pinnedMessages} />
+   991→      )}
+   992→
+   993→      {/* Messages */}
+   994→      <div
+   995→        ref={scrollContainerRef}
+   996→        onScroll={handleScroll}
+   997→        className="flex-1 overflow-y-auto scrollbar-thin px-3 md:px-4 py-4 space-y-1"
+   998→        aria-live="polite"
+   999→      >
+  1000→        {loadingOlder && (
+  1001→          <div className="flex items-center justify-center py-3 text-muted-foreground text-xs">
+  1002→            <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> Loading older messages…
+  1003→          </div>
+  1004→        )}
+  1005→        {!loadingOlder && hasMoreOlder && allMessages.length > 0 && (
+  1006→          <button
+  1007→            type="button"
+  1008→            onClick={() => void loadOlder()}
+  1009→            className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1"
+  1010→          >
+  1011→            Load older messages
+  1012→          </button>
+  1013→        )}
+  1014→        {latestQuery.isLoading ? (
+  1015→          <MessagesSkeleton />
+  1016→        ) : allMessages.length === 0 ? (
+  1017→          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+  1018→            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+  1019→              <Hash className="h-6 w-6" />
+  1020→            </div>
+  1021→            <h4 className="text-card-title">Say hello!</h4>
+  1022→            <p className="text-body text-muted-foreground mt-1">
+  1023→              No messages yet. Be the first to start the conversation.
+  1024→            </p>
+  1025→          </div>
+  1026→        ) : (
+  1027→          <MessageList
+  1028→            messages={allMessages}
+  1029→            clubId={clubId}
+  1030→            conversationId={conversation.id}
+  1031→            conversationType={conversation.type}
+  1032→            myUserId={myUserId}
+  1033→            isExec={isExec}
+  1034→            canPin={canPin}
+  1035→            canManage={canManage}
+  1036→            onEdit={(messageId, body) =>
+  1037→              editMutation.mutate({ messageId, body })
+  1038→            }
+  1039→            onDelete={(messageId) => deleteMutation.mutate(messageId)}
+  1040→            onReact={(messageId, emoji) =>
+  1041→              reactionMutation.mutate({ messageId, emoji })
+  1042→            }
+  1043→            onPin={(messageId, pinned) =>
+  1044→              pinMutation.mutate({ messageId, pinned })
+  1045→            }
+  1046→            reactingId={reactionMutation.isPending ? "" : ""}
+  1047→          />
+  1048→        )}
+  1049→      </div>
+  1050→
+  1051→      {/* Typing indicator */}
+  1052→      <TypingIndicator conversationId={conversation.id} myUserId={myUserId} />
+  1053→
+  1054→      {/* Composer */}
+  1055→      <MessageComposer
+  1056→        clubId={clubId}
+  1057→        conversationId={conversation.id}
+  1058→        myUserId={myUserId}
+  1059→        onSend={(body) => sendMutation.mutate(body)}
+  1060→        disabled={sendMutation.isPending}
+  1061→      />
+  1062→
+  1063→      {/* Rename dialog */}
+  1064→      {renameOpen && (
+  1065→        <RenameDialog
+  1066→          open={renameOpen}
+  1067→          onOpenChange={setRenameOpen}
+  1068→          clubId={clubId}
+  1069→          conversationId={conversation.id}
+  1070→          currentName={conversation.name ?? ""}
+  1071→          onRenamed={() => {
+  1072→            setRenameOpen(false)
+  1073→            void qc.invalidateQueries({ queryKey: conversationsKey(clubId) })
+  1074→            onConversationMutated()
+  1075→          }}
+  1076→        />
+  1077→      )}
+  1078→
+  1079→      {/* Add member dialog */}
+  1080→      {addMemberOpen && (
+  1081→        <AddMemberDialog
+  1082→          open={addMemberOpen}
+  1083→          onOpenChange={setAddMemberOpen}
+  1084→          clubId={clubId}
+  1085→          conversationId={conversation.id}
+  1086→          onAdded={() => {
+  1087→            setAddMemberOpen(false)
+  1088→            void qc.invalidateQueries({ queryKey: conversationsKey(clubId) })
+  1089→            onConversationMutated()
+  1090→          }}
+  1091→        />
+  1092→      )}
+  1093→
+  1094→      {/* Leave confirm */}
+  1095→      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+  1096→        <AlertDialogContent>
+  1097→          <AlertDialogHeader>
+  1098→            <AlertDialogTitle>Leave this conversation?</AlertDialogTitle>
+  1099→            <AlertDialogDescription>
+  1100→              You will no longer receive messages from this group chat. You can
+  1101→              be re-added later by an owner or executive.
+  1102→            </AlertDialogDescription>
+  1103→          </AlertDialogHeader>
+  1104→          <AlertDialogFooter>
+  1105→            <AlertDialogCancel disabled={leaveMutation.isPending}>Cancel</AlertDialogCancel>
+  1106→            <AlertDialogAction
+  1107→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1108→              disabled={leaveMutation.isPending}
+  1109→              onClick={(e) => {
+  1110→                e.preventDefault()
+  1111→                leaveMutation.mutate()
+  1112→              }}
+  1113→            >
+  1114→              {leaveMutation.isPending ? (
+  1115→                <Loader2 className="h-4 w-4 animate-spin" />
+  1116→              ) : (
+  1117→                "Leave"
+  1118→              )}
+  1119→            </AlertDialogAction>
+  1120→          </AlertDialogFooter>
+  1121→        </AlertDialogContent>
+  1122→      </AlertDialog>
+  1123→    </div>
+  1124→  )
+  1125→}
+  1126→
+  1127→function ConversationAvatar({
+  1128→  conversation,
+  1129→  online,
+  1130→}: {
+  1131→  conversation: ConversationItem
+  1132→  online: Set<string>
+  1133→}) {
+  1134→  const isDirect = conversation.type === "direct"
+  1135→  const title = conversationTitle(conversation)
+  1136→  const otherId = conversation.otherUser?.id
+  1137→  const isOnline = !!otherId && online.has(otherId)
+  1138→
+  1139→  if (isDirect) {
+  1140→    return (
+  1141→      <div className="relative shrink-0">
+  1142→        <Avatar className="size-9">
+  1143→          <AvatarImage src={conversation.otherUser?.avatarUrl ?? undefined} alt={title} />
+  1144→          <AvatarFallback className={cn("text-xs", avatarColor(title))}>
+  1145→            {initials(title)}
+  1146→          </AvatarFallback>
+  1147→        </Avatar>
+  1148→        {isOnline && (
+  1149→          <span
+  1150→            className="absolute bottom-0 right-0 size-2.5 rounded-full bg-club ring-2 ring-card"
+  1151→            aria-label="Online"
+  1152→          />
+  1153→        )}
+  1154→      </div>
+  1155→    )
+  1156→  }
+  1157→  return (
+  1158→    <div
+  1159→      className={cn(
+  1160→        "size-9 rounded-full flex items-center justify-center text-xs font-medium shrink-0",
+  1161→        avatarColor(conversation.name ?? "G"),
+  1162→      )}
+  1163→    >
+  1164→      {initials(conversation.name ?? "G")}
+  1165→    </div>
+  1166→  )
+  1167→}
+  1168→
+  1169→/* =========================================================================
+  1170→   Members dropdown
+  1171→   ========================================================================= */
+  1172→
+  1173→function MembersDropdown({
+  1174→  clubId,
+  1175→  conversationId,
+  1176→  online,
+  1177→}: {
+  1178→  clubId: string
+  1179→  conversationId: string
+  1180→  online: Set<string>
+  1181→}) {
+  1182→  const { data } = useQuery<MemberListResponse>({
+  1183→    queryKey: ["chat-members", clubId, conversationId],
+  1184→    queryFn: () => api<MemberListResponse>(`/api/clubs/${clubId}/members`),
+  1185→    // We use the global members list — same data, just for "is this user online?" display.
+  1186→    staleTime: 30_000,
+  1187→  })
+  1188→
+  1189→  // For now we don't have a dedicated conversation members endpoint, so we
+  1190→  // show the full club member list filtered to those online. This is a
+  1191→  // lightweight display aid — to be enhanced.
+  1192→  const members = data?.members ?? []
+  1193→  const onlineMembers = members.filter((m) => online.has(m.user.id))
+  1194→
+  1195→  return (
+  1196→    <DropdownMenu>
+  1197→      <DropdownMenuTrigger asChild>
+  1198→        <Button
+  1199→          size="sm"
+  1200→          variant="ghost"
+  1201→          className="h-8 gap-1.5"
+  1202→          aria-label="View members"
+  1203→        >
+  1204→          <Users className="h-4 w-4" />
+  1205→          <span className="hidden sm:inline">Members</span>
+  1206→          <ChevronDown className="h-3 w-3 opacity-60" />
+  1207→        </Button>
+  1208→      </DropdownMenuTrigger>
+  1209→      <DropdownMenuContent align="end" className="w-64">
+  1210→        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+  1211→          Online ({onlineMembers.length})
+  1212→        </div>
+  1213→        <DropdownMenuSeparator />
+  1214→        {onlineMembers.length === 0 ? (
+  1215→          <div className="px-2 py-3 text-xs text-muted-foreground italic">
+  1216→            No one is online right now.
+  1217→          </div>
+  1218→        ) : (
+  1219→          onlineMembers.slice(0, 12).map((m) => (
+  1220→            <DropdownMenuItem key={m.user.id} className="gap-2 py-1.5">
+  1221→              <Avatar className="size-6">
+  1222→                <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+  1223→                <AvatarFallback className={cn("text-[10px]", avatarColor(m.user.name))}>
+  1224→                  {initials(m.user.name)}
+  1225→                </AvatarFallback>
+  1226→              </Avatar>
+  1227→              <span className="text-sm truncate">{m.user.name}</span>
+  1228→              {m.role === "executive" && (
+  1229→                <span className="ml-auto text-[10px] text-muted-foreground">exec</span>
+  1230→              )}
+  1231→            </DropdownMenuItem>
+  1232→          ))
+  1233→        )}
+  1234→      </DropdownMenuContent>
+  1235→    </DropdownMenu>
+  1236→  )
+  1237→}
+  1238→
+  1239→/* =========================================================================
+  1240→   Pinned bar
+  1241→   ========================================================================= */
+  1242→
+  1243→function PinnedMessagesBar({ pinned }: { pinned: PinnedMessage[] }) {
+  1244→  const [open, setOpen] = useState(true)
+  1245→  const [active, setActive] = useState<PinnedMessage | null>(null)
+  1246→  if (pinned.length === 0) return null
+  1247→  return (
+  1248→    <div className="border-b border-border bg-club-muted/30">
+  1249→      <button
+  1250→        type="button"
+  1251→        onClick={() => setOpen((o) => !o)}
+  1252→        className="w-full flex items-center gap-2 px-3 md:px-4 py-2 text-xs text-muted-foreground hover:text-foreground"
+  1253→      >
+  1254→        <Pin className="h-3.5 w-3.5" />
+  1255→        <span className="font-medium">
+  1256→          {pinned.length} pinned {pinned.length === 1 ? "message" : "messages"}
+  1257→        </span>
+  1258→        <ChevronDown
+  1259→          className={cn("ml-auto h-3.5 w-3.5 transition-transform", open ? "rotate-180" : "")}
+  1260→        />
+  1261→      </button>
+  1262→      {open && (
+  1263→        <div className="px-3 md:px-4 pb-2 space-y-1">
+  1264→          {pinned.map((p) => (
+  1265→            <button
+  1266→              key={p.id}
+  1267→              type="button"
+  1268→              onClick={() => setActive(p)}
+  1269→              className="w-full text-left px-3 py-1.5 rounded-md hover:bg-accent/60 dark:hover:bg-accent/40 text-xs"
+  1270→            >
+  1271→              <div className="flex items-baseline gap-1.5">
+  1272→                <span className="font-medium text-foreground">{p.author.name}</span>
+  1273→                <span className="text-[10px] text-muted-foreground">
+  1274→                  {relativeTime(p.createdAt)}
+  1275→                </span>
+  1276→              </div>
+  1277→              <div className="text-muted-foreground truncate">{truncate(p.body, 100)}</div>
+  1278→            </button>
+  1279→          ))}
+  1280→        </div>
+  1281→      )}
+  1282→      {active && (
+  1283→        <Dialog open onOpenChange={(o) => !o && setActive(null)}>
+  1284→          <DialogContent>
+  1285→            <DialogHeader>
+  1286→              <DialogTitle className="flex items-center gap-2">
+  1287→                <Pin className="h-4 w-4" />
+  1288→                Pinned message
+  1289→              </DialogTitle>
+  1290→              <DialogDescription>
+  1291→                {active.author.name} · {relativeTime(active.createdAt)}
+  1292→              </DialogDescription>
+  1293→            </DialogHeader>
+  1294→            <div className="text-body whitespace-pre-wrap break-words">
+  1295→              {linkify(active.body)}
+  1296→            </div>
+  1297→          </DialogContent>
+  1298→        </Dialog>
+  1299→      )}
+  1300→    </div>
+  1301→  )
+  1302→}
+  1303→
+  1304→/* =========================================================================
+  1305→   Message list
+  1306→   ========================================================================= */
+  1307→
+  1308→function MessageList({
+  1309→  messages,
+  1310→  conversationType,
+  1311→  myUserId,
+  1312→  isExec,
+  1313→  canPin,
+  1314→  canManage,
+  1315→  onEdit,
+  1316→  onDelete,
+  1317→  onReact,
+  1318→  onPin,
+  1319→}: {
+  1320→  messages: MessageItem[]
+  1321→  clubId: string
+  1322→  conversationId: string
+  1323→  conversationType: ConversationType
+  1324→  myUserId: string
+  1325→  isExec: boolean
+  1326→  canPin: boolean
+  1327→  canManage: boolean
+  1328→  onEdit: (messageId: string, body: string) => void
+  1329→  onDelete: (messageId: string) => void
+  1330→  onReact: (messageId: string, emoji: string) => void
+  1331→  onPin: (messageId: string, pinned: boolean) => void
+  1332→  reactingId: string
+  1333→}) {
+  1334→  // Group consecutive messages by the same author within 5 minutes for a compact look.
+  1335→  const grouped: MessageItem[][] = []
+  1336→  let currentGroup: MessageItem[] = []
+  1337→  let lastAuthorId: string | null = null
+  1338→  let lastTs = 0
+  1339→  for (const m of messages) {
+  1340→    const ts = new Date(m.createdAt).getTime()
+  1341→    if (
+  1342→      m.authorId === lastAuthorId &&
+  1343→      ts - lastTs < 5 * 60_000 &&
+  1344→      !m.deletedAt
+  1345→    ) {
+  1346→      currentGroup.push(m)
+  1347→    } else {
+  1348→      if (currentGroup.length > 0) grouped.push(currentGroup)
+  1349→      currentGroup = [m]
+  1350→    }
+  1351→    lastAuthorId = m.authorId
+  1352→    lastTs = ts
+  1353→  }
+  1354→  if (currentGroup.length > 0) grouped.push(currentGroup)
+  1355→
+  1356→  return (
+  1357→    <div className="space-y-3">
+  1358→      {grouped.map((group, gi) => {
+  1359→        const first = group[0]
+  1360→        const isMine = first.authorId === myUserId
+  1361→        const showAuthorHeader =
+  1362→          conversationType !== "direct" && !first.isMine && !first.deletedAt
+  1363→        return (
+  1364→          <div key={gi} className={cn("flex gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
+  1365→            {/* Avatar (only for group chats, others' messages) */}
+  1366→            <div className="w-8 shrink-0">
+  1367→              {showAuthorHeader && (
+  1368→                <Avatar className="size-8 mt-1">
+  1369→                  <AvatarImage src={first.author.avatarUrl ?? undefined} alt={first.author.name} />
+  1370→                  <AvatarFallback className={cn("text-[10px]", avatarColor(first.author.name))}>
+  1371→                    {initials(first.author.name)}
+  1372→                  </AvatarFallback>
+  1373→                </Avatar>
+  1374→              )}
+  1375→            </div>
+  1376→            <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
+  1377→              {showAuthorHeader && (
+  1378→                <div className="text-[10px] text-muted-foreground px-1">
+  1379→                  {first.author.name}
+  1380→                </div>
+  1381→              )}
+  1382→              <div className={cn("flex flex-col gap-1 w-full max-w-[78%]", isMine ? "items-end" : "items-start")}>
+  1383→                {group.map((m) => (
+  1384→                  <MessageBubble
+  1385→                    key={m.id}
+  1386→                    message={m}
+  1387→                    isMine={isMine}
+  1388→                    canDelete={m.isMine || canManage}
+  1389→                    canPin={canPin}
+  1390→                    showActions={!m.deletedAt}
+  1391→                    onEdit={(body) => onEdit(m.id, body)}
+  1392→                    onDelete={() => onDelete(m.id)}
+  1393→                    onReact={(emoji) => onReact(m.id, emoji)}
+  1394→                    onPin={(pinned) => onPin(m.id, pinned)}
+  1395→                  />
+  1396→                ))}
+  1397→              </div>
+  1398→            </div>
+  1399→          </div>
+  1400→        )
+  1401→      })}
+  1402→    </div>
+  1403→  )
+  1404→}
+  1405→
+  1406→function MessageBubble({
+  1407→  message,
+  1408→  isMine,
+  1409→  canDelete,
+  1410→  canPin,
+  1411→  showActions,
+  1412→  onEdit,
+  1413→  onDelete,
+  1414→  onReact,
+  1415→  onPin,
+  1416→}: {
+  1417→  message: MessageItem
+  1418→  isMine: boolean
+  1419→  canDelete: boolean
+  1420→  canPin: boolean
+  1421→  showActions: boolean
+  1422→  onEdit: (body: string) => void
+  1423→  onDelete: () => void
+  1424→  onReact: (emoji: string) => void
+  1425→  onPin: (pinned: boolean) => void
+  1426→}) {
+  1427→  const [editing, setEditing] = useState(false)
+  1428→  const [draft, setDraft] = useState(message.body)
+  1429→  const isDeleted = !!message.deletedAt
+  1430→
+  1431→  return (
+  1432→    <div
+  1433→      className={cn(
+  1434→        "group relative rounded-lg px-3 py-2 max-w-full text-sm break-words",
+  1435→        isMine
+  1436→          ? "bg-club text-club-foreground"
+  1437→          : "bg-accent text-accent-foreground dark:bg-accent/60",
+  1438→        isDeleted && "italic bg-muted/50 text-muted-foreground",
+  1439→      )}
+  1440→    >
+  1441→      {isDeleted ? (
+  1442→        <span>[message deleted]</span>
+  1443→      ) : editing ? (
+  1444→        <div className="flex flex-col gap-2 min-w-[220px]">
+  1445→          <Textarea
+  1446→            value={draft}
+  1447→            onChange={(e) => setDraft(e.target.value)}
+  1448→            className="bg-background text-foreground text-sm min-h-[60px] resize-none"
+  1449→            autoFocus
+  1450→            onKeyDown={(e) => {
+  1451→              if (e.key === "Enter" && !e.shiftKey) {
+  1452→                e.preventDefault()
+  1453→                if (draft.trim() && draft.trim() !== message.body) {
+  1454→                  onEdit(draft.trim())
+  1455→                }
+  1456→                setEditing(false)
+  1457→              } else if (e.key === "Escape") {
+  1458→                e.preventDefault()
+  1459→                setDraft(message.body)
+  1460→                setEditing(false)
+  1461→              }
+  1462→            }}
+  1463→          />
+  1464→          <div className="flex items-center justify-end gap-1">
+  1465→            <Button
+  1466→              size="sm"
+  1467→              variant="ghost"
+  1468→              className="h-7"
+  1469→              onClick={() => {
+  1470→                setDraft(message.body)
+  1471→                setEditing(false)
+  1472→              }}
+  1473→            >
+  1474→              Cancel
+  1475→            </Button>
+  1476→            <Button
+  1477→              size="sm"
+  1478→              variant="club"
+  1479→              className="h-7"
+  1480→              onClick={() => {
+  1481→                if (draft.trim() && draft.trim() !== message.body) {
+  1482→                  onEdit(draft.trim())
+  1483→                }
+  1484→                setEditing(false)
+  1485→              }}
+  1486→            >
+  1487→              Save
+  1488→            </Button>
+  1489→          </div>
+  1490→        </div>
+  1491→      ) : (
+  1492→        <div className="whitespace-pre-wrap break-words">{linkify(message.body)}</div>
+  1493→      )}
+  1494→
+  1495→      {!isDeleted && !editing && (
+  1496→        <div
+  1497→          className={cn(
+  1498→            "text-[10px] mt-1",
+  1499→            isMine ? "text-club-foreground/70" : "text-muted-foreground",
+  1500→          )}
+  1501→        >
+  1502→          {relativeTime(message.createdAt)}
+  1503→          {message.editedAt && <span className="ml-1 italic">(edited)</span>}
+  1504→          {message.pinnedAt && (
+  1505→            <span className="ml-1 inline-flex items-center gap-0.5">
+  1506→              <Pin className="h-2.5 w-2.5" /> pinned
+  1507→            </span>
+  1508→          )}
+  1509→        </div>
+  1510→      )}
+  1511→
+  1512→      {/* Reactions */}
+  1513→      {!isDeleted && message.reactions.length > 0 && (
+  1514→        <div className={cn("flex flex-wrap gap-1 mt-1.5")}>
+  1515→          {message.reactions.map((g) => (
+  1516→            <ReactionBadge
+  1517→              key={g.emoji}
+  1518→              group={g}
+  1519→              mine={message.myReaction === g.emoji}
+  1520→              isMine={isMine}
+  1521→              onClick={() => onReact(g.emoji)}
+  1522→            />
+  1523→          ))}
+  1524→        </div>
+  1525→      )}
+  1526→
+  1527→      {/* Hover actions */}
+  1528→      {!isDeleted && !editing && showActions && (
+  1529→        <div
+  1530→          className={cn(
+  1531→            "absolute top-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-0.5",
+  1532→            isMine ? "left-0 -translate-x-full pr-1" : "right-0 translate-x-full pl-1",
+  1533→          )}
+  1534→        >
+  1535→          <ReactionPopover onPick={onReact} />
+  1536→          <Tooltip>
+  1537→            <TooltipTrigger asChild>
+  1538→              <Button
+  1539→                size="icon"
+  1540→                variant="ghost"
+  1541→                className="size-7"
+  1542→                onClick={() => onEdit(message.body)}
+  1543→                aria-label="Edit message"
+  1544→                disabled={!message.isMine}
+  1545→              >
+  1546→                <Edit className="h-3.5 w-3.5" />
+  1547→              </Button>
+  1548→            </TooltipTrigger>
+  1549→            <TooltipContent>Edit</TooltipContent>
+  1550→          </Tooltip>
+  1551→          {canPin && (
+  1552→            <Tooltip>
+  1553→              <TooltipTrigger asChild>
+  1554→                <Button
+  1555→                  size="icon"
+  1556→                  variant="ghost"
+  1557→                  className="size-7"
+  1558→                  onClick={() => onPin(!message.pinnedAt)}
+  1559→                  aria-label={message.pinnedAt ? "Unpin message" : "Pin message"}
+  1560→                >
+  1561→                  {message.pinnedAt ? (
+  1562→                    <PinOff className="h-3.5 w-3.5" />
+  1563→                  ) : (
+  1564→                    <Pin className="h-3.5 w-3.5" />
+  1565→                  )}
+  1566→                </Button>
+  1567→              </TooltipTrigger>
+  1568→              <TooltipContent>{message.pinnedAt ? "Unpin" : "Pin"}</TooltipContent>
+  1569→            </Tooltip>
+  1570→          )}
+  1571→          {canDelete && (
+  1572→            <Tooltip>
+  1573→              <TooltipTrigger asChild>
+  1574→                <Button
+  1575→                  size="icon"
+  1576→                  variant="ghost"
+  1577→                  className="size-7 hover:text-destructive"
+  1578→                  onClick={onDelete}
+  1579→                  aria-label="Delete message"
+  1580→                >
+  1581→                  <Trash2 className="h-3.5 w-3.5" />
+  1582→                </Button>
+  1583→              </TooltipTrigger>
+  1584→              <TooltipContent>Delete</TooltipContent>
+  1585→            </Tooltip>
+  1586→          )}
+  1587→        </div>
+  1588→      )}
+  1589→    </div>
+  1590→  )
+  1591→}
+  1592→
+  1593→function ReactionBadge({
+  1594→  group,
+  1595→  mine,
+  1596→  isMine,
+  1597→  onClick,
+  1598→}: {
+  1599→  group: ReactionGroup
+  1600→  mine: boolean
+  1601→  isMine: boolean
+  1602→  onClick: () => void
+  1603→}) {
+  1604→  const names = group.users.map((u) => u.name).join(", ")
+  1605→  return (
+  1606→    <Tooltip>
+  1607→      <TooltipTrigger asChild>
+  1608→        <button
+  1609→          type="button"
+  1610→          onClick={onClick}
+  1611→          title={names}
+  1612→          className={cn(
+  1613→            "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs border transition-colors",
+  1614→            mine
+  1615→              ? "border-club bg-club-muted text-club"
+  1616→              : isMine
+  1617→                ? "border-club-foreground/20 bg-club-foreground/10 text-club-foreground"
+  1618→                : "border-border bg-background/80 text-foreground hover:bg-accent",
+  1619→          )}
+  1620→        >
+  1621→          <span>{group.emoji}</span>
+  1622→          <span className="tabular-nums font-medium">{group.count}</span>
+  1623→        </button>
+  1624→      </TooltipTrigger>
+  1625→      <TooltipContent>{names}</TooltipContent>
+  1626→    </Tooltip>
+  1627→  )
+  1628→}
+  1629→
+  1630→function ReactionPopover({ onPick }: { onPick: (emoji: string) => void }) {
+  1631→  return (
+  1632→    <Popover>
+  1633→      <Tooltip>
+  1634→        <TooltipTrigger asChild>
+  1635→          <PopoverTrigger asChild>
+  1636→            <Button
+  1637→              size="icon"
+  1638→              variant="ghost"
+  1639→              className="size-7"
+  1640→              aria-label="Add reaction"
+  1641→            >
+  1642→              <SmilePlus className="h-3.5 w-3.5" />
+  1643→            </Button>
+  1644→          </PopoverTrigger>
+  1645→        </TooltipTrigger>
+  1646→        <TooltipContent>React</TooltipContent>
+  1647→      </Tooltip>
+  1648→      <PopoverContent className="w-auto p-1.5">
+  1649→        <div className="flex items-center gap-0.5">
+  1650→          {REACTION_EMOJIS.map((e) => (
+  1651→            <button
+  1652→              key={e}
+  1653→              type="button"
+  1654→              onClick={() => onPick(e)}
+  1655→              className="text-lg leading-none p-1.5 rounded hover:bg-accent"
+  1656→              aria-label={`React ${e}`}
+  1657→            >
+  1658→              {e}
+  1659→            </button>
+  1660→          ))}
+  1661→        </div>
+  1662→      </PopoverContent>
+  1663→    </Popover>
+  1664→  )
+  1665→}
+  1666→
+  1667→/* =========================================================================
+  1668→   Typing indicator
+  1669→   ========================================================================= */
+  1670→
+  1671→/**
+  1672→ * Shows "X is typing…" / "Several people are typing…" below the conversation
+  1673→ * header. Subscribes directly to `realtime:club` events with type `chat_typing`
+  1674→ * (and `chat_typing:stop`) — we deliberately DON'T invalidate React-Query here
+  1675→ * because typing is ephemeral and shouldn't trigger message refetches.
+  1676→ *
+  1677→ * Each typing entry expires after TYPING_TTL_MS so a disconnected user
+  1678→ * doesn't stay "typing" forever.
+  1679→ */
+  1680→function TypingIndicator({
+  1681→  conversationId,
+  1682→  myUserId,
+  1683→}: {
+  1684→  conversationId: string
+  1685→  myUserId: string
+  1686→}) {
+  1687→  const clubId = useAppStore((s) => s.currentClubId)
+  1688→  // Map<userId, expiresAt>
+  1689→  const [typingUsers, setTypingUsers] = useState<Map<string, number>>(() => new Map())
+  1690→
+  1691→  useEffect(() => {
+  1692→    const bump = (userId: string, expiresAt: number) => {
+  1693→      setTypingUsers((prev) => {
+  1694→        const next = new Map(prev)
+  1695→        next.set(userId, expiresAt)
+  1696→        return next
+  1697→      })
+  1698→    }
+  1699→    const remove = (userId: string) => {
+  1700→      setTypingUsers((prev) => {
+  1701→        if (!prev.has(userId)) return prev
+  1702→        const next = new Map(prev)
+  1703→        next.delete(userId)
+  1704→        return next
+  1705→      })
+  1706→    }
+  1707→
+  1708→    const onClub = (data: any) => {
+  1709→      if (!data || data.conversationId !== conversationId) return
+  1710→      if (data.userId === myUserId) return // ignore self
+  1711→      if (data.type === "chat_typing") {
+  1712→        bump(data.userId, Date.now() + TYPING_TTL_MS)
+  1713→      } else if (data.type === "chat_typing:stop") {
+  1714→        remove(data.userId)
+  1715→      }
+  1716→    }
+  1717→    const unsub = onRealtimeEvent("realtime:club", onClub)
+  1718→
+  1719→    // Sweep expired typing entries every second so a stale "X is typing…"
+  1720→    // doesn't linger if the user stops typing without sending a stop event
+  1721→    // (e.g. they closed their tab).
+  1722→    const sweeper = setInterval(() => {
+  1723→      setTypingUsers((prev) => {
+  1724→        const now = Date.now()
+  1725→        let changed = false
+  1726→        const next = new Map<string, number>()
+  1727→        for (const [uid, expiresAt] of prev) {
+  1728→          if (expiresAt > now) next.set(uid, expiresAt)
+  1729→          else changed = true
+  1730→        }
+  1731→        return changed ? next : prev
+  1732→      })
+  1733→    }, 1000)
+  1734→
+  1735→    return () => {
+  1736→      unsub()
+  1737→      clearInterval(sweeper)
+  1738→    }
+  1739→  }, [conversationId, myUserId])
+  1740→
+  1741→  // Look up display names for the typing users. We use the global members
+  1742→  // list (cached via React-Query elsewhere) so we don't fire another fetch
+  1743→  // here. Stale data is fine — names rarely change.
+  1744→  const { data: membersData } = useQuery<MemberListResponse>({
+  1745→    queryKey: ["members", clubId ?? ""],
+  1746→    queryFn: () => api<MemberListResponse>(`/api/clubs/${clubId ?? ""}/members`),
+  1747→    enabled: !!clubId && typingUsers.size > 0,
+  1748→    staleTime: 60_000,
+  1749→  })
+  1750→  const nameFor = (userId: string) =>
+  1751→    membersData?.members.find((m) => m.user.id === userId)?.user.name ?? "Someone"
+  1752→
+  1753→  const others = Array.from(typingUsers.keys())
+  1754→  if (others.length === 0) return null
+  1755→  const label =
+  1756→    others.length === 1
+  1757→      ? `${nameFor(others[0])} is typing…`
+  1758→      : others.length === 2
+  1759→        ? `${nameFor(others[0])} and ${nameFor(others[1])} are typing…`
+  1760→        : "Several people are typing…"
+  1761→
+  1762→  return (
+  1763→    <div
+  1764→      className="px-3 md:px-4 py-1.5 text-caption text-muted-foreground border-t border-border/40 bg-muted/20"
+  1765→      role="status"
+  1766→      aria-live="polite"
+  1767→    >
+  1768→      <span className="inline-flex items-center gap-1.5">
+  1769→        <span className="inline-flex items-center gap-0.5">
+  1770→          <span className="h-1 w-1 rounded-full bg-club animate-bounce [animation-delay:0ms]" />
+  1771→          <span className="h-1 w-1 rounded-full bg-club animate-bounce [animation-delay:120ms]" />
+  1772→          <span className="h-1 w-1 rounded-full bg-club animate-bounce [animation-delay:240ms]" />
+  1773→        </span>
+  1774→        {label}
+  1775→      </span>
+  1776→    </div>
+  1777→  )
+  1778→}
+  1779→
+  1780→/* =========================================================================
+  1781→   Composer
+  1782→   ========================================================================= */
+  1783→
+  1784→function MessageComposer({
+  1785→  clubId,
+  1786→  conversationId,
+  1787→  myUserId,
+  1788→  onSend,
+  1789→  disabled,
+  1790→}: {
+  1791→  clubId: string
+  1792→  conversationId: string
+  1793→  myUserId: string
+  1794→  onSend: (body: string) => void
+  1795→  disabled: boolean
+  1796→}) {
+  1797→  const [value, setValue] = useState("")
+  1798→  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  1799→  const lastTypingAtRef = useRef<number>(0)
+  1800→
+  1801→  // Load the club members list (cached) to power the @mention picker.
+  1802→  const { data: membersData } = useQuery<MemberListResponse>({
+  1803→    queryKey: ["members", clubId],
+  1804→    queryFn: () => api<MemberListResponse>(`/api/clubs/${clubId}/members`),
+  1805→    staleTime: 30_000,
+  1806→  })
+  1807→  const members: MentionableMember[] = (membersData?.members ?? [])
+  1808→    .filter((m) => m.user.id !== myUserId)
+  1809→    .map((m) => ({
+  1810→      userId: m.user.id,
+  1811→      name: m.user.name,
+  1812→      avatarUrl: m.user.avatarUrl ?? null,
+  1813→    }))
+  1814→
+  1815→  // Auto-grow.
+  1816→  useEffect(() => {
+  1817→    const el = textareaRef.current
+  1818→    if (!el) return
+  1819→    el.style.height = "auto"
+  1820→    el.style.height = Math.min(el.scrollHeight, 160) + "px"
+  1821→  }, [value])
+  1822→
+  1823→  // Emit a typing event (debounced). We throttle to one event per
+  1824→  // TYPING_DEBOUNCE_MS so the server isn't spammed on every keystroke.
+  1825→  function maybeEmitTyping() {
+  1826→    const now = Date.now()
+  1827→    if (now - lastTypingAtRef.current < TYPING_DEBOUNCE_MS) return
+  1828→    lastTypingAtRef.current = now
+  1829→    try {
+  1830→      const socket = getRealtimeSocket()
+  1831→      if (socket.connected) {
+  1832→        socket.emit("typing", { clubId, conversationId, userId: myUserId })
+  1833→      }
+  1834→    } catch {
+  1835→      // ignore — typing indicators are best-effort
+  1836→    }
+  1837→  }
+  1838→
+  1839→  function submit() {
+  1840→    const body = value.trim()
+  1841→    if (!body || disabled) return
+  1842→    onSend(body)
+  1843→    setValue("")
+  1844→    // Clear typing on send (so other clients stop showing "is typing" after
+  1845→    // the message arrives). We send a stop event so the indicator clears
+  1846→    // immediately rather than after the TTL expires.
+  1847→    try {
+  1848→      const socket = getRealtimeSocket()
+  1849→      if (socket.connected) {
+  1850→        socket.emit("typing:stop", { clubId, conversationId, userId: myUserId })
+  1851→      }
+  1852→    } catch {
+  1853→      // ignore
+  1854→    }
+  1855→  }
+  1856→
+  1857→  return (
+  1858→    <div className="border-t border-border p-3 md:p-4">
+  1859→      <div className="flex items-end gap-2">
+  1860→        <MentionableTextarea
+  1861→          ref={textareaRef}
+  1862→          value={value}
+  1863→          members={members}
+  1864→          onChange={(e) => {
+  1865→            setValue(e.target.value)
+  1866→            maybeEmitTyping()
+  1867→          }}
+  1868→          placeholder="Type a message… use @ to mention someone"
+  1869→          className="flex-1 resize-none min-h-[40px] max-h-40"
+  1870→          rows={1}
+  1871→          onKeyDown={(e) => {
+  1872→            if (e.key === "Enter" && !e.shiftKey) {
+  1873→              e.preventDefault()
+  1874→              submit()
+  1875→            }
+  1876→          }}
+  1877→          aria-label="Message input"
+  1878→          disabled={disabled}
+  1879→          listLabel="Mention a club member"
+  1880→        />
+  1881→        <Button
+  1882→          variant="club"
+  1883→          size="icon"
+  1884→          className="size-10 shrink-0"
+  1885→          onClick={submit}
+  1886→          disabled={disabled || !value.trim()}
+  1887→          aria-label="Send message"
+  1888→        >
+  1889→          {disabled ? (
+  1890→            <Loader2 className="h-4 w-4 animate-spin" />
+  1891→          ) : (
+  1892→            <Send className="h-4 w-4" />
+  1893→          )}
+  1894→        </Button>
+  1895→      </div>
+  1896→      <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
+  1897→        Press <kbd className="rounded border border-border px-1">Enter</kbd> to send,{" "}
+  1898→        <kbd className="rounded border border-border px-1">Shift+Enter</kbd> for a new line.
+  1899→        Type <kbd className="rounded border border-border px-1">@</kbd> to mention someone.
+  1900→      </p>
+  1901→    </div>
+  1902→  )
+  1903→}
+  1904→
+  1905→/* =========================================================================
+  1906→   New group chat dialog
+  1907→   ========================================================================= */
+  1908→
+  1909→function NewGroupChatDialog({
+  1910→  open,
+  1911→  onOpenChange,
+  1912→  clubId,
+  1913→  myUserId,
+  1914→  onCreated,
+  1915→}: {
+  1916→  open: boolean
+  1917→  onOpenChange: (open: boolean) => void
+  1918→  clubId: string
+  1919→  myUserId: string
+  1920→  onCreated: (conversationId: string) => void
+  1921→}) {
+  1922→  const [name, setName] = useState("")
+  1923→  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  1924→  const [submitting, setSubmitting] = useState(false)
+  1925→
+  1926→  const { data: membersData } = useQuery<MemberListResponse>({
+  1927→    queryKey: ["members", clubId],
+  1928→    queryFn: () => api<MemberListResponse>(`/api/clubs/${clubId}/members`),
+  1929→    enabled: open && !!clubId,
+  1930→    staleTime: 30_000,
+  1931→  })
+  1932→
+  1933→  const others = (membersData?.members ?? []).filter((m) => m.user.id !== myUserId)
+  1934→  const selectedCount = selected.size
+  1935→
+  1936→  function toggle(userId: string) {
+  1937→    setSelected((prev) => {
+  1938→      const next = new Set(prev)
+  1939→      if (next.has(userId)) next.delete(userId)
+  1940→      else next.add(userId)
+  1941→      return next
+  1942→    })
+  1943→  }
+  1944→
+  1945→  async function handleSubmit() {
+  1946→    const trimmed = name.trim()
+  1947→    if (!trimmed || selected.size === 0) return
+  1948→    setSubmitting(true)
+  1949→    try {
+  1950→      const res = await api<{ conversation: { id: string } }>(
+  1951→        `/api/clubs/${clubId}/chat/conversations`,
+  1952→        { method: "POST", json: { type: "group", name: trimmed, memberUserIds: Array.from(selected) } },
+  1953→      )
+  1954→      toast.success("Group chat created")
+  1955→      setName("")
+  1956→      setSelected(new Set())
+  1957→      onCreated(res.conversation.id)
+  1958→    } catch (e) {
+  1959→      toast.error(e instanceof Error ? e.message : "Failed to create group chat")
+  1960→    } finally {
+  1961→      setSubmitting(false)
+  1962→    }
+  1963→  }
+  1964→
+  1965→  return (
+  1966→    <Dialog
+  1967→      open={open}
+  1968→      onOpenChange={(o) => {
+  1969→        if (!o) {
+  1970→          setName("")
+  1971→          setSelected(new Set())
+  1972→        }
+  1973→        onOpenChange(o)
+  1974→      }}
+  1975→    >
+  1976→      <DialogContent>
+  1977→        <DialogHeader>
+  1978→          <DialogTitle>New group chat</DialogTitle>
+  1979→          <DialogDescription>
+  1980→            Create a group chat with other members of this club.
+  1981→          </DialogDescription>
+  1982→        </DialogHeader>
+  1983→        <div className="space-y-4">
+  1984→          <div className="space-y-1.5">
+  1985→            <Label htmlFor="group-name">Group name</Label>
+  1986→            <Input
+  1987→              id="group-name"
+  1988→              value={name}
+  1989→              onChange={(e) => setName(e.target.value)}
+  1990→              placeholder="e.g. Project team"
+  1991→              maxLength={100}
+  1992→            />
+  1993→          </div>
+  1994→          <div className="space-y-1.5">
+  1995→            <Label>Members ({selectedCount} selected)</Label>
+  1996→            <div className="max-h-72 overflow-y-auto scrollbar-thin rounded-md border border-border divide-y divide-border">
+  1997→              {others.length === 0 ? (
+  1998→                <div className="p-3 text-xs text-muted-foreground italic">
+  1999→                  No other club members.
+  2000→                </div>
+
+[showing lines 1-2000 of 2373; use offset=2001 with limit to continue reading]

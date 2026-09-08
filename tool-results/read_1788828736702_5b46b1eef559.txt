@@ -1,0 +1,1141 @@
+     1→"use client"
+     2→
+     3→import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
+     4→import { useQuery } from "@tanstack/react-query"
+     5→import { useAppStore, type View } from "@/lib/store"
+     6→import { api } from "@/lib/api/client"
+     7→import { cn } from "@/lib/utils"
+     8→import { usePollingFallback } from "@/lib/realtime-store"
+     9→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    10→import { Button } from "@/components/ui/button"
+    11→import { Progress } from "@/components/ui/progress"
+    12→import { Separator } from "@/components/ui/separator"
+    13→import { Badge } from "@/components/ui/badge"
+    14→import {
+    15→  EmptyState, StatCardSkeleton, initials, relativeTime, avatarColor,
+    16→} from "@/components/shared/page-header"
+    17→import { toast } from "sonner"
+    18→import { format, isPast, isToday, parseISO } from "date-fns"
+    19→import {
+    20→  Trophy, Clock, CheckCircle2, CalendarDays, Megaphone, ListChecks,
+    21→  Users, TrendingUp, Pin, MapPin, ChevronRight, ShieldCheck,
+    22→  Target, Hourglass, ClipboardList, PartyPopper, X, BarChart3,
+    23→} from "lucide-react"
+    24→import {
+    25→  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+    26→} from "recharts"
+    27→
+    28→// =========================================================================
+    29→// Types — unchanged (matches the dashboard API response shape)
+    30→// =========================================================================
+    31→interface DashboardData {
+    32→  club: {
+    33→    id: string
+    34→    name: string
+    35→    description: string | null
+    36→    accentColor: string
+    37→    logoUrl: string | null
+    38→    hoursGoal: number
+    39→    memberCount: number
+    40→    createdAt: string
+    41→  }
+    42→  myRole: "member" | "executive"
+    43→  myStats: {
+    44→    approvedHours: number
+    45→    pendingHours: number
+    46→    tasksAssigned: number
+    47→    tasksDone: number
+    48→    upcomingMeetings: number
+    49→    myRsvpsGoing: number
+    50→  }
+    51→  clubStats: {
+    52→    totalMembers: number
+    53→    totalApprovedHours: number
+    54→    pendingApprovals: number
+    55→    openTasks: number
+    56→    tasksDone: number
+    57→    upcomingMeetingsCount: number
+    58→    announcementsThisMonth: number
+    59→    teamsCount: number
+    60→  }
+    61→  leaderboard: {
+    62→    userId: string
+    63→    name: string
+    64→    avatarUrl: string | null
+    65→    hours: number
+    66→  }[]
+    67→  recentAnnouncements: {
+    68→    id: string
+    69→    title: string
+    70→    isPinned: boolean
+    71→    createdAt: string
+    72→    authorName: string
+    73→  }[]
+    74→  myTasks: {
+    75→    id: string
+    76→    title: string
+    77→    dueDate: string | null
+    78→    status: string
+    79→    teamName: string | null
+    80→  }[]
+    81→  upcomingMeetings: {
+    82→    id: string
+    83→    title: string
+    84→    startTime: string
+    85→    location: string
+    86→    myRsvp: "going" | "not_going" | "maybe" | null
+    87→  }[]
+    88→  hoursTrend: { date: string; hours: number }[]
+    89→  execStats: {
+    90→    avgApprovalTurnaroundHours: number | null
+    91→    submissionsThisWeek: number
+    92→    taskCompletionRate: number
+    93→  } | null
+    94→}
+    95→
+    96→/** Inline style for staggered fade-in cascade. */
+    97→function stagger(i: number): CSSProperties {
+    98→  return {
+    99→    animationDelay: `${i * 50}ms`,
+   100→    animationFillMode: "backwards",
+   101→  }
+   102→}
+   103→
+   104→// =========================================================================
+   105→// Main component
+   106→// =========================================================================
+   107→export function DashboardView() {
+   108→  const clubId = useAppStore((s) => s.currentClubId)
+   109→  const setView = useAppStore((s) => s.setView)
+   110→  const currentClub = useAppStore((s) => s.currentClub)
+   111→  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
+   112→
+   113→  // Read dismissed state from localStorage on club change.
+   114→  // Deferred to a microtask so we don't call setState synchronously
+   115→  // inside the effect body (avoids cascading renders).
+   116→  useEffect(() => {
+   117→    if (!clubId) return
+   118→    let cancelled = false
+   119→    Promise.resolve().then(() => {
+   120→      if (cancelled) return
+   121→      try {
+   122→        const v = localStorage.getItem(`onboarding-dismissed-${clubId}`)
+   123→        setOnboardingDismissed(v === "true")
+   124→      } catch {
+   125→        setOnboardingDismissed(false)
+   126→      }
+   127→    })
+   128→    return () => {
+   129→      cancelled = true
+   130→    }
+   131→  }, [clubId])
+   132→
+   133→  const { data, isLoading, error } = useQuery<DashboardData>({
+   134→    queryKey: ["dashboard", clubId],
+   135→    queryFn: () => api<DashboardData>(`/api/clubs/${clubId}/dashboard`),
+   136→    enabled: !!clubId,
+   137→    staleTime: 30_000,
+   138→    // Realtime is primary; poll only as a fallback while the socket is down.
+   139→    refetchInterval: usePollingFallback(15000),
+   140→  })
+   141→
+   142→  useEffect(() => {
+   143→    if (error) toast.error((error as Error).message || "Failed to load dashboard")
+   144→  }, [error])
+   145→
+   146→  if (!clubId) {
+   147→    return (
+   148→      <EmptyState
+   149→        icon={<Users className="h-8 w-8" />}
+   150→        title="No club selected"
+   151→        description="Pick a club from the sidebar to view its dashboard."
+   152→      />
+   153→    )
+   154→  }
+   155→
+   156→  if (isLoading || !data) {
+   157→    return <DashboardSkeleton />
+   158→  }
+   159→
+   160→  const isExec = data.myRole === "executive"
+   161→  const hasActivity =
+   162→    data.recentAnnouncements.length > 0 || data.clubStats.teamsCount > 0
+   163→  const showOnboarding = !onboardingDismissed && !hasActivity
+   164→
+   165→  const dismissOnboarding = () => {
+   166→    try {
+   167→      localStorage.setItem(`onboarding-dismissed-${clubId}`, "true")
+   168→    } catch {
+   169→      /* ignore */
+   170→    }
+   171→    setOnboardingDismissed(true)
+   172→  }
+   173→
+   174→  // -- Tier 1 attention items ------------------------------------------------
+   175→  const attentionItems: ReactNode[] = []
+   176→  let idx = 0
+   177→
+   178→  if (isExec && data.clubStats.pendingApprovals > 0) {
+   179→    const n = data.clubStats.pendingApprovals
+   180→    attentionItems.push(
+   181→      <AttentionCard
+   182→        key="approvals"
+   183→        delay={idx++ * 50}
+   184→        icon={<ShieldCheck className="h-4 w-4" />}
+   185→        title={`${n} pending approval${n === 1 ? "" : "s"}`}
+   186→        description="Awaiting your review"
+   187→        onClick={() => setView("approvals")}
+   188→      />
+   189→    )
+   190→  }
+   191→
+   192→  if (data.myStats.pendingHours > 0) {
+   193→    attentionItems.push(
+   194→      <AttentionCard
+   195→        key="hours"
+   196→        delay={idx++ * 50}
+   197→        icon={<Hourglass className="h-4 w-4" />}
+   198→        title={`${fmtHours(data.myStats.pendingHours)}h awaiting review`}
+   199→        description="Your submitted service hours"
+   200→        onClick={() => setView("hours")}
+   201→      />
+   202→    )
+   203→  }
+   204→
+   205→  // Tasks due soon / overdue
+   206→  const tasksWithDue = data.myTasks
+   207→    .filter((t) => t.status !== "done")
+   208→    .map((t) => ({ ...t, due: t.dueDate ? new Date(t.dueDate) : null }))
+   209→  const overdueTasks = tasksWithDue.filter(
+   210→    (t) => t.due && isPast(t.due) && !isToday(t.due)
+   211→  )
+   212→  const dueSoon = tasksWithDue
+   213→    .filter((t) => !t.due || !isPast(t.due) || isToday(t.due))
+   214→    .sort((a, b) => {
+   215→      if (!a.due) return 1
+   216→      if (!b.due) return -1
+   217→      return a.due.getTime() - b.due.getTime()
+   218→    })
+   219→    .slice(0, 3)
+   220→  const topTasks = [...overdueTasks.slice(0, 2), ...dueSoon].slice(0, 3)
+   221→
+   222→  if (topTasks.length > 0) {
+   223→    const n = overdueTasks.length
+   224→    attentionItems.push(
+   225→      <AttentionCard
+   226→        key="tasks"
+   227→        delay={idx++ * 50}
+   228→        icon={<ClipboardList className="h-4 w-4" />}
+   229→        title={n > 0 ? `${n} overdue task${n === 1 ? "" : "s"}` : "Tasks due soon"}
+   230→        description={
+   231→          n > 0
+   232→            ? "Needs your attention"
+   233→            : `${data.myStats.tasksAssigned} open task${data.myStats.tasksAssigned === 1 ? "" : "s"} assigned`
+   234→        }
+   235→        onClick={() => setView("tasks")}
+   236→        urgent={n > 0}
+   237→      >
+   238→        <ul className="mt-2.5 space-y-1.5">
+   239→          {topTasks.map((t) => {
+   240→            const isOverdue = t.due && isPast(t.due) && !isToday(t.due)
+   241→            return (
+   242→              <li key={t.id} className="flex items-center gap-2 text-body">
+   243→                {isOverdue ? (
+   244→                  <span
+   245→                    className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0"
+   246→                    aria-label="Overdue"
+   247→                  />
+   248→                ) : (
+   249→                  <span
+   250→                    className="h-1.5 w-1.5 rounded-full bg-club shrink-0"
+   251→                    aria-label="Upcoming"
+   252→                  />
+   253→                )}
+   254→                <span className="truncate">{t.title}</span>
+   255→                {t.due && (
+   256→                  <span
+   257→                    className={cn(
+   258→                      "ml-auto text-caption shrink-0 tabular-nums",
+   259→                      isOverdue && "text-red-600 dark:text-red-400 font-medium"
+   260→                    )}
+   261→                  >
+   262→                    {format(t.due, "MMM d")}
+   263→                  </span>
+   264→                )}
+   265→              </li>
+   266→            )
+   267→          })}
+   268→        </ul>
+   269→      </AttentionCard>
+   270→    )
+   271→  }
+   272→
+   273→  // Pinned announcements (last 1-2)
+   274→  const pinned = data.recentAnnouncements.filter((a) => a.isPinned).slice(0, 2)
+   275→  if (pinned.length > 0) {
+   276→    attentionItems.push(
+   277→      <AttentionCard
+   278→        key="pinned"
+   279→        delay={idx++ * 50}
+   280→        icon={<Pin className="h-4 w-4" />}
+   281→        title="Pinned announcement"
+   282→        description={pinned.length > 1 ? `${pinned.length} pinned posts` : "From your club"}
+   283→        onClick={() => setView("announcements")}
+   284→      >
+   285→        <ul className="mt-2.5 space-y-1.5">
+   286→          {pinned.map((a) => (
+   287→            <li key={a.id} className="text-body truncate">
+   288→              {a.title}
+   289→            </li>
+   290→          ))}
+   291→        </ul>
+   292→      </AttentionCard>
+   293→    )
+   294→  }
+   295→
+   296→  // Hours goal progress (for snapshot)
+   297→  const hoursPct =
+   298→    data.club.hoursGoal > 0
+   299→      ? Math.min(100, (data.myStats.approvedHours / data.club.hoursGoal) * 100)
+   300→      : 0
+   301→
+   302→  return (
+   303→    <div className="space-y-4 sm:space-y-5">
+   304→      {/* Row 1 — Slim hero bar --------------------------------------------- */}
+   305→      <HeroBar
+   306→        name={data.club.name}
+   307→        logoUrl={data.club.logoUrl}
+   308→        memberCount={data.club.memberCount}
+   309→        createdAt={data.club.createdAt}
+   310→        role={data.myRole}
+   311→      />
+   312→
+   313→      {/* Row 2 — Tier 1 (or onboarding banner) ----------------------------- */}
+   314→      {showOnboarding ? (
+   315→        <OnboardingBanner
+   316→          clubCode={currentClub?.clubCode ?? null}
+   317→          onDismiss={dismissOnboarding}
+   318→          onNavigate={setView}
+   319→          teamsCount={data.clubStats.teamsCount}
+   320→          announcementsCount={
+   321→            data.recentAnnouncements.length + data.clubStats.announcementsThisMonth
+   322→          }
+   323→          meetingsCount={data.clubStats.upcomingMeetingsCount}
+   324→          memberCount={data.club.memberCount}
+   325→        />
+   326→      ) : attentionItems.length === 0 ? (
+   327→        <AllCaughtUpCard />
+   328→      ) : (
+   329→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   330→          {attentionItems}
+   331→        </div>
+   332→      )}
+   333→
+   334→      {/* Rows 3+4 — chart + leaderboard + snapshot + announcements + meetings */}
+   335→      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+   336→        {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 */}
+   337→        <section
+   338→          className="card-quiet p-5 lg:col-span-8 order-2 lg:order-1 animate-fade-in"
+   339→          style={stagger(2)}
+   340→        >
+   341→          <div className="flex items-center justify-between mb-4">
+   342→            <div className="flex items-center gap-2">
+   343→              <TrendingUp className="h-4 w-4 text-club" />
+   344→              <h2 className="text-card-title">Approved hours · last 30 days</h2>
+   345→            </div>
+   346→            <Badge variant="secondary" className="text-xs tabular-nums">
+   347→              Total {fmtHours(data.hoursTrend.reduce((s, d) => s + d.hours, 0))}h
+   348→            </Badge>
+   349→          </div>
+   350→          {data.hoursTrend.every((d) => d.hours === 0) ? (
+   351→            <EmptyState
+   352→              icon={<BarChart3 className="h-8 w-8" />}
+   353→              title="No hours logged yet"
+   354→              description="Once hours are approved, you'll see a 30-day trend here."
+   355→            />
+   356→          ) : (
+   357→            <div
+   358→              className="h-56 w-full min-w-0"
+   359→              aria-label="Approved hours trend chart"
+   360→            >
+   361→              <ResponsiveContainer width="100%" height="100%">
+   362→                <AreaChart
+   363→                  data={data.hoursTrend}
+   364→                  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+   365→                >
+   366→                  <defs>
+   367→                    <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
+   368→                      <stop
+   369→                        offset="0%"
+   370→                        stopColor="var(--club-accent)"
+   371→                        stopOpacity={0.4}
+   372→                      />
+   373→                      <stop
+   374→                        offset="100%"
+   375→                        stopColor="var(--club-accent)"
+   376→                        stopOpacity={0.02}
+   377→                      />
+   378→                    </linearGradient>
+   379→                  </defs>
+   380→                  <CartesianGrid
+   381→                    strokeDasharray="3 3"
+   382→                    stroke="hsl(var(--border))"
+   383→                    strokeOpacity={0.5}
+   384→                    vertical={false}
+   385→                  />
+   386→                  <XAxis
+   387→                    dataKey="date"
+   388→                    tick={{ fontSize: 10, fill: "currentColor" }}
+   389→                    tickFormatter={(d) => format(parseISO(d), "MMM d")}
+   390→                    interval={Math.floor(data.hoursTrend.length / 6)}
+   391→                    axisLine={false}
+   392→                    tickLine={false}
+   393→                    className="text-muted-foreground"
+   394→                  />
+   395→                  <YAxis
+   396→                    tick={{ fontSize: 10, fill: "currentColor" }}
+   397→                    allowDecimals={false}
+   398→                    width={32}
+   399→                    axisLine={false}
+   400→                    tickLine={false}
+   401→                    className="text-muted-foreground"
+   402→                  />
+   403→                  <Tooltip
+   404→                    contentStyle={{
+   405→                      borderRadius: 8,
+   406→                      border: "1px solid hsl(var(--border, 220 13% 91%))",
+   407→                      background: "hsl(var(--popover, 0 0% 100%))",
+   408→                      color: "hsl(var(--popover-foreground, 0 0% 0%))",
+   409→                      fontSize: 12,
+   410→                    }}
+   411→                    labelFormatter={(d) =>
+   412→                      format(parseISO(String(d)), "MMM d, yyyy")
+   413→                    }
+   414→                    formatter={(value: number) => [
+   415→                      `${fmtHours(value)}h`,
+   416→                      "Approved hours",
+   417→                    ]}
+   418→                  />
+   419→                  <Area
+   420→                    type="monotone"
+   421→                    dataKey="hours"
+   422→                    stroke="var(--club-accent)"
+   423→                    strokeWidth={2}
+   424→                    fill="url(#hoursGradient)"
+   425→                    dot={false}
+   426→                  />
+   427→                </AreaChart>
+   428→              </ResponsiveContainer>
+   429→            </div>
+   430→          )}
+   431→        </section>
+   432→
+   433→        {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 */}
+   434→        <section
+   435→          className="card-quiet p-5 lg:col-span-4 order-3 lg:order-2 animate-fade-in"
+   436→          style={stagger(3)}
+   437→        >
+   438→          <div className="flex items-center justify-between mb-3">
+   439→            <div className="flex items-center gap-2">
+   440→              <Trophy className="h-4 w-4 text-amber-500" />
+   441→              <h2 className="text-card-title">Leaderboard</h2>
+   442→            </div>
+   443→            <Button
+   444→              variant="ghost"
+   445→              size="sm"
+   446→              className="h-7 text-xs"
+   447→              onClick={() => setView("members")}
+   448→            >
+   449→              All <ChevronRight className="h-3 w-3" />
+   450→            </Button>
+   451→          </div>
+   452→          {data.leaderboard.length === 0 ? (
+   453→            <EmptyState
+   454→              icon={<Trophy className="h-8 w-8" />}
+   455→              title="No hours logged yet"
+   456→              description="Approved service hours will populate the leaderboard."
+   457→            />
+   458→          ) : (
+   459→            <ul className="space-y-1">
+   460→              {data.leaderboard.map((entry, i) => (
+   461→                <li key={entry.userId}>
+   462→                  <button
+   463→                    type="button"
+   464→                    onClick={() => setView("members")}
+   465→                    className={cn(
+   466→                      "flex items-center gap-3 w-full text-left rounded-lg px-2.5 py-2 hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+   467→                      i === 0 && "bg-club-muted/30 ring-1 ring-club/20"
+   468→                    )}
+   469→                  >
+   470→                    <RankBadge rank={i + 1} />
+   471→                    <Avatar className="h-8 w-8">
+   472→                      <AvatarImage
+   473→                        src={entry.avatarUrl ?? undefined}
+   474→                        alt={entry.name}
+   475→                      />
+   476→                      <AvatarFallback
+   477→                        className={cn("text-xs", avatarColor(entry.name))}
+   478→                      >
+   479→                        {initials(entry.name)}
+   480→                      </AvatarFallback>
+   481→                    </Avatar>
+   482→                    <div className="min-w-0 flex-1">
+   483→                      <p className="text-body-medium truncate">{entry.name}</p>
+   484→                      <p className="text-caption tabular-nums">
+   485→                        {fmtHours(entry.hours)} hours
+   486→                      </p>
+   487→                    </div>
+   488→                  </button>
+   489→                </li>
+   490→              ))}
+   491→            </ul>
+   492→          )}
+   493→        </section>
+   494→
+   495→        {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
+   496→        <section
+   497→          className="card-quiet p-5 lg:col-span-4 order-1 lg:order-3 animate-fade-in"
+   498→          style={stagger(0)}
+   499→        >
+   500→          <div className="flex items-center justify-between mb-4">
+   501→            <div className="flex items-center gap-2">
+   502→              <ListChecks className="h-4 w-4 text-club" />
+   503→              <h2 className="text-card-title">Your snapshot</h2>
+   504→            </div>
+   505→            <Button
+   506→              variant="ghost"
+   507→              size="sm"
+   508→              className="h-7 text-xs"
+   509→              onClick={() => setView("hours")}
+   510→            >
+   511→              Hours <ChevronRight className="h-3 w-3" />
+   512→            </Button>
+   513→          </div>
+   514→
+   515→          {/* Approved hours + goal */}
+   516→          <div className="space-y-2">
+   517→            <div className="flex items-baseline justify-between">
+   518→              <div className="flex items-center gap-2">
+   519→                <Clock className="h-4 w-4 text-muted-foreground" />
+   520→                <span className="text-body-medium">Approved hours</span>
+   521→              </div>
+   522→              <span className="text-card-title tabular-nums">
+   523→                {fmtHours(data.myStats.approvedHours)}h
+   524→              </span>
+   525→            </div>
+   526→            {data.club.hoursGoal > 0 && (
+   527→              <>
+   528→                <Progress
+   529→                  value={hoursPct}
+   530→                  className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
+   531→                />
+   532→                <p className="text-caption tabular-nums">
+   533→                  {fmtHours(data.myStats.approvedHours)} of {data.club.hoursGoal}h
+   534→                  goal · {Math.round(hoursPct)}%
+   535→                </p>
+   536→              </>
+   537→            )}
+   538→          </div>
+   539→
+   540→          <Separator className="my-4" />
+   541→
+   542→          {/* Tasks */}
+   543→          <div className="flex items-center justify-between">
+   544→            <div className="flex items-center gap-2">
+   545→              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+   546→              <span className="text-body-medium">Tasks</span>
+   547→            </div>
+   548→            <span className="text-caption-medium tabular-nums">
+   549→              <span className="text-foreground font-medium">
+   550→                {data.myStats.tasksAssigned}
+   551→              </span>{" "}
+   552→              open
+   553→              <span className="mx-1 text-muted-foreground">/</span>
+   554→              <span className="text-foreground font-medium">
+   555→                {data.myStats.tasksDone}
+   556→              </span>{" "}
+   557→              done
+   558→            </span>
+   559→          </div>
+   560→
+   561→          <Separator className="my-4" />
+   562→
+   563→          {/* Next meetings */}
+   564→          <div>
+   565→            <div className="flex items-center gap-2 mb-2">
+   566→              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   567→              <span className="text-body-medium">Next meetings</span>
+   568→            </div>
+   569→            {data.upcomingMeetings.length === 0 ? (
+   570→              <p className="text-caption">No upcoming meetings</p>
+   571→            ) : (
+   572→              <ul className="space-y-1.5">
+   573→                {data.upcomingMeetings.slice(0, 3).map((m) => (
+   574→                  <li
+   575→                    key={m.id}
+   576→                    className="flex items-center justify-between gap-2"
+   577→                  >
+   578→                    <span className="text-body truncate">{m.title}</span>
+   579→                    <span className="text-caption shrink-0 tabular-nums">
+   580→                      {format(new Date(m.startTime), "MMM d")}
+   581→                    </span>
+   582→                  </li>
+   583→                ))}
+   584→              </ul>
+   585→            )}
+   586→          </div>
+   587→        </section>
+   588→
+   589→        {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
+   590→        <section
+   591→          className="card-quiet p-5 lg:col-span-4 order-4 lg:order-4 animate-fade-in"
+   592→          style={stagger(4)}
+   593→        >
+   594→          <div className="flex items-center justify-between mb-3">
+   595→            <div className="flex items-center gap-2">
+   596→              <Megaphone className="h-4 w-4 text-muted-foreground" />
+   597→              <h2 className="text-card-title">Recent announcements</h2>
+   598→            </div>
+   599→            <Button
+   600→              variant="ghost"
+   601→              size="sm"
+   602→              className="h-7 text-xs"
+   603→              onClick={() => setView("announcements")}
+   604→            >
+   605→              All <ChevronRight className="h-3 w-3" />
+   606→            </Button>
+   607→          </div>
+   608→          {data.recentAnnouncements.length === 0 ? (
+   609→            <EmptyState
+   610→              icon={<Megaphone className="h-8 w-8" />}
+   611→              title="No announcements yet"
+   612→              description="Share updates with your club to keep members in the loop."
+   613→            />
+   614→          ) : (
+   615→            <ul className="space-y-2">
+   616→              {data.recentAnnouncements.slice(0, 3).map((a) => (
+   617→                <li
+   618→                  key={a.id}
+   619→                  className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
+   620→                >
+   621→                  <div className="flex items-start gap-2">
+   622→                    {a.isPinned && (
+   623→                      <Pin className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+   624→                    )}
+   625→                    <div className="min-w-0 flex-1">
+   626→                      <p className="text-body-medium truncate">{a.title}</p>
+   627→                      <p className="text-caption mt-0.5">
+   628→                        {a.authorName} · {relativeTime(a.createdAt)}
+   629→                      </p>
+   630→                    </div>
+   631→                  </div>
+   632→                </li>
+   633→              ))}
+   634→            </ul>
+   635→          )}
+   636→        </section>
+   637→
+   638→        {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
+   639→        <section
+   640→          className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
+   641→          style={stagger(5)}
+   642→        >
+   643→          <div className="flex items-center justify-between mb-3">
+   644→            <div className="flex items-center gap-2">
+   645→              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   646→              <h2 className="text-card-title">Upcoming meetings</h2>
+   647→            </div>
+   648→            <Button
+   649→              variant="ghost"
+   650→              size="sm"
+   651→              className="h-7 text-xs"
+   652→              onClick={() => setView("meetings")}
+   653→            >
+   654→              All <ChevronRight className="h-3 w-3" />
+   655→            </Button>
+   656→          </div>
+   657→          {data.upcomingMeetings.length === 0 ? (
+   658→            <EmptyState
+   659→              icon={<CalendarDays className="h-8 w-8" />}
+   660→              title="No upcoming meetings"
+   661→              description="Schedule a meeting to get the team together."
+   662→            />
+   663→          ) : (
+   664→            <ul className="space-y-2">
+   665→              {data.upcomingMeetings.map((m) => (
+   666→                <li
+   667→                  key={m.id}
+   668→                  className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
+   669→                >
+   670→                  <div className="flex items-start justify-between gap-2">
+   671→                    <div className="min-w-0">
+   672→                      <p className="text-body-medium truncate">{m.title}</p>
+   673→                      <div className="mt-1 flex items-center gap-1 text-caption">
+   674→                        <MapPin className="h-3 w-3" />
+   675→                        <span className="truncate">{m.location}</span>
+   676→                      </div>
+   677→                    </div>
+   678→                    {m.myRsvp && <RsvpBadge status={m.myRsvp} />}
+   679→                  </div>
+   680→                  <p className="mt-1 text-caption tabular-nums">
+   681→                    {format(new Date(m.startTime), "EEE, MMM d · h:mm a")}
+   682→                  </p>
+   683→                </li>
+   684→              ))}
+   685→            </ul>
+   686→          )}
+   687→        </section>
+   688→      </div>
+   689→
+   690→      {/* Row 5 — Club-wide stats mini-strip (Tier 3) ----------------------- */}
+   691→      <section
+   692→        className="card-quiet p-4 animate-fade-in"
+   693→        style={stagger(6)}
+   694→      >
+   695→        <div className="flex items-center gap-2 mb-3">
+   696→          <BarChart3 className="h-4 w-4 text-muted-foreground" />
+   697→          <h2 className="text-card-title">Club at a glance</h2>
+   698→        </div>
+   699→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   700→          <ClubStat
+   701→            label="Members"
+   702→            value={String(data.clubStats.totalMembers)}
+   703→            icon={<Users className="h-3.5 w-3.5" />}
+   704→            onClick={() => setView("members")}
+   705→          />
+   706→          <ClubStat
+   707→            label="Total hours"
+   708→            value={fmtHours(data.clubStats.totalApprovedHours)}
+   709→            icon={<Clock className="h-3.5 w-3.5" />}
+   710→            onClick={() => setView("hours")}
+   711→          />
+   712→          <ClubStat
+   713→            label="Open tasks"
+   714→            value={String(data.clubStats.openTasks)}
+   715→            icon={<ClipboardList className="h-3.5 w-3.5" />}
+   716→            onClick={() => setView("tasks")}
+   717→          />
+   718→          <ClubStat
+   719→            label="Upcoming meetings"
+   720→            value={String(data.clubStats.upcomingMeetingsCount)}
+   721→            icon={<CalendarDays className="h-3.5 w-3.5" />}
+   722→            onClick={() => setView("meetings")}
+   723→          />
+   724→        </div>
+   725→      </section>
+   726→
+   727→      {/* Row 6 (execs only) — Executive insights compact strip ---------------- */}
+   728→      {isExec && data.execStats && (
+   729→        <section
+   730→          className="card-quiet p-4 animate-fade-in"
+   731→          style={stagger(7)}
+   732→        >
+   733→          <div className="flex items-center gap-2 mb-3">
+   734→            <ShieldCheck className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+   735→            <h2 className="text-card-title">Executive insights</h2>
+   736→            <span className="text-caption ml-1">This week</span>
+   737→          </div>
+   738→          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+   739→            <ExecMetric
+   740→              label="Pending approvals"
+   741→              value={String(data.clubStats.pendingApprovals)}
+   742→              hint={
+   743→                data.clubStats.pendingApprovals > 0
+   744→                  ? "Needs review"
+   745→                  : "All caught up"
+   746→              }
+   747→              urgent={data.clubStats.pendingApprovals > 0}
+   748→              onClick={() => setView("approvals")}
+   749→            />
+   750→            <ExecMetric
+   751→              label="Avg turnaround"
+   752→              value={formatTurnaround(
+   753→                data.execStats.avgApprovalTurnaroundHours
+   754→              )}
+   755→              hint="Submission → review"
+   756→            />
+   757→            <ExecMetric
+   758→              label="Completion rate"
+   759→              value={`${data.execStats.taskCompletionRate}%`}
+   760→              hint={`${data.clubStats.tasksDone}/${
+   761→                data.clubStats.openTasks + data.clubStats.tasksDone
+   762→              } done`}
+   763→            />
+   764→            <ExecMetric
+   765→              label="Submissions / wk"
+   766→              value={String(data.execStats.submissionsThisWeek)}
+   767→              hint="New entries"
+   768→            />
+   769→            <ExecMetric
+   770→              label="Announcements"
+   771→              value={String(data.clubStats.announcementsThisMonth)}
+   772→              hint="This month"
+   773→              onClick={() => setView("announcements")}
+   774→            />
+   775→            <ExecMetric
+   776→              label="Teams"
+   777→              value={String(data.clubStats.teamsCount)}
+   778→              hint="Active"
+   779→              onClick={() => setView("teams")}
+   780→            />
+   781→          </div>
+   782→        </section>
+   783→      )}
+   784→    </div>
+   785→  )
+   786→}
+   787→
+   788→// =========================================================================
+   789→// Sub-components
+   790→// =========================================================================
+   791→
+   792→function HeroBar({
+   793→  name,
+   794→  logoUrl,
+   795→  memberCount,
+   796→  createdAt,
+   797→  role,
+   798→}: {
+   799→  name: string
+   800→  logoUrl: string | null
+   801→  memberCount: number
+   802→  createdAt: string
+   803→  role: "member" | "executive"
+   804→}) {
+   805→  return (
+   806→    <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-club-muted to-transparent animate-fade-in">
+   807→      <div aria-hidden className="absolute left-0 top-0 h-full w-1.5 bg-club" />
+   808→      <div className="flex items-center justify-between gap-4 p-4 sm:p-5 pl-5 sm:pl-6">
+   809→        <div className="flex items-center gap-3 min-w-0">
+   810→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-club text-club-foreground text-xs font-bold shrink-0 overflow-hidden">
+   811→            {logoUrl ? (
+   812→              <img
+   813→                src={logoUrl}
+   814→                alt={`${name} logo`}
+   815→                className="h-full w-full object-cover"
+   816→              />
+   817→            ) : (
+   818→              initials(name)
+   819→            )}
+   820→          </div>
+   821→          <div className="min-w-0">
+   822→            <div className="flex items-center gap-2 flex-wrap">
+   823→              {/* min-w-0 lets truncate win inside a flex-wrap container so
+   824→                  very long club names ellipsize cleanly on narrow viewports
+   825→                  (e.g. 375px) instead of pushing the role badge off-screen. */}
+   826→              <h1 className="text-page-title truncate min-w-0">{name}</h1>
+   827→              <RoleBadgePill role={role} />
+   828→            </div>
+   829→            <p className="text-caption mt-0.5">
+   830→              {memberCount} {memberCount === 1 ? "member" : "members"} · joined{" "}
+   831→              {format(new Date(createdAt), "MMM yyyy")}
+   832→            </p>
+   833→          </div>
+   834→        </div>
+   835→      </div>
+   836→    </div>
+   837→  )
+   838→}
+   839→
+   840→function RoleBadgePill({ role }: { role: "member" | "executive" }) {
+   841→  if (role === "executive") {
+   842→    return (
+   843→      <span className="inline-flex items-center gap-1 rounded-full border bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+   844→        <ShieldCheck className="h-3 w-3" /> Executive
+   845→      </span>
+   846→    )
+   847→  }
+   848→  return (
+   849→    <span className="inline-flex items-center gap-1 rounded-full border border-club/30 bg-club-muted px-2 py-0.5 text-xs font-medium text-club">
+   850→      <Users className="h-3 w-3" /> Member
+   851→    </span>
+   852→  )
+   853→}
+   854→
+   855→function AttentionCard({
+   856→  icon,
+   857→  title,
+   858→  description,
+   859→  onClick,
+   860→  children,
+   861→  delay,
+   862→  urgent,
+   863→}: {
+   864→  icon: ReactNode
+   865→  title: string
+   866→  description?: string
+   867→  onClick?: () => void
+   868→  children?: ReactNode
+   869→  delay?: number
+   870→  urgent?: boolean
+   871→}) {
+   872→  const Comp = onClick ? "button" : "div"
+   873→  return (
+   874→    <Comp
+   875→      type={onClick ? "button" : undefined}
+   876→      onClick={onClick}
+   877→      style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
+   878→      className={cn(
+   879→        "card-quiet p-4 text-left border-l-2 border-l-club animate-fade-in transition-colors",
+   880→        onClick &&
+   881→          "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+   882→        urgent && "border-l-red-500"
+   883→      )}
+   884→    >
+   885→      <div className="flex items-start gap-3">
+   886→        <span
+   887→          className={cn("mt-0.5 shrink-0", urgent ? "text-red-500" : "text-club")}
+   888→        >
+   889→          {icon}
+   890→        </span>
+   891→        <div className="min-w-0 flex-1">
+   892→          <p className="text-card-title truncate">{title}</p>
+   893→          {description && <p className="text-caption mt-0.5">{description}</p>}
+   894→          {children}
+   895→        </div>
+   896→      </div>
+   897→    </Comp>
+   898→  )
+   899→}
+   900→
+   901→function AllCaughtUpCard() {
+   902→  return (
+   903→    <div className="card-quiet p-5 flex items-center gap-4 animate-fade-in">
+   904→      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-club-muted text-club shrink-0">
+   905→        <CheckCircle2 className="h-5 w-5" />
+   906→      </div>
+   907→      <div className="min-w-0">
+   908→        <p className="text-card-title">You&apos;re all caught up</p>
+   909→        <p className="text-caption mt-0.5">
+   910→          Nothing needs your attention right now.
+   911→        </p>
+   912→      </div>
+   913→    </div>
+   914→  )
+   915→}
+   916→
+   917→function OnboardingBanner({
+   918→  clubCode,
+   919→  onDismiss,
+   920→  onNavigate,
+   921→  teamsCount,
+   922→  announcementsCount,
+   923→  meetingsCount,
+   924→  memberCount,
+   925→}: {
+   926→  clubCode: string | null
+   927→  onDismiss: () => void
+   928→  onNavigate: (v: View) => void
+   929→  teamsCount: number
+   930→  announcementsCount: number
+   931→  meetingsCount: number
+   932→  memberCount: number
+   933→}) {
+   934→  const items: { done: boolean; label: string; view: View }[] = [
+   935→    { done: teamsCount > 0, label: "Create a team", view: "teams" },
+   936→    {
+   937→      done: announcementsCount > 0,
+   938→      label: "Post an announcement",
+   939→      view: "announcements",
+   940→    },
+   941→    {
+   942→      done: meetingsCount > 0,
+   943→      label: "Schedule a meeting",
+   944→      view: "meetings",
+   945→    },
+   946→    {
+   947→      done: memberCount >= 3,
+   948→      label: clubCode ? `Invite members (code: ${clubCode})` : "Invite members",
+   949→      view: "members",
+   950→    },
+   951→  ]
+   952→  return (
+   953→    <div className="card-quiet p-5 bg-club-muted/40 border-club/30 animate-fade-in relative">
+   954→      <button
+   955→        type="button"
+   956→        onClick={onDismiss}
+   957→        aria-label="Dismiss onboarding banner"
+   958→        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   959→      >
+   960→        <X className="h-4 w-4" />
+   961→      </button>
+   962→      <div className="flex items-center gap-2 mb-1 pr-8">
+   963→        <PartyPopper className="h-4 w-4 text-club shrink-0" />
+   964→        <h2 className="text-section-title">Welcome! Let&apos;s set up your club</h2>
+   965→      </div>
+   966→      <p className="text-caption text-muted-foreground mb-4">
+   967→        A few quick steps will get your members engaged.
+   968→      </p>
+   969→      <ul className="grid sm:grid-cols-2 gap-2">
+   970→        {items.map((it, i) => (
+   971→          <li key={i}>
+   972→            <button
+   973→              type="button"
+   974→              onClick={() => onNavigate(it.view)}
+   975→              className="flex items-center gap-2 w-full text-left rounded-lg border bg-card/60 px-3 py-2 hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   976→            >
+   977→              {it.done ? (
+   978→                <CheckCircle2 className="h-4 w-4 text-club shrink-0" />
+   979→              ) : (
+   980→                <Target className="h-4 w-4 text-muted-foreground shrink-0" />
+   981→              )}
+   982→              <span
+   983→                className={cn("text-body", it.done && "text-muted-foreground line-through")}
+   984→              >
+   985→                {it.label}
+   986→              </span>
+   987→            </button>
+   988→          </li>
+   989→        ))}
+   990→      </ul>
+   991→    </div>
+   992→  )
+   993→}
+   994→
+   995→function RankBadge({ rank }: { rank: number }) {
+   996→  const styles =
+   997→    rank === 1
+   998→      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 border-amber-200 dark:border-amber-900"
+   999→      : rank === 2
+  1000→      ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700"
+  1001→      : rank === 3
+  1002→      ? "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200 border-orange-200 dark:border-orange-900"
+  1003→      : "bg-muted text-muted-foreground border-border"
+  1004→  return (
+  1005→    <span
+  1006→      className={cn(
+  1007→        "flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold shrink-0 tabular-nums",
+  1008→        styles
+  1009→      )}
+  1010→    >
+  1011→      {rank}
+  1012→    </span>
+  1013→  )
+  1014→}
+  1015→
+  1016→function RsvpBadge({ status }: { status: "going" | "not_going" | "maybe" }) {
+  1017→  const map: Record<string, { label: string; className: string }> = {
+  1018→    going: { label: "Going", className: "chip-approved" },
+  1019→    not_going: { label: "Not going", className: "chip-rejected" },
+  1020→    maybe: { label: "Maybe", className: "chip-pending" },
+  1021→  }
+  1022→  const s = map[status]
+  1023→  return (
+  1024→    <span
+  1025→      className={cn(
+  1026→        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
+  1027→        s.className
+  1028→      )}
+  1029→    >
+  1030→      {s.label}
+  1031→    </span>
+  1032→  )
+  1033→}
+  1034→
+  1035→function ClubStat({
+  1036→  label,
+  1037→  value,
+  1038→  icon,
+  1039→  onClick,
+  1040→}: {
+  1041→  label: string
+  1042→  value: string
+  1043→  icon: ReactNode
+  1044→  onClick?: () => void
+  1045→}) {
+  1046→  return (
+  1047→    <button
+  1048→      type="button"
+  1049→      onClick={onClick}
+  1050→      className="text-left rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 hover:border-club/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  1051→    >
+  1052→      <div className="flex items-center justify-between">
+  1053→        <span className="text-caption-medium uppercase tracking-wide">
+  1054→          {label}
+  1055→        </span>
+  1056→        <span className="text-muted-foreground">{icon}</span>
+  1057→      </div>
+  1058→      <div className="mt-0.5 text-base font-semibold tabular-nums">{value}</div>
+  1059→    </button>
+  1060→  )
+  1061→}
+  1062→
+  1063→function ExecMetric({
+  1064→  label,
+  1065→  value,
+  1066→  hint,
+  1067→  urgent,
+  1068→  onClick,
+  1069→}: {
+  1070→  label: string
+  1071→  value: string
+  1072→  hint?: string
+  1073→  urgent?: boolean
+  1074→  onClick?: () => void
+  1075→}) {
+  1076→  const Comp = onClick ? "button" : "div"
+  1077→  return (
+  1078→    <Comp
+  1079→      type={onClick ? "button" : undefined}
+  1080→      onClick={onClick}
+  1081→      className={cn(
+  1082→        "text-left rounded-lg border bg-card/40 px-3 py-2 transition-colors w-full",
+  1083→        onClick &&
+  1084→          "hover:bg-accent/40 hover:border-club/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  1085→        urgent && "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20"
+  1086→      )}
+  1087→    >
+  1088→      <p className="text-caption uppercase tracking-wide">{label}</p>
+  1089→      <p className="mt-0.5 text-base font-semibold tabular-nums">{value}</p>
+  1090→      {hint && <p className="text-caption mt-0.5">{hint}</p>}
+  1091→    </Comp>
+  1092→  )
+  1093→}
+  1094→
+  1095→// =========================================================================
+  1096→// Helpers
+  1097→// =========================================================================
+  1098→function fmtHours(h: number) {
+  1099→  if (h === 0) return "0"
+  1100→  if (Number.isInteger(h)) return String(h)
+  1101→  return h.toFixed(1)
+  1102→}
+  1103→
+  1104→function formatTurnaround(hours: number | null) {
+  1105→  if (hours === null || hours === undefined) return "—"
+  1106→  if (hours < 1) return `${Math.round(hours * 60)}m`
+  1107→  if (hours < 24) return `${hours.toFixed(1)}h`
+  1108→  return `${(hours / 24).toFixed(1)}d`
+  1109→}
+  1110→
+  1111→// =========================================================================
+  1112→// Loading skeleton — matches new bento-grid layout
+  1113→// =========================================================================
+  1114→function DashboardSkeleton() {
+  1115→  return (
+  1116→    <div className="space-y-4 sm:space-y-5">
+  1117→      {/* Hero bar */}
+  1118→      <div className="card-quiet h-20 animate-pulse" />
+  1119→      {/* Tier 1 strip */}
+  1120→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1121→        {Array.from({ length: 4 }).map((_, i) => (
+  1122→          <StatCardSkeleton key={i} />
+  1123→        ))}
+  1124→      </div>
+  1125→      {/* Chart + Leaderboard row */}
+  1126→      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+  1127→        <div className="card-quiet p-5 lg:col-span-8 h-64 animate-pulse" />
+  1128→        <div className="card-quiet p-5 lg:col-span-4 h-64 animate-pulse" />
+  1129→      </div>
+  1130→      {/* Snapshot + Announcements + Meetings row */}
+  1131→      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+  1132→        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
+  1133→        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
+  1134→        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
+  1135→      </div>
+  1136→      {/* Club stats strip */}
+  1137→      <div className="card-quiet p-4 h-24 animate-pulse" />
+  1138→    </div>
+  1139→  )
+  1140→}
+  1141→
