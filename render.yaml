@@ -1,27 +1,18 @@
 # Render Blueprint — ClubHub
-# This file lets you deploy the entire app to Render in one click via
-# "New > Blueprint" in the Render dashboard. All services use the FREE tier.
+# This file deploys the app + realtime worker to Render's free tier.
+# The database is hosted on Supabase (free, no 90-day deletion) — see DEPLOY.md.
 #
-# After deploying, set these environment variables in the Render dashboard
-# (the blueprint sets placeholders — you fill in the real values):
-#   - NEXTAUTH_SECRET (generate: `openssl rand -base64 32`)
-#   - ADMIN_CLUB_PASSCODE (default: buildtogether12$)
-#   - REALTIME_TOKEN (generate a random string)
+# After deploying, set these environment variables in the Render dashboard:
+#   - DATABASE_URL (from Supabase)
+#   - NEXTAUTH_SECRET (generate)
+#   - REALTIME_TOKEN (generate, same in both services)
+#   - NEXT_PUBLIC_REALTIME_URL (the realtime service's public URL)
 
 services:
-  # --- PostgreSQL database (free tier, 1GB, 90 days) -------------------------
-  - type: pserv
-    name: clubhub-db
-    env: docker
-    repo: https://github.com/render-examples/postgresql
-    plan: free
-    ipAllowList: [] # allow all (the app authenticates via connection string)
-
-  # --- Realtime socket.io background worker (free tier) ----------------------
-  # Runs the mini-services/realtime service. Exposes the WebSocket port
-  # publicly (PORT) so browsers can connect. The emit API runs on EMIT_PORT
-  # internally (reachable by the web service via the worker's internal hostname).
-  - type: worker
+  # --- Realtime socket.io web service (free tier, public URL) ----------------
+  # Runs as a Web Service (not Worker) so it gets a public URL for browser
+  # WebSocket connections.
+  - type: web
     name: clubhub-realtime
     env: docker
     dockerContext: mini-services/realtime
@@ -45,24 +36,21 @@ services:
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: clubhub-db
-          property: connectionString
+        sync: false # set manually from Supabase
       - key: NEXTAUTH_SECRET
         generateValue: true
       - key: NEXTAUTH_URL
-        # Render sets this automatically, but we set it explicitly for NextAuth.
         value: https://clubhub-web.onrender.com
       - key: ADMIN_CLUB_PASSCODE
         value: buildtogether12$
       - key: REALTIME_TOKEN
         fromService:
-          type: worker
+          type: web
           name: clubhub-realtime
           envVarKey: REALTIME_TOKEN
       - key: REALTIME_EMIT_URL
         value: http://clubhub-realtime:3004/emit
       - key: NEXT_PUBLIC_REALTIME_URL
-        value: wss://clubhub-realtime.onrender.com
+        sync: false # set manually to the realtime service's public URL
       - key: NODE_ENV
         value: production
