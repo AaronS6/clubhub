@@ -1,26 +1,38 @@
 #!/bin/sh
 # Startup script for the Render web service.
-# Runs the database migration SYNCHRONOUSLY (with retries) before starting
-# the Next.js server. The migration usually takes 5-15 seconds — well within
-# Render's 60-second port-scan timeout. The retries handle Supabase cold
-# starts (the first connection to a paused Supabase DB can take 10-30s).
+#
+# STRATEGY: Start the Next.js server FIRST (so Render's port scanner detects
+# port 3000 immediately and the deploy succeeds), then run the database
+# migration in the background with retries. The migration connects to
+# Supabase (which can take 30-60s to cold-start) — if we blocked on it,
+# Render's 60s port-scan timeout would kill the deploy.
+#
+# The server returns 500s for DB queries until the migration finishes (~15-30s
+# after startup). This is acceptable — the alternative is a failed deploy.
 
-echo "[startup] running database migration..."
-MIGRATED=false
-for i in 1 2 3 4 5; do
-  echo "[startup] migration attempt $i/5..."
-  if node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma 2>&1; then
-    echo "[startup] migration succeeded on attempt $i"
-    MIGRATED=true
-    break
-  fi
-  echo "[startup] attempt $i failed, waiting 3s before retry..."
-  sleep 3
-done
+echo "[startup] starting Next.js server (port binding)..."
+node server.js &
+SERVER_PID=$!
 
-if [ "$MIGRATED" = "false" ]; then
-  echo "[startup] WARNING: migration failed after 5 attempts. Starting server anyway — signup/login will fail until the database is migrated. Run the migration manually via the Render Shell."
-fi
+# Give the server 2 seconds to bind the port.
+sleep 2
 
-echo "[startup] starting Next.js server..."
-exec node server.js
+# Run the migration in the background with retries.
+(
+  echo "[startup] running database migration (background)..."
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    echo "[startup] migration attempt $i/10..."
+    if node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma 2>&1; then
+      echo "[startup] migration succeeded on attempt $i"
+      exit 0
+    fi
+    echo "[startup] attempt $i failed, waiting 5s before retry..."
+    sleep 5
+  done
+  echo "[startup] WARNING: migration failed after 10 attempts. Database queries will fail until migrated manually."
+) &
+MIGRATION_PID=$!
+
+# Wait for the server process (keep the container alive).
+# If the server exits, the container exits.
+wait $SERVER_PID
