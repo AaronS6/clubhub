@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { getSessionUser } from "@/lib/server-auth"
+import { getSessionUser, getSessionUserWithMemberships } from "@/lib/server-auth"
 import { hashPassword, verifyPassword } from "@/lib/auth"
 
 export async function GET() {
-  const user = await getSessionUser()
+  // Bootstrap endpoint — gates the entire app's loading screen. Uses a single
+  // db query (user + memberships via include) instead of 2 sequential calls.
+  const user = await getSessionUserWithMemberships()
   if (!user) return NextResponse.json({ user: null, memberships: [] })
-  const memberships = await db.clubMember.findMany({
-    where: { userId: user.id, status: "active" },
-    include: {
-      club: {
-        select: { id: true, name: true, logoUrl: true, accentColor: true, clubCode: true },
-      },
-    },
-    orderBy: { joinedAt: "asc" },
-  })
   return NextResponse.json({
     user: {
       id: user.id,
@@ -23,7 +16,7 @@ export async function GET() {
       email: user.email,
       avatarUrl: user.avatarUrl,
     },
-    memberships: memberships.map((m) => ({
+    memberships: user.memberships.map((m) => ({
       clubId: m.club.id,
       clubName: m.club.name,
       logoUrl: m.club.logoUrl,

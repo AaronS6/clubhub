@@ -30,6 +30,37 @@ export async function getSessionUser() {
 }
 
 /**
+ * Returns the session user + their active club memberships in a SINGLE db
+ * query (via include). Used by `/api/me` — the bootstrap endpoint that gates
+ * the entire app's loading screen — so it needs to be as fast as possible.
+ * Replaces the previous pattern of getSessionUser() + a separate
+ * clubMember.findMany() (2 sequential round-trips).
+ */
+export async function getSessionUserWithMemberships() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) return null
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatarUrl: true,
+      memberships: {
+        where: { status: "active" },
+        include: {
+          club: {
+            select: { id: true, name: true, logoUrl: true, accentColor: true, clubCode: true },
+          },
+        },
+        orderBy: { joinedAt: "asc" },
+      },
+    },
+  })
+  return user
+}
+
+/**
  * Returns the session user + their membership for a given club, or null if
  * they are not an active member of that club.
  */

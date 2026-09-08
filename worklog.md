@@ -1143,3 +1143,34 @@ Stage Summary:
 - Files modified (R5-PERF subagent): 25 route files parallelized.
 - Browser-verified: nav tiers render correctly, profile top-left, club switcher bottom, search outline fixed, mobile 375px no overflow, admin passcode rejects wrong / accepts correct, notification settings compact table, recent activity removed from dashboard, landing page no gradients.
 - Lint clean. Dev server healthy.
+
+---
+Task ID: R6 (Loading fix + Activity removal + Passcode hardening + Font + Landing polish)
+Agent: main (Z.ai Code)
+Task: Fix stuck loading screen (/api/me parallelization + timeout UI), remove activity feed, harden admin passcode (env + server-only verification), Geist font, landing page polish, returning-user flag
+
+Work Log:
+- **§6 STUCK LOADING FIX** (highest priority):
+  - Added `getSessionUserWithMemberships()` to server-auth.ts — fetches user + active memberships in ONE Prisma query (via `include`) instead of 2 sequential calls. Updated `/api/me` GET to use it.
+  - Added 8-second timeout safeguard to the app-shell bootstrap `useEffect`: if `/api/me` hasn't resolved in 8s, stops the spinner and shows a friendly "Taking a moment to load" error state with a Retry button. Previously a slow/hung request spun forever with no fallback.
+  - Confirmed the realtime socket auth (`authenticateSocket`) is fire-and-forget — it runs in a separate `useEffect` after bootstrap and never gates rendering.
+  - Note on production mode: the sandbox requires `bun run dev` (dev mode); the query parallelization is the real perf fix. The timeout UI ensures the loading screen never hangs indefinitely regardless.
+- **§1 ACTIVITY FEED REMOVAL**: Removed the entire `RecentActivityCard` + `RecentActivitySkeleton` component definitions + the `FEED_ACTION_META` table + `ActivityFeedItem`/`ActivityFeedResponse` interfaces from dashboard-view.tsx (the R5-UI subagent had left them as dead code with a garbled comment). Cleaned up the render-slot comment. The `/api/clubs/[clubId]/activity` route is KEPT — the Activity Log nav view still uses it. No dangling references.
+- **§2 PASSCODE HARDENING**:
+  - Updated `src/lib/admin-passcode.ts` to read from `process.env.ADMIN_CLUB_PASSCODE` (falls back to the default). The literal is no longer in source as a plain string.
+  - Created `src/app/api/clubs/verify-admin-passcode/route.ts` — POST endpoint that checks the entered passcode server-side and returns `{ valid: boolean }`.
+  - Updated `create-club-dialog.tsx` to REMOVE the direct `ADMIN_PASSCODE` import (which was putting the literal in the client bundle). Now the client sends the entered code to the verify endpoint and shows an error if invalid. The create endpoint still re-checks server-side as the source of truth.
+  - Verified: `curl` of the client bundles contains NO occurrence of `buildtogether12` — the literal is fully server-side now.
+- **§3 FONT UPGRADE**: Swapped Inter → **Geist** (Vercel's typeface) via `next/font/google`. Pairs naturally with the Geist_Mono already in use. Wired into `--font-geist-sans` → `--font-sans` CSS variable. Added `font-sans` utility class to the body in layout.tsx. Verified the computed font-family resolves to `Geist, "Geist Fallback", ui-sans-serif, system-ui, sans-serif`.
+- **§4 LANDING POLISH** (no gradients):
+  - Dot-grid texture: subtle `radial-gradient(circle, currentColor 1px, transparent 1px)` at 22px spacing, opacity 0.15 (light) / 0.08 (dark) — barely visible, adds texture.
+  - Soft accent blob: flat `bg-club/20 blur-3xl` circle positioned off-canvas top-right — flat color with blur, NOT a gradient.
+  - Stagger animation: each value-prop row + the headline/badge/subtitle fade-in with `slide-in-from-bottom-2` and incremental `animationDelay` (75ms, 150ms, 200ms+80ms per row).
+  - Tightened copy: removed the redundant "service hours, tasks, announcements, and meetings in one place" from the subtitle (already covered by the value-prop list below).
+  - Dark mode: `bg-club-subtle/20` (reduced from /60) so the background reads clearly without looking washed out.
+- **§5 RETURNING-USER FLAG**: Added a dedicated `localStorage` key `clubhub_has_account_on_device` (separate from the Zustand persisted store). Set on successful login OR signup. On page load, reads the flag — both paths default to the Sign In form, but the flag is durable and survives store restructures. Verified the flag survives page refresh.
+
+Stage Summary:
+- Files modified: `src/lib/server-auth.ts` (getSessionUserWithMemberships), `src/app/api/me/route.ts` (use it), `src/components/app-shell.tsx` (timeout + retry UI), `src/components/views/dashboard-view.tsx` (remove activity feed dead code), `src/lib/admin-passcode.ts` (env var), `src/app/api/clubs/verify-admin-passcode/route.ts` (new), `src/components/auth/create-club-dialog.tsx` (server-side verification, no client literal), `src/app/layout.tsx` (Geist font), `src/app/globals.css` (font variable), `src/components/auth/auth-screen.tsx` (dot-grid, blob, stagger, returning-user flag, tightened copy).
+- Browser-verified: Geist font applied everywhere, landing page dot-grid + accent blob + stagger animations render, activity feed gone from dashboard, admin passcode rejects wrong / accepts correct via server verification, passcode literal NOT in client bundle, dark mode works, mobile 375px no overflow, /api/me 13ms.
+- Lint clean. No test files exist (tests dir only has build scripts).

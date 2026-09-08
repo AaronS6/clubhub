@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { api } from "@/lib/api/client"
 import { Loader2, ShieldCheck } from "lucide-react"
-import { ADMIN_PASSCODE } from "@/lib/admin-passcode"
 
 const ACCENT_PRESETS = ["#16a34a", "#0ea5e9", "#f97316", "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#ec4899"]
 
@@ -33,11 +32,21 @@ export function CreateClubDialog({
     e.preventDefault()
     if (!name.trim()) return toast.error("Club name is required")
     if (clubPassword.length < 4) return toast.error("Club password must be at least 4 characters")
-    if (adminPasscode !== ADMIN_PASSCODE) {
-      return toast.error("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
-    }
+    if (!adminPasscode) return toast.error("Admin passcode is required")
     setLoading(true)
     try {
+      // Verify the admin passcode SERVER-SIDE (the literal never lives in the
+      // client bundle). The create endpoint also re-checks it as the source
+      // of truth, so this is a UX pre-check to fail fast without a partial
+      // club creation attempt.
+      const verify = await api<{ valid: boolean }>("/api/clubs/verify-admin-passcode", {
+        method: "POST",
+        json: { adminPasscode },
+      })
+      if (!verify.valid) {
+        setLoading(false)
+        return toast.error("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
+      }
       await api("/api/clubs", {
         method: "POST",
         json: { name, description, accentColor, clubPassword, adminPasscode },

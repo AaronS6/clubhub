@@ -35,7 +35,7 @@ import {
   LayoutDashboard, Megaphone, Clock, CheckSquare, CalendarDays, Users,
   ScrollText, Settings, Bell, LogOut, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
-  MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, Keyboard,
+  MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, Keyboard, RefreshCw,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -127,25 +127,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const { clubs, currentClub, currentClubId, view, setView, setClubs, selectClub } = useAppStore()
   const [bootstrapped, setBootstrapped] = useState(false)
+  const [bootFailed, setBootFailed] = useState(false)
   const bootRef = useRef(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const params = useSearchParams()
   const { theme, setTheme } = useTheme()
 
+  // Bootstrap: fetch /api/me once the session is authenticated. This is the
+  // gate that keeps the entire app on the loading screen, so it has a hard
+  // timeout (8s) that falls back to a friendly Retry UI instead of spinning
+  // forever on a slow/hung request.
   useEffect(() => {
     if (status !== "authenticated" || bootstrapped || bootRef.current) return
     bootRef.current = true
     let cancelled = false
+    let timedOut = false
+    const timer = setTimeout(() => {
+      if (cancelled || bootstrapped) return
+      timedOut = true
+      setBootFailed(true)
+    }, 8000)
     api<MeResponse>("/api/me")
       .then((data) => {
-        if (cancelled) return
+        if (cancelled || timedOut) return
+        clearTimeout(timer)
         if (data.user) setClubs(data.memberships)
         setBootstrapped(true)
       })
-      .catch(() => { if (!cancelled) setBootstrapped(true) })
-    return () => { cancelled = true }
+      .catch(() => {
+        if (cancelled || timedOut) return
+        clearTimeout(timer)
+        // On error, still proceed — the app can render with no clubs (shows
+        // the onboarding screen) rather than spinning forever.
+        setBootstrapped(true)
+      })
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [status, bootstrapped, setClubs])
+
+  // Retry handler for the timeout fallback.
+  const retryBoot = () => {
+    bootRef.current = false
+    setBootFailed(false)
+  }
 
   useEffect(() => {
     const v = params.get("view") as View | null
@@ -160,10 +184,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!s.connected) s.connect()
   }, [status, session, clubs])
 
-  if (status === "loading" || (status === "authenticated" && !bootstrapped)) {
+  if (status === "loading" || (status === "authenticated" && !bootstrapped && !bootFailed)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  // Bootstrap timeout fallback — the /api/me call took too long. Show a
+  // friendly retry instead of spinning forever.
+  if (status === "authenticated" && bootFailed && !bootstrapped) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center max-w-sm">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Loader2 className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <h2 className="text-lg font-semibold mb-1">Taking a moment to load</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            The server is taking longer than expected. This usually clears up on retry.
+          </p>
+          <Button onClick={retryBoot} variant="default">
+            <RefreshCw className="mr-1.5 h-4 w-4" /> Retry
+          </Button>
+        </div>
       </div>
     )
   }

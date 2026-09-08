@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { signIn } from "next-auth/react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,33 @@ import {
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
+
+/**
+ * Durable, dedicated flag marking that this device has an existing account.
+ * Separate from the general Zustand persisted store so it survives store
+ * restructures/clears for unrelated reasons. On page load, if this flag is
+ * present we default to the Sign In form (most returning users want that).
+ * If absent (genuinely new device), we also default to Sign In — most new
+ * visitors arrive by invitation (a shared club code) and need to make their
+ * first account, so the prominent "Sign up" link is the right CTA.
+ */
+const HAS_ACCOUNT_KEY = "clubhub_has_account_on_device"
+
+function readHasAccount(): boolean {
+  try {
+    return localStorage.getItem(HAS_ACCOUNT_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+function writeHasAccount() {
+  try {
+    localStorage.setItem(HAS_ACCOUNT_KEY, "1")
+  } catch {
+    // ignore — private mode / storage disabled
+  }
+}
 
 const VALUE_PROPS = [
   { icon: Users, title: "Multi-club workspaces", body: "One account, every club you belong to — fully isolated." },
@@ -37,6 +64,17 @@ export function AuthScreen() {
   const [signupEmail, setSignupEmail] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
 
+  // Returning-user logic: default to "login" view. The dedicated localStorage
+  // flag is a hint, but both paths land on login-first — the flag is mainly
+  // for future analytics / onboarding decisions.
+  useEffect(() => {
+    const hasAccount = readHasAccount()
+    if (!hasAccount && authView !== "signup") {
+      // New device — still default to login with a clear sign-up link.
+      setAuthView("login")
+    }
+  }, [setAuthView, authView])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -50,6 +88,7 @@ export function AuthScreen() {
       toast.error("Invalid email or password")
       return
     }
+    writeHasAccount()
     toast.success("Welcome back!")
     setTimeout(() => window.location.reload(), 200)
   }
@@ -68,6 +107,7 @@ export function AuthScreen() {
         redirect: false,
       })
       if (res?.error) throw new Error("Login failed after signup")
+      writeHasAccount()
       toast.success("Account created! Welcome to ClubHub.")
       setTimeout(() => window.location.reload(), 200)
     } catch (err: any) {
@@ -79,34 +119,56 @@ export function AuthScreen() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       {/* Left: value proposition (hidden on small screens).
-          Solid colors only — the user explicitly hates gradients. */}
-      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/30 border-r border-border">
-        <div className="flex items-center gap-2.5">
+          Solid colors only — no gradients. Visual interest comes from a
+          subtle dot-grid texture + a soft accent blob (flat, blurred, not a
+          gradient). */}
+      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/20 border-r border-border relative overflow-hidden">
+        {/* Dot-grid texture — very low opacity, barely visible. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-[0.15] dark:opacity-[0.08]"
+          style={{
+            backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+            color: "var(--foreground)",
+          }}
+        />
+        {/* Soft accent blob — flat color with blur, NOT a gradient. Positioned
+            off-canvas in the top-right corner as a decorative shape. */}
+        <div
+          aria-hidden
+          className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-club/20 blur-3xl"
+        />
+
+        <div className="relative flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
             <Users className="h-5 w-5" />
           </div>
           <span className="text-xl font-semibold tracking-tight">ClubHub</span>
         </div>
 
-        <div className="max-w-md">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-club-muted px-2.5 py-1 text-caption-medium font-medium text-club mb-5">
+        <div className="relative max-w-md">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-club-muted px-2.5 py-1 text-caption-medium font-medium text-club mb-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <Sparkles className="h-3 w-3" />
             For student leaders & volunteer coordinators
           </div>
-          <h2 className="text-3xl lg:text-[2.5rem] lg:leading-[1.15] font-semibold tracking-tight">
+          <h2 className="text-3xl lg:text-[2.5rem] lg:leading-[1.15] font-semibold tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-500 delay-75">
             Run your clubs like a team.
           </h2>
-          <p className="text-body text-muted-foreground mt-4 max-w-sm">
+          <p className="text-body text-muted-foreground mt-4 max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
             A lightweight workspace for school clubs, volunteer orgs, and
-            community groups — service hours, tasks, announcements, and meetings
-            in one place.
+            community groups.
           </p>
 
           <ul className="mt-8 space-y-3.5">
-            {VALUE_PROPS.map((v) => {
+            {VALUE_PROPS.map((v, i) => {
               const Icon = v.icon
               return (
-                <li key={v.title} className="flex items-start gap-3">
+                <li
+                  key={v.title}
+                  className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500"
+                  style={{ animationDelay: `${200 + i * 80}ms` }}
+                >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card border border-border text-club shadow-sm">
                     <Icon className="h-[18px] w-[18px]" />
                   </div>
@@ -120,7 +182,7 @@ export function AuthScreen() {
           </ul>
         </div>
 
-        <p className="text-caption text-muted-foreground">
+        <p className="relative text-caption text-muted-foreground">
           Built for student leaders & volunteer coordinators.
         </p>
       </aside>
