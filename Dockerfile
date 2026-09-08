@@ -41,10 +41,10 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/prisma ./prisma
 
 EXPOSE 3000
-# Render sets the PORT env var; the standalone server respects it.
-ENV PORT=3000
+
+# Startup: run the DB migration in the background (so it doesn't block the
+# port binding — Render times out if no port opens within ~60s), then start
+# the Next.js server. The server binds to PORT (set by Render) on 0.0.0.0.
 ENV HOSTNAME=0.0.0.0
 
-# Push the schema on startup (using the PINNED prisma 6.x from node_modules,
-# not npx which fetches 7.x), then start the server.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma && node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma & node server.js"]
