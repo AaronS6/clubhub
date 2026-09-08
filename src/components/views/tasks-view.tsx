@@ -5,6 +5,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
@@ -320,8 +321,19 @@ export function TasksView() {
     [data, draggedId]
   )
 
+  // DnD sensors — critical for mobile usability:
+  // - PointerSensor (distance: 6px) for mouse/trackpad — desktop drag doesn't
+  //   conflict with page scroll.
+  // - TouchSensor (delay: 200ms, tolerance: 8px) for touch — a DELAY-based
+  //   constraint means a quick tap/scroll gesture is never mistaken for a
+  //   drag, but a deliberate press-and-hold reliably starts one. Without
+  //   this, a 6px distance constraint on touch means the moment a finger
+  //   moves slightly while scrolling, dnd-kit hijacks the gesture and the
+  //   user can't scroll the board.
+  // - KeyboardSensor for accessibility.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
@@ -551,6 +563,8 @@ export function TasksView() {
             tasks={filteredTasks}
             onOpenTask={setDetailTaskId}
             isExec={!!isExec}
+            myUserId={data?.myUserId}
+            clubId={currentClubId}
           />
           <DragOverlay>
             {draggedTask ? (
@@ -606,10 +620,14 @@ function BoardView({
   tasks,
   onOpenTask,
   isExec,
+  myUserId,
+  clubId,
 }: {
   tasks: Task[]
   onOpenTask: (id: string) => void
   isExec: boolean
+  myUserId?: string
+  clubId?: string
 }) {
   return (
     <div className="flex flex-col gap-4 sm:grid sm:grid-cols-3 sm:gap-4">
@@ -622,6 +640,8 @@ function BoardView({
             tasks={columnTasks}
             onOpenTask={onOpenTask}
             isExec={isExec}
+            myUserId={myUserId}
+            clubId={clubId}
           />
         )
       })}
@@ -634,11 +654,15 @@ function BoardColumn({
   tasks,
   onOpenTask,
   isExec,
+  myUserId,
+  clubId,
 }: {
   status: { id: TaskStatus; label: string; badge: "not_started" | "in_progress" | "done" }
   tasks: Task[]
   onOpenTask: (id: string) => void
   isExec: boolean
+  myUserId?: string
+  clubId?: string
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id })
   const ids = React.useMemo(() => tasks.map((t) => t.id), [tasks])
@@ -673,6 +697,8 @@ function BoardColumn({
                 task={t}
                 onOpen={onOpenTask}
                 isExec={isExec}
+                myUserId={myUserId}
+                clubId={clubId}
               />
             ))
           )}
@@ -686,10 +712,14 @@ function SortableTaskCard({
   task,
   onOpen,
   isExec,
+  myUserId,
+  clubId,
 }: {
   task: Task
   onOpen: (id: string) => void
   isExec: boolean
+  myUserId?: string
+  clubId?: string
 }) {
   const {
     attributes,
@@ -712,12 +742,15 @@ function SortableTaskCard({
       style={style}
       className="touch-none"
       {...attributes}
-      {...listeners}
     >
       <TaskCardContent
         task={task}
         isExec={isExec}
         onOpen={() => onOpen(task.id)}
+        myUserId={myUserId}
+        clubId={clubId}
+        dragListeners={listeners}
+        isDragging={isDragging}
       />
     </div>
   )
@@ -725,19 +758,67 @@ function SortableTaskCard({
 
 function TaskCardContent({
   task,
-  isExec: _isExec,
+  isExec,
   onOpen,
   dragging,
+  myUserId,
+  clubId,
+  dragListeners,
+  isDragging,
 }: {
   task: Task
   isExec?: boolean
   onOpen?: () => void
   dragging?: boolean
+  myUserId?: string
+  clubId?: string
+  dragListeners?: ReturnType<typeof useSortable>["listeners"]
+  isDragging?: boolean
 }) {
   const overdue = isOverdue(task.dueDate) && task.status !== "done"
   // Briefly highlight when this card was just touched by another user's
   // realtime action (create/move/edit/delete) so the change is perceptible.
   const flash = useRemoteChange("task", task.id)
+  const qc = useQueryClient()
+
+  // Can delete if exec OR the assignee (matches the API's server-side check).
+  const canDelete = isExec || (myUserId && task.assignedToUserId === myUserId)
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      api(`/api/clubs/${clubId}/tasks/${task.id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks", clubId] })
+      const undo = async () => {
+        try {
+          await api(`/api/clubs/${clubId}/tasks/${task.id}/restore`, { method: "POST" })
+          toast.success(`Restored "${task.title}"`)
+          qc.invalidateQueries({ queryKey: ["tasks", clubId] })
+        } catch (e: any) {
+          toast.error(e.message || "Couldn't restore the task")
+        }
+      }
+      toast(`Deleted "${task.title}"`, {
+        duration: 5000,
+        action: { label: "Undo", onClick: undo },
+      })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: (status: TaskStatus) =>
+      api(`/api/clubs/${clubId}/tasks/${task.id}`, {
+        method: "PATCH",
+        json: { status },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks", clubId] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Prevent button clicks from triggering the card's onClick (open detail).
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+
   return (
     <div
       onClick={onOpen}
@@ -754,16 +835,29 @@ function TaskCardContent({
           : undefined
       }
       className={cn(
-        "group card-quiet cursor-pointer p-3 text-left transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet cursor-pointer p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         dragging && "shadow-xl rotate-1 cursor-grabbing ring-2 ring-club/40",
+        isDragging && "scale-[1.02] shadow-lg ring-2 ring-club/40 cursor-grabbing",
         flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
       )}
     >
       <div className="flex items-start gap-2">
-        <GripVertical
-          className="mt-0.5 size-4 shrink-0 text-muted-foreground/50 opacity-0 group-hover:opacity-100"
-          aria-hidden
-        />
+        {/* Drag handle — receives the dnd-kit listeners so only this area
+            starts a drag, not the action buttons. Shows a visual cue (scale +
+            shadow) when actively dragging so mobile users know the hold-delay
+            has triggered. */}
+        {dragListeners && (
+          <button
+            type="button"
+            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 active:cursor-grabbing touch-none"
+            aria-label="Drag to move task"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={stop}
+            {...dragListeners}
+          >
+            <GripVertical className="size-4" />
+          </button>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-body-medium leading-tight">{task.title}</p>
           {task.description && (
@@ -772,6 +866,26 @@ function TaskCardContent({
             </p>
           )}
         </div>
+        {/* Delete button — visible on hover (desktop) or always (mobile).
+            Exec OR assignee can delete. 44px tap target. */}
+        {canDelete && clubId && (
+          <button
+            type="button"
+            className="flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors md:opacity-0 md:group-hover:opacity-100"
+            aria-label="Delete task"
+            onClick={(e) => {
+              stop(e)
+              deleteMutation.mutate()
+            }}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="size-3.5" />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -796,18 +910,42 @@ function TaskCardContent({
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <UserAvatar user={task.assignee} />
-        {task.dueDate && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 text-[11px]",
-              overdue ? "text-red-600 font-medium dark:text-red-400" : "text-muted-foreground"
-            )}
-          >
-            <Calendar className="size-3" />
-            {formatDueDate(task.dueDate)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {task.dueDate && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-[11px]",
+                overdue ? "text-red-600 font-medium dark:text-red-400" : "text-muted-foreground"
+              )}
+            >
+              <Calendar className="size-3" />
+              {formatDueDate(task.dueDate)}
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* Mobile-only status dropdown — a foolproof fallback to drag-and-drop
+          on touch devices. Shown below the md breakpoint only; desktop keeps
+          pure drag-and-drop. */}
+      {clubId && (
+        <div className="mt-2 md:hidden" onClick={stop} onPointerDown={stop}>
+          <Select
+            value={task.status}
+            onValueChange={(v) => statusMutation.mutate(v as TaskStatus)}
+            disabled={statusMutation.isPending}
+          >
+            <SelectTrigger className="h-8 text-xs" aria-label="Change task status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="not_started">Not started</SelectItem>
+              <SelectItem value="in_progress">In progress</SelectItem>
+              <SelectItem value="done">Done</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   )
 }
@@ -1047,87 +1185,89 @@ function NewTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
+      <DialogContent className="h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>New task</DialogTitle>
             <DialogDescription>
               Add a task to track club work. You can edit details later.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Plan spring fundraiser"
-              autoFocus
-              maxLength={200}
-              required
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-desc">Description (optional)</Label>
-            <Textarea
-              id="task-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add details, context, links…"
-              rows={3}
-              maxLength={5000}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="task-team">Team</Label>
-              <Select value={teamId} onValueChange={setTeamId}>
-                <SelectTrigger id="task-team" className="w-full">
-                  <SelectValue placeholder="No team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No team</SelectItem>
-                  {teams.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="task-title">Title</Label>
+              <Input
+                id="task-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Plan spring fundraiser"
+                autoFocus
+                maxLength={200}
+                required
+              />
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="task-assignee">Assignee</Label>
-              <Select value={assigneeId} onValueChange={setAssigneeId}>
-                <SelectTrigger id="task-assignee" className="w-full">
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
-                  {members.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="task-desc">Description (optional)</Label>
+              <Textarea
+                id="task-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add details, context, links…"
+                rows={3}
+                maxLength={5000}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-team">Team</Label>
+                <Select value={teamId} onValueChange={setTeamId}>
+                  <SelectTrigger id="task-team" className="w-full">
+                    <SelectValue placeholder="No team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No team</SelectItem>
+                    {teams.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-assignee">Assignee</Label>
+                <Select value={assigneeId} onValueChange={setAssigneeId}>
+                  <SelectTrigger id="task-assignee" className="w-full">
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="task-due">Due date (optional)</Label>
+              <Input
+                id="task-due"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-due">Due date (optional)</Label>
-            <Input
-              id="task-due"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
-
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t shrink-0">
             <Button
               type="button"
               variant="outline"

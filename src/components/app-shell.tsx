@@ -22,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
@@ -39,6 +39,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
@@ -327,7 +328,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //   RIGHT:  connection dot, keyboard help, theme toggle, notification bell
   // The club switcher has moved to the BOTTOM of the sidebar.
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30">
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Mobile hamburger */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetTrigger asChild>
@@ -434,7 +435,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Footer() {
   return (
-    <footer className="border-t bg-background px-4 md:px-6 py-3 text-center text-xs text-muted-foreground shrink-0">
+    <footer className="border-t bg-background px-4 md:px-6 py-3 text-center text-xs text-muted-foreground shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex items-center justify-center gap-3 flex-wrap">
         <span>ClubHub · Multi-club management platform</span>
         <span aria-hidden className="text-muted-foreground/40">·</span>
@@ -1207,114 +1208,187 @@ function NotificationBell() {
   const triggerLabel =
     unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
 
+  const triggerButton = (
+    <Button variant="ghost" size="icon" className="relative" aria-label={triggerLabel}>
+      <Bell className="h-4 w-4" />
+      {unread > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+          aria-hidden="true"
+        >
+          {unread > 9 ? "9+" : unread}
+        </span>
+      )}
+    </Button>
+  )
+
+  const body = (
+    <BellBody
+      items={items}
+      newItems={newItems}
+      earlierItems={earlierItems}
+      unread={unread}
+      markingAll={markingAll}
+      onMarkAllRead={markAllRead}
+      onMarkRead={markRead}
+      onNotifClick={handleNotifClick}
+      onViewAll={viewAll}
+      onOpenSettings={openSettingsTab}
+    />
+  )
+
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    // Mobile: full-width bottom Sheet that slides up from the bottom. The
+    // anchored Popover is too cramped at 360–428px and its hover-only mark-read
+    // affordance is unreachable on touch.
+    return (
+      <Sheet open={open} onOpenChange={(o) => { setOpen(o); if (o) refresh() }}>
+        <SheetTrigger asChild>{triggerButton}</SheetTrigger>
+        <SheetContent
+          side="bottom"
+          className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl"
+          aria-label="Recent notifications"
+        >
+          {/* Drag handle */}
+          <div className="pt-3 pb-1 flex justify-center shrink-0">
+            <span className="h-1.5 w-10 rounded-full bg-muted" aria-hidden />
+          </div>
+          {body}
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) refresh() }}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label={triggerLabel}>
-          <Bell className="h-4 w-4" />
-          {unread > 0 && (
-            <span
-              className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
-              aria-hidden="true"
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
       <PopoverContent
         align="end"
         className="w-[360px] max-w-[calc(100vw-1.5rem)] p-0"
         aria-label="Recent notifications"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-semibold truncate">Notifications</span>
-            {unread > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-                {unread > 9 ? "9+" : unread}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {unread > 0 && (
-              <button
-                type="button"
-                onClick={markAllRead}
-                disabled={markingAll}
-                className="inline-flex items-center gap-1 text-caption-medium text-club hover:underline disabled:opacity-50"
-              >
-                <CheckCheck className="h-3 w-3" />
-                Mark all read
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={viewAll}
-              className="inline-flex items-center gap-0.5 text-caption-medium text-muted-foreground hover:text-foreground hover:underline"
-            >
-              View all
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* List */}
-        {items.length === 0 ? (
-          <div className="px-6 py-10 text-center">
-            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <Bell className="h-5 w-5" />
-            </div>
-            <p className="text-sm font-medium">No notifications yet</p>
-            <p className="text-caption text-muted-foreground mt-1 max-w-[240px] mx-auto">
-              When something happens in your clubs, it&apos;ll show up here.
-            </p>
-          </div>
-        ) : (
-          <ScrollArea className="max-h-[420px]">
-            <div aria-label="Recent notifications">
-              {newItems.length > 0 && (
-                <NotifSection label={`New · ${newItems.length}`}>
-                  {newItems.map((n) => (
-                    <NotifRow
-                      key={n.id}
-                      n={n}
-                      onClick={() => handleNotifClick(n)}
-                      onMarkRead={() => markRead(n.id)}
-                    />
-                  ))}
-                </NotifSection>
-              )}
-              {earlierItems.length > 0 && (
-                <NotifSection label="Earlier">
-                  {earlierItems.map((n) => (
-                    <NotifRow
-                      key={n.id}
-                      n={n}
-                      onClick={() => handleNotifClick(n)}
-                      onMarkRead={() => markRead(n.id)}
-                    />
-                  ))}
-                </NotifSection>
-              )}
-            </div>
-          </ScrollArea>
-        )}
-
-        {/* Footer */}
-        <div className="border-t px-3 py-2">
-          <button
-            type="button"
-            onClick={openSettingsTab}
-            className="inline-flex items-center gap-1.5 text-caption-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Settings className="h-3 w-3" />
-            Notification settings
-          </button>
-        </div>
+        {body}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/** Shared body for the notification bell — rendered inside either a Popover
+ *  (desktop) or a Sheet (mobile). */
+function BellBody({
+  items,
+  newItems,
+  earlierItems,
+  unread,
+  markingAll,
+  onMarkAllRead,
+  onMarkRead,
+  onNotifClick,
+  onViewAll,
+  onOpenSettings,
+}: {
+  items: NotifItem[]
+  newItems: NotifItem[]
+  earlierItems: NotifItem[]
+  unread: number
+  markingAll: boolean
+  onMarkAllRead: () => void
+  onMarkRead: (id: string) => void
+  onNotifClick: (n: NotifItem) => void
+  onViewAll: () => void
+  onOpenSettings: () => void
+}) {
+  return (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold truncate">Notifications</span>
+          {unread > 0 && (
+            <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {unread > 0 && (
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              disabled={markingAll}
+              className="inline-flex items-center gap-1 text-caption-medium text-club hover:underline disabled:opacity-50 min-h-9"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Mark all read
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="inline-flex items-center gap-0.5 text-caption-medium text-muted-foreground hover:text-foreground hover:underline min-h-9"
+          >
+            View all
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      {items.length === 0 ? (
+        <div className="px-6 py-10 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Bell className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-medium">No notifications yet</p>
+          <p className="text-caption text-muted-foreground mt-1 max-w-[240px] mx-auto">
+            When something happens in your clubs, it&apos;ll show up here.
+          </p>
+        </div>
+      ) : (
+        <ScrollArea className="max-h-[60vh] sm:max-h-[420px]">
+          <div aria-label="Recent notifications">
+            {newItems.length > 0 && (
+              <NotifSection label={`New · ${newItems.length}`}>
+                {newItems.map((n) => (
+                  <NotifRow
+                    key={n.id}
+                    n={n}
+                    onClick={() => onNotifClick(n)}
+                    onMarkRead={() => onMarkRead(n.id)}
+                  />
+                ))}
+              </NotifSection>
+            )}
+            {earlierItems.length > 0 && (
+              <NotifSection label="Earlier">
+                {earlierItems.map((n) => (
+                  <NotifRow
+                    key={n.id}
+                    n={n}
+                    onClick={() => onNotifClick(n)}
+                    onMarkRead={() => onMarkRead(n.id)}
+                  />
+                ))}
+              </NotifSection>
+            )}
+          </div>
+        </ScrollArea>
+      )}
+
+      {/* Footer */}
+      <div className="border-t px-3 py-2 shrink-0">
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="inline-flex items-center gap-1.5 text-caption-medium text-muted-foreground hover:text-foreground transition-colors min-h-9"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          Notification settings
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -1402,7 +1476,7 @@ function NotifRow({
           type="button"
           onClick={(e) => { e.stopPropagation(); onMarkRead() }}
           aria-label="Mark as read"
-          className="absolute right-2 top-2.5 opacity-0 group-hover:opacity-100 transition-opacity inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
         >
           <CheckCheck className="h-3.5 w-3.5" />
         </button>

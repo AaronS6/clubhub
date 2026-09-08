@@ -1,0 +1,1209 @@
+     1→"use client"
+     2→
+     3→import { useState } from "react"
+     4→import { useSession } from "next-auth/react"
+     5→import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+     6→import { useAppStore } from "@/lib/store"
+     7→import { api } from "@/lib/api/client"
+     8→import { cn } from "@/lib/utils"
+     9→import { usePollingFallback } from "@/lib/realtime-store"
+    10→import { toast } from "sonner"
+    11→import {
+    12→  PageHeader,
+    13→  EmptyState,
+    14→  FeedSkeleton,
+    15→  initials,
+    16→  relativeTime,
+    17→} from "@/components/shared/page-header"
+    18→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    19→import { Button } from "@/components/ui/button"
+    20→import { Input } from "@/components/ui/input"
+    21→import { Textarea } from "@/components/ui/textarea"
+    22→import { Label } from "@/components/ui/label"
+    23→import { Switch } from "@/components/ui/switch"
+    24→import { Skeleton } from "@/components/ui/skeleton"
+    25→import { MentionableTextarea, type MentionableMember } from "@/components/ui/mentionable-textarea"
+    26→import {
+    27→  Dialog,
+    28→  DialogContent,
+    29→  DialogDescription,
+    30→  DialogFooter,
+    31→  DialogHeader,
+    32→  DialogTitle,
+    33→} from "@/components/ui/dialog"
+    34→import {
+    35→  Popover,
+    36→  PopoverContent,
+    37→  PopoverTrigger,
+    38→} from "@/components/ui/popover"
+    39→import {
+    40→  Tooltip,
+    41→  TooltipContent,
+    42→  TooltipTrigger,
+    43→} from "@/components/ui/tooltip"
+    44→import {
+    45→  DropdownMenu,
+    46→  DropdownMenuContent,
+    47→  DropdownMenuItem,
+    48→  DropdownMenuSeparator,
+    49→  DropdownMenuTrigger,
+    50→} from "@/components/ui/dropdown-menu"
+    51→import {
+    52→  Megaphone,
+    53→  Pin,
+    54→  PinOff,
+    55→  MessageSquare,
+    56→  Trash2,
+    57→  Send,
+    58→  Plus,
+    59→  MoreVertical,
+    60→  Pencil,
+    61→  Loader2,
+    62→  ChevronDown,
+    63→  SmilePlus,
+    64→  AlertTriangle,
+    65→} from "lucide-react"
+    66→
+    67→// Reaction feature data — fixed set of emojis for the picker.
+    68→const REACTION_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83C\uDF89", "\uD83D\uDC4F", "\uD83D\uDE02"]
+    69→
+    70→const URL_REGEX = /(https?:\/\/[^\s]+)/g
+    71→const MENTION_REGEX = /@([A-Za-z0-9._-]+[A-Za-z0-9])/g
+    72→
+    73→interface AuthorInfo {
+    74→  id: string
+    75→  name: string
+    76→  avatarUrl: string | null
+    77→}
+    78→
+    79→interface ReactionUser {
+    80→  id: string
+    81→  name: string
+    82→  avatarUrl: string | null
+    83→}
+    84→
+    85→interface ReactionSummary {
+    86→  emoji: string
+    87→  count: number
+    88→  users: ReactionUser[]
+    89→}
+    90→
+    91→interface AnnouncementItem {
+    92→  id: string
+    93→  title: string
+    94→  body: string
+    95→  isPinned: boolean
+    96→  isUrgent: boolean
+    97→  createdAt: string
+    98→  updatedAt: string
+    99→  authorId: string
+   100→  author: AuthorInfo
+   101→  reactions: ReactionSummary[]
+   102→  myReaction: string | null
+   103→  commentCount: number
+   104→}
+   105→
+   106→interface CommentItem {
+   107→  id: string
+   108→  deleted: boolean
+   109→  body?: string
+   110→  createdAt: string
+   111→  authorId: string
+   112→  author?: AuthorInfo
+   113→}
+   114→
+   115→interface AnnouncementsResponse {
+   116→  items: AnnouncementItem[]
+   117→  hasMore: boolean
+   118→  page: number
+   119→}
+   120→
+   121→interface CommentsResponse {
+   122→  items: CommentItem[]
+   123→  myUserId: string
+   124→  myRole: "member" | "executive"
+   125→}
+   126→
+   127→function announcementListKey(clubId: string) {
+   128→  return ["announcements", clubId] as const
+   129→}
+   130→
+   131→function commentsKey(clubId: string, announcementId: string) {
+   132→  return ["announcement-comments", clubId, announcementId] as const
+   133→}
+   134→
+   135→function linkify(text: string) {
+   136→  // Combined URL + @mention renderer. URLs become clickable links; @mentions
+   137→  // get a styled span (text-club font-medium) for visual emphasis. Mention
+   138→  // click-through to a member profile is a future enhancement — for v1 we
+   139→  // just style them.
+   140→  const parts: React.ReactNode[] = []
+   141→  const urlSplit = text.split(URL_REGEX)
+   142→  urlSplit.forEach((chunk, i) => {
+   143→    if (/^https?:\/\//.test(chunk)) {
+   144→      parts.push(
+   145→        <a
+   146→          key={`u${i}`}
+   147→          href={chunk}
+   148→          target="_blank"
+   149→          rel="noopener noreferrer"
+   150→          className="text-club hover:underline break-all"
+   151→        >
+   152→          {chunk}
+   153→        </a>,
+   154→      )
+   155→    } else {
+   156→      let lastIdx = 0
+   157→      const re = new RegExp(MENTION_REGEX)
+   158→      let m: RegExpExecArray | null
+   159→      while ((m = re.exec(chunk)) !== null) {
+   160→        if (m.index > lastIdx) {
+   161→          parts.push(<span key={`t${i}-${lastIdx}`}>{chunk.slice(lastIdx, m.index)}</span>)
+   162→        }
+   163→        parts.push(
+   164→          <span
+   165→            key={`m${i}-${m.index}`}
+   166→            className="text-club font-medium"
+   167→          >
+   168→            {m[0]}
+   169→          </span>,
+   170→        )
+   171→        lastIdx = m.index + m[0].length
+   172→      }
+   173→      if (lastIdx < chunk.length) {
+   174→        parts.push(<span key={`t${i}-end`}>{chunk.slice(lastIdx)}</span>)
+   175→      }
+   176→    }
+   177→  })
+   178→  return parts
+   179→}
+   180→
+   181→export function AnnouncementsView() {
+   182→  const clubId = useAppStore((s) => s.currentClubId)
+   183→  const currentClub = useAppStore((s) => s.currentClub)
+   184→  const isExec = currentClub?.role === "executive"
+   185→  const { data: session } = useSession()
+   186→  const currentUserId = session?.user?.id
+   187→  const currentUser = session?.user
+   188→    ? {
+   189→        id: session.user.id,
+   190→        name: session.user.name,
+   191→        avatarUrl: session.user.image ?? null,
+   192→      }
+   193→    : undefined
+   194→
+   195→  const [composeOpen, setComposeOpen] = useState(false)
+   196→
+   197→  const query = useInfiniteQuery<AnnouncementsResponse>({
+   198→    queryKey: clubId ? [...announcementListKey(clubId)] : ["announcements", "none"],
+   199→    queryFn: ({ pageParam }) =>
+   200→      api<AnnouncementsResponse>(`/api/clubs/${clubId}/announcements?page=${pageParam}`),
+   201→    initialPageParam: 1,
+   202→    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+   203→    enabled: !!clubId,
+   204→    // Realtime is primary; poll only as a fallback while the socket is down
+   205→    // (was previously always-on 10s polling — now degrades to polling only
+   206→    // when the realtime connection is lost).
+   207→    refetchInterval: usePollingFallback(10000),
+   208→  })
+   209→
+   210→  const items: AnnouncementItem[] = query.data?.pages.flatMap((p) => p.items) ?? []
+   211→  const hasMore = query.data?.pages[query.data.pages.length - 1]?.hasMore ?? false
+   212→
+   213→  function invalidateAll() {
+   214→    if (!clubId) return
+   215→    queryClient.invalidateQueries({ queryKey: announcementListKey(clubId) })
+   216→  }
+   217→
+   218→  const queryClient = useQueryClient()
+   219→
+   220→  if (!clubId) {
+   221→    return (
+   222→      <div className="p-8 text-muted-foreground">Select a club to view announcements.</div>
+   223→    )
+   224→  }
+   225→
+   226→  return (
+   227→    <div className="space-y-6">
+   228→      <PageHeader
+   229→        title="Announcements"
+   230→        description="Stay up to date with club news, pinned notices, and discussions."
+   231→        actions={
+   232→          isExec ? (
+   233→            <Button variant="club" onClick={() => setComposeOpen(true)}>
+   234→              <Plus className="h-4 w-4" /> New Announcement
+   235→            </Button>
+   236→          ) : undefined
+   237→        }
+   238→      />
+   239→
+   240→      {query.isLoading ? (
+   241→        <FeedSkeleton />
+   242→      ) : items.length === 0 ? (
+   243→        <EmptyState
+   244→          icon={<Megaphone className="h-8 w-8" />}
+   245→          title="No announcements yet"
+   246→          description={
+   247→            isExec
+   248→              ? "Post your first announcement to keep members in the loop."
+   249→              : "Check back later for updates from club executives."
+   250→          }
+   251→          action={
+   252→            isExec ? (
+   253→              <Button variant="club" onClick={() => setComposeOpen(true)}>
+   254→                <Plus className="h-4 w-4" /> Post announcement
+   255→              </Button>
+   256→            ) : undefined
+   257→          }
+   258→        />
+   259→      ) : (
+   260→        <div className="space-y-4">
+   261→          {items.map((a) => (
+   262→            <AnnouncementCard
+   263→              key={a.id}
+   264→              announcement={a}
+   265→              clubId={clubId}
+   266→              isExec={isExec}
+   267→              currentUserId={currentUserId}
+   268→              currentUser={currentUser}
+   269→              onMutated={invalidateAll}
+   270→            />
+   271→          ))}
+   272→          {hasMore ? (
+   273→            <div className="flex justify-center pt-2">
+   274→              <Button
+   275→                variant="outline"
+   276→                onClick={() => query.fetchNextPage()}
+   277→                disabled={query.isFetchingNextPage}
+   278→              >
+   279→                {query.isFetchingNextPage ? (
+   280→                  <>
+   281→                    <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+   282→                  </>
+   283→                ) : (
+   284→                  <>
+   285→                    <ChevronDown className="h-4 w-4" /> Load more
+   286→                  </>
+   287→                )}
+   288→              </Button>
+   289→            </div>
+   290→          ) : null}
+   291→        </div>
+   292→      )}
+   293→
+   294→      <ComposeAnnouncementDialog
+   295→        open={composeOpen}
+   296→        onOpenChange={setComposeOpen}
+   297→        clubId={clubId}
+   298→        onCreated={() => {
+   299→          setComposeOpen(false)
+   300→          invalidateAll()
+   301→        }}
+   302→      />
+   303→    </div>
+   304→  )
+   305→}
+   306→
+   307→function AnnouncementCard({
+   308→  announcement,
+   309→  clubId,
+   310→  isExec,
+   311→  currentUserId,
+   312→  currentUser,
+   313→  onMutated,
+   314→}: {
+   315→  announcement: AnnouncementItem
+   316→  clubId: string
+   317→  isExec: boolean
+   318→  currentUserId?: string
+   319→  currentUser?: { id: string; name: string; avatarUrl: string | null }
+   320→  onMutated: () => void
+   321→}) {
+   322→  const queryClient = useQueryClient()
+   323→  const [commentsOpen, setCommentsOpen] = useState(false)
+   324→  const [editing, setEditing] = useState(false)
+   325→
+   326→  const isAuthor = !!currentUserId && announcement.authorId === currentUserId
+   327→  const canEdit = isExec || isAuthor
+   328→
+   329→  const reactionMutation = useMutation({
+   330→    mutationFn: (emoji: string) =>
+   331→      api<{ reactions: ReactionSummary[]; myReaction: string | null }>(
+   332→        `/api/clubs/${clubId}/announcements/${announcement.id}/reactions`,
+   333→        { method: "POST", json: { emoji } }
+   334→      ),
+   335→    onMutate: async (emoji) => {
+   336→      // Optimistic update across all cached pages
+   337→      await cancelAllAnnouncementQueries(queryClient, clubId)
+   338→      const previous = queryClient.getQueriesData<{ pages: AnnouncementsResponse[] }>({
+   339→        queryKey: [...announcementListKey(clubId)],
+   340→      })
+   341→      for (const [key, value] of previous) {
+   342→        if (!value?.pages) continue
+   343→        queryClient.setQueryData(key, {
+   344→          ...value,
+   345→          pages: value.pages.map((p) => ({
+   346→            ...p,
+   347→            items: p.items.map((it) =>
+   348→              it.id === announcement.id ? applyReactionOptimistic(it, emoji, currentUser) : it
+   349→            ),
+   350→          })),
+   351→        })
+   352→      }
+   353→      return { previous }
+   354→    },
+   355→    onError: (_err, _emoji, ctx) => {
+   356→      if (ctx?.previous) {
+   357→        for (const [key, value] of ctx.previous) {
+   358→          queryClient.setQueryData(key, value)
+   359→        }
+   360→      }
+   361→      toast.error("Could not update reaction")
+   362→    },
+   363→    onSuccess: (data) => {
+   364→      patchAnnouncementInCache(queryClient, clubId, announcement.id, (it) => ({
+   365→        ...it,
+   366→        reactions: data.reactions,
+   367→        myReaction: data.myReaction,
+   368→      }))
+   369→    },
+   370→  })
+   371→
+   372→  const pinMutation = useMutation({
+   373→    mutationFn: (isPinned: boolean) =>
+   374→      api<{ item: AnnouncementItem }>(
+   375→        `/api/clubs/${clubId}/announcements/${announcement.id}`,
+   376→        { method: "PATCH", json: { isPinned } }
+   377→      ),
+   378→    onSuccess: (res) => {
+   379→      patchAnnouncementInCache(queryClient, clubId, announcement.id, () => res.item)
+   380→      toast.success(res.item.isPinned ? "Pinned to top" : "Unpinned")
+   381→    },
+   382→    onError: (e: Error) => toast.error(e.message),
+   383→  })
+   384→
+   385→  const deleteMutation = useMutation({
+   386→    mutationFn: () =>
+   387→      api(`/api/clubs/${clubId}/announcements/${announcement.id}`, { method: "DELETE" }),
+   388→    onSuccess: () => {
+   389→      toast.success("Announcement deleted")
+   390→      onMutated()
+   391→    },
+   392→    onError: (e: Error) => toast.error(e.message),
+   393→  })
+   394→
+   395→  return (
+   396→    <div className="card-quiet p-0 gap-0 overflow-hidden animate-fade-in">
+   397→      <div className="p-4 md:p-5 space-y-3">
+   398→        {/* Header */}
+   399→        <div className="flex items-start justify-between gap-3">
+   400→          <div className="flex items-center gap-3 min-w-0">
+   401→            <Avatar className="h-10 w-10">
+   402→              <AvatarImage src={announcement.author.avatarUrl ?? undefined} alt={announcement.author.name} />
+   403→              <AvatarFallback>{initials(announcement.author.name)}</AvatarFallback>
+   404→            </Avatar>
+   405→            <div className="min-w-0">
+   406→              <div className="flex items-center gap-2 flex-wrap">
+   407→                <span className="text-body-medium truncate">{announcement.author.name}</span>
+   408→                {announcement.isUrgent && (
+   409→                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200 px-2 py-0.5 text-[10px] font-semibold">
+   410→                    <AlertTriangle className="h-3 w-3" /> Urgent
+   411→                  </span>
+   412→                )}
+   413→                {announcement.isPinned && (
+   414→                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 px-2 py-0.5 text-[10px] font-semibold">
+   415→                    <Pin className="h-3 w-3" /> Pinned
+   416→                  </span>
+   417→                )}
+   418→              </div>
+   419→              <div className="text-caption">
+   420→                {relativeTime(announcement.createdAt)}
+   421→                {new Date(announcement.updatedAt).getTime() - new Date(announcement.createdAt).getTime() > 1000 && (
+   422→                  <span className="ml-1 italic">(edited)</span>
+   423→                )}
+   424→              </div>
+   425→            </div>
+   426→          </div>
+   427→          {(canEdit || isExec) && (
+   428→            <AnnouncementMenu
+   429→              isExec={isExec}
+   430→              canEdit={canEdit}
+   431→              pinned={announcement.isPinned}
+   432→              onTogglePin={() => pinMutation.mutate(!announcement.isPinned)}
+   433→              onEdit={() => setEditing(true)}
+   434→              onDelete={() => deleteMutation.mutate()}
+   435→              pinLoading={pinMutation.isPending}
+   436→              deleteLoading={deleteMutation.isPending}
+   437→            />
+   438→          )}
+   439→        </div>
+   440→
+   441→        {/* Title + Body */}
+   442→        {announcement.title && (
+   443→          <h3 className="text-card-title leading-tight">{announcement.title}</h3>
+   444→        )}
+   445→        <div className="text-body whitespace-pre-wrap break-words leading-relaxed">
+   446→          {linkify(announcement.body)}
+   447→        </div>
+   448→
+   449→        {/* Reaction bar */}
+   450→        <ReactionBar
+   451→          announcement={announcement}
+   452→          myReaction={announcement.myReaction}
+   453→          currentUserId={currentUserId}
+   454→          onReact={(emoji) => reactionMutation.mutate(emoji)}
+   455→          disabled={reactionMutation.isPending}
+   456→        />
+   457→      </div>
+   458→
+   459→      {/* Footer: comment toggle */}
+   460→      <div className="border-t bg-muted/20 px-4 md:px-5 py-2">
+   461→        <button
+   462→          type="button"
+   463→          onClick={() => setCommentsOpen((v) => !v)}
+   464→          className="inline-flex items-center gap-1.5 text-caption-medium text-muted-foreground hover:text-foreground transition-colors"
+   465→          aria-expanded={commentsOpen}
+   466→        >
+   467→          <MessageSquare className="h-3.5 w-3.5" />
+   468→          {announcement.commentCount} {announcement.commentCount === 1 ? "comment" : "comments"}
+   469→          <ChevronDown className={cn("h-3 w-3 transition-transform", commentsOpen && "rotate-180")} />
+   470→        </button>
+   471→      </div>
+   472→
+   473→      {commentsOpen && (
+   474→        <CommentSection
+   475→          clubId={clubId}
+   476→          announcementId={announcement.id}
+   477→          isExec={isExec}
+   478→          onCommentCountChanged={() => onMutated()}
+   479→        />
+   480→      )}
+   481→
+   482→      {editing && (
+   483→        <EditAnnouncementDialog
+   484→          open={editing}
+   485→          onOpenChange={setEditing}
+   486→          clubId={clubId}
+   487→          announcement={announcement}
+   488→          isExec={isExec}
+   489→          onSaved={() => {
+   490→            setEditing(false)
+   491→            onMutated()
+   492→          }}
+   493→        />
+   494→      )}
+   495→    </div>
+   496→  )
+   497→}
+   498→
+   499→function AnnouncementMenu({
+   500→  isExec,
+   501→  canEdit,
+   502→  pinned,
+   503→  onTogglePin,
+   504→  onEdit,
+   505→  onDelete,
+   506→  pinLoading,
+   507→  deleteLoading,
+   508→}: {
+   509→  isExec: boolean
+   510→  canEdit: boolean
+   511→  pinned: boolean
+   512→  onTogglePin: () => void
+   513→  onEdit: () => void
+   514→  onDelete: () => void
+   515→  pinLoading?: boolean
+   516→  deleteLoading?: boolean
+   517→}) {
+   518→  return (
+   519→    <DropdownMenu>
+   520→      <DropdownMenuTrigger asChild>
+   521→        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Announcement actions">
+   522→          <MoreVertical className="h-4 w-4" />
+   523→        </Button>
+   524→      </DropdownMenuTrigger>
+   525→      <DropdownMenuContent align="end" className="w-44">
+   526→        {isExec && (
+   527→          <DropdownMenuItem
+   528→            onClick={onTogglePin}
+   529→            disabled={pinLoading}
+   530→            className="cursor-pointer"
+   531→          >
+   532→            {pinned ? (
+   533→              <>
+   534→                <PinOff className="h-4 w-4" /> Unpin
+   535→              </>
+   536→            ) : (
+   537→              <>
+   538→                <Pin className="h-4 w-4" /> Pin to top
+   539→              </>
+   540→            )}
+   541→          </DropdownMenuItem>
+   542→        )}
+   543→        {canEdit && (
+   544→          <DropdownMenuItem onClick={onEdit} className="cursor-pointer">
+   545→            <Pencil className="h-4 w-4" /> Edit
+   546→          </DropdownMenuItem>
+   547→        )}
+   548→        {isExec && (
+   549→          <>
+   550→            <DropdownMenuSeparator />
+   551→            <DropdownMenuItem
+   552→              onClick={onDelete}
+   553→              disabled={deleteLoading}
+   554→              className="cursor-pointer text-red-600 focus:text-red-600"
+   555→            >
+   556→              <Trash2 className="h-4 w-4" /> Delete
+   557→            </DropdownMenuItem>
+   558→          </>
+   559→        )}
+   560→      </DropdownMenuContent>
+   561→    </DropdownMenu>
+   562→  )
+   563→}
+   564→
+   565→function ReactionBar({
+   566→  announcement,
+   567→  myReaction,
+   568→  currentUserId,
+   569→  onReact,
+   570→  disabled,
+   571→}: {
+   572→  announcement: AnnouncementItem
+   573→  myReaction: string | null
+   574→  currentUserId?: string
+   575→  onReact: (emoji: string) => void
+   576→  disabled?: boolean
+   577→}) {
+   578→  const activeReactions = announcement.reactions // only entries with count > 0 are returned by the API
+   579→  return (
+   580→    <div className="flex items-center flex-wrap gap-1.5 pt-1">
+   581→      {/* Existing reaction badges — only render ones with at least 1 reaction */}
+   582→      {activeReactions.map((entry) => {
+   583→        const isMine = myReaction === entry.emoji
+   584→        const users = entry.users
+   585→        return (
+   586→          <Tooltip key={entry.emoji}>
+   587→            <TooltipTrigger asChild>
+   588→              <button
+   589→                type="button"
+   590→                onClick={() => onReact(entry.emoji)}
+   591→                disabled={disabled}
+   592→                aria-pressed={isMine}
+   593→                aria-label={`React ${entry.emoji} · ${entry.count} ${entry.count === 1 ? "person" : "people"}`}
+   594→                className={cn(
+   595→                  "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-all h-7",
+   596→                  isMine
+   597→                    ? "bg-club-muted border-transparent text-club ring-1 ring-club"
+   598→                    : "bg-background border-border hover:bg-muted text-foreground hover:border-foreground/20"
+   599→                )}
+   600→              >
+   601→                <span aria-hidden>{entry.emoji}</span>
+   602→                <span className="font-medium tabular-nums">{entry.count}</span>
+   603→                {isMine && (
+   604→                  <span className="sr-only">(your reaction — click to remove)</span>
+   605→                )}
+   606→              </button>
+   607→            </TooltipTrigger>
+   608→            <TooltipContent side="top" className="max-w-[240px]">
+   609→              <div className="text-xs">
+   610→                <div className="font-semibold mb-1">
+   611→                  {entry.count} {entry.count === 1 ? "person" : "people"} reacted with {entry.emoji}
+   612→                </div>
+   613→                {users.length > 0 && (
+   614→                  <div className="text-[11px] space-y-0.5">
+   615→                    {users.slice(0, 6).map((u) => (
+   616→                      <div key={u.id} className="flex items-center gap-1.5">
+   617→                        <Avatar className="h-4 w-4">
+   618→                          <AvatarImage src={u.avatarUrl ?? undefined} alt={u.name} />
+   619→                          <AvatarFallback className="text-[8px]">{initials(u.name)}</AvatarFallback>
+   620→                        </Avatar>
+   621→                        <span className="truncate">{u.name}{u.id === currentUserId ? " (you)" : ""}</span>
+   622→                      </div>
+   623→                    ))}
+   624→                    {users.length > 6 && (
+   625→                      <div className="text-muted-foreground">+{users.length - 6} more</div>
+   626→                    )}
+   627→                  </div>
+   628→                )}
+   629→                {isMine ? (
+   630→                  <div className="mt-1 text-[10px] text-muted-foreground">Click to remove your reaction</div>
+   631→                ) : (
+   632→                  <div className="mt-1 text-[10px] text-muted-foreground">Click to switch your reaction</div>
+   633→                )}
+   634→              </div>
+   635→            </TooltipContent>
+   636→          </Tooltip>
+   637→        )
+   638→      })}
+   639→
+   640→      {/* Add reaction control — compact pill, opens a popover with all 5 emoji choices */}
+   641→      <Popover>
+   642→        <PopoverTrigger asChild>
+   643→          <Button
+   644→            variant="ghost"
+   645→            size="sm"
+   646→            className="h-7 gap-1 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+   647→            disabled={disabled}
+   648→            aria-label={myReaction ? "Change your reaction" : "Add a reaction"}
+   649→          >
+   650→            <SmilePlus className="h-3.5 w-3.5" />
+   651→            <span className="hidden sm:inline">{myReaction ? "Change" : "React"}</span>
+   652→          </Button>
+   653→        </PopoverTrigger>
+   654→        <PopoverContent align="start" className="w-auto p-3">
+   655→          <div className="space-y-2">
+   656→            <div className="flex gap-1">
+   657→              {REACTION_EMOJIS.map((emoji) => {
+   658→                const isMine = myReaction === emoji
+   659→                return (
+   660→                  <button
+   661→                    key={emoji}
+   662→                    type="button"
+   663→                    onClick={() => onReact(emoji)}
+   664→                    disabled={disabled}
+   665→                    className={cn(
+   666→                      "flex h-9 w-9 items-center justify-center rounded-md text-xl hover:bg-muted transition-all",
+   667→                      isMine && "bg-club-muted ring-1 ring-club"
+   668→                    )}
+   669→                    aria-label={`React with ${emoji}`}
+   670→                    aria-pressed={isMine}
+   671→                  >
+   672→                    {emoji}
+   673→                  </button>
+   674→                )
+   675→              })}
+   676→            </div>
+   677→            <p className="text-[11px] text-muted-foreground leading-snug">
+   678→              You can pick one reaction — picking another swaps it.
+   679→            </p>
+   680→          </div>
+   681→        </PopoverContent>
+   682→      </Popover>
+   683→    </div>
+   684→  )
+   685→}
+   686→
+   687→function CommentSection({
+   688→  clubId,
+   689→  announcementId,
+   690→  isExec,
+   691→  onCommentCountChanged,
+   692→}: {
+   693→  clubId: string
+   694→  announcementId: string
+   695→  isExec: boolean
+   696→  onCommentCountChanged: () => void
+   697→}) {
+   698→  const queryClient = useQueryClient()
+   699→  const [draft, setDraft] = useState("")
+   700→
+   701→  const { data, isLoading } = useQuery<CommentsResponse>({
+   702→    queryKey: commentsKey(clubId, announcementId),
+   703→    queryFn: () =>
+   704→      api<CommentsResponse>(`/api/clubs/${clubId}/announcements/${announcementId}/comments`),
+   705→    refetchInterval: 15_000,
+   706→  })
+   707→
+   708→  // Cached member list to power @mention suggestions in the comment composer.
+   709→  const { data: membersData } = useQuery<{ members: { user: { id: string; name: string; avatarUrl: string | null } }[] }>({
+   710→    queryKey: ["members", clubId],
+   711→    queryFn: () => api(`/api/clubs/${clubId}/members`),
+   712→    staleTime: 30_000,
+   713→  })
+   714→  const members: MentionableMember[] = (membersData?.members ?? []).map((m) => ({
+   715→    userId: m.user.id,
+   716→    name: m.user.name,
+   717→    avatarUrl: m.user.avatarUrl ?? null,
+   718→  }))
+   719→
+   720→  const postMutation = useMutation({
+   721→    mutationFn: (body: string) =>
+   722→      api<{ item: CommentItem }>(
+   723→        `/api/clubs/${clubId}/announcements/${announcementId}/comments`,
+   724→        { method: "POST", json: { body } }
+   725→      ),
+   726→    onSuccess: (res) => {
+   727→      queryClient.setQueryData(commentsKey(clubId, announcementId), (old: CommentsResponse | undefined) => {
+   728→        if (!old) return { ...res, items: [res.item] } as unknown as CommentsResponse
+   729→        return { ...old, items: [...old.items, res.item] }
+   730→      })
+   731→      setDraft("")
+   732→      onCommentCountChanged()
+   733→    },
+   734→    onError: (e: Error) => toast.error(e.message),
+   735→  })
+   736→
+   737→  const deleteMutation = useMutation({
+   738→    mutationFn: (commentId: string) =>
+   739→      api(`/api/clubs/${clubId}/announcements/${announcementId}/comments/${commentId}`, {
+   740→        method: "DELETE",
+   741→      }),
+   742→    onSuccess: (_res, commentId) => {
+   743→      queryClient.setQueryData(commentsKey(clubId, announcementId), (old: CommentsResponse | undefined) => {
+   744→        if (!old) return old
+   745→        return {
+   746→          ...old,
+   747→          items: old.items.map((c) =>
+   748→            c.id === commentId ? { ...c, deleted: true, body: undefined, author: undefined } : c
+   749→          ),
+   750→        }
+   751→      })
+   752→      toast.success("Comment removed")
+   753→      onCommentCountChanged()
+   754→    },
+   755→    onError: (e: Error) => toast.error(e.message),
+   756→  })
+   757→
+   758→  const items = data?.items ?? []
+   759→  const myUserId = data?.myUserId
+   760→
+   761→  function handleSend() {
+   762→    const text = draft.trim()
+   763→    if (!text) return
+   764→    postMutation.mutate(text)
+   765→  }
+   766→
+   767→  return (
+   768→    <div className="px-4 md:px-6 py-3 space-y-3 bg-muted/10 border-t">
+   769→      {isLoading ? (
+   770→        <div className="space-y-2">
+   771→          {[0, 1].map((i) => (
+   772→            <div key={i} className="flex gap-2">
+   773→              <Skeleton className="h-7 w-7 rounded-full" />
+   774→              <div className="space-y-1 flex-1">
+   775→                <Skeleton className="h-3 w-24" />
+   776→                <Skeleton className="h-3 w-full" />
+   777→              </div>
+   778→            </div>
+   779→          ))}
+   780→        </div>
+   781→      ) : items.length === 0 ? (
+   782→        <p className="text-xs text-muted-foreground text-center py-2">
+   783→          No comments yet. Be the first to start the discussion.
+   784→        </p>
+   785→      ) : (
+   786→        <ul className="space-y-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+   787→          {items.map((c) => (
+   788→            <CommentRow
+   789→              key={c.id}
+   790→              comment={c}
+   791→              canDelete={
+   792→                !!myUserId &&
+   793→                (c.authorId === myUserId || isExec) &&
+   794→                !c.deleted
+   795→              }
+   796→              onDelete={() => deleteMutation.mutate(c.id)}
+   797→              deleting={
+   798→                deleteMutation.isPending && deleteMutation.variables === c.id
+   799→              }
+   800→            />
+   801→          ))}
+   802→        </ul>
+   803→      )}
+   804→
+   805→      <div className="flex items-end gap-2 pt-1">
+   806→        <MentionableTextarea
+   807→          value={draft}
+   808→          members={members}
+   809→          onChange={(e) => setDraft(e.target.value)}
+   810→          placeholder="Write a comment… (Enter to send, Shift+Enter for new line. Use @ to mention.)"
+   811→          rows={1}
+   812→          className="min-h-9 resize-none"
+   813→          onKeyDown={(e) => {
+   814→            if (e.key === "Enter" && !e.shiftKey) {
+   815→              e.preventDefault()
+   816→              handleSend()
+   817→            }
+   818→          }}
+   819→          aria-label="New comment"
+   820→          listLabel="Mention a club member"
+   821→        />
+   822→        <Button
+   823→          size="icon"
+   824→          variant="club"
+   825→          className="h-9 w-9 shrink-0"
+   826→          onClick={handleSend}
+   827→          disabled={!draft.trim() || postMutation.isPending}
+   828→          aria-label="Send comment"
+   829→        >
+   830→          {postMutation.isPending ? (
+   831→            <Loader2 className="h-4 w-4 animate-spin" />
+   832→          ) : (
+   833→            <Send className="h-4 w-4" />
+   834→          )}
+   835→        </Button>
+   836→      </div>
+   837→    </div>
+   838→  )
+   839→}
+   840→
+   841→function CommentRow({
+   842→  comment,
+   843→  canDelete,
+   844→  onDelete,
+   845→  deleting,
+   846→}: {
+   847→  comment: CommentItem
+   848→  canDelete: boolean
+   849→  onDelete: () => void
+   850→  deleting?: boolean
+   851→}) {
+   852→  if (comment.deleted) {
+   853→    return (
+   854→      <li className="flex items-center gap-2 text-caption text-muted-foreground italic">
+   855→        <span className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+   856→          <Trash2 className="h-3 w-3 opacity-50" />
+   857→        </span>
+   858→        <span>[comment removed]</span>
+   859→      </li>
+   860→    )
+   861→  }
+   862→  return (
+   863→    <li className="flex gap-2 group">
+   864→      <Avatar className="h-7 w-7 mt-0.5">
+   865→        <AvatarImage src={comment.author?.avatarUrl ?? undefined} alt={comment.author?.name} />
+   866→        <AvatarFallback className="text-[10px]">{initials(comment.author?.name)}</AvatarFallback>
+   867→      </Avatar>
+   868→      <div className="min-w-0 flex-1">
+   869→        <div className="flex items-baseline gap-2 flex-wrap">
+   870→          <span className="text-caption-medium text-foreground">{comment.author?.name ?? "Unknown"}</span>
+   871→          <span className="text-caption">{relativeTime(comment.createdAt)}</span>
+   872→          {canDelete && (
+   873→            <button
+   874→              onClick={onDelete}
+   875→              disabled={deleting}
+   876→              aria-label="Delete comment"
+   877→              className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 disabled:opacity-50"
+   878→            >
+   879→              {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+   880→            </button>
+   881→          )}
+   882→        </div>
+   883→        <p className="text-body whitespace-pre-wrap break-words">{linkify(comment.body ?? "")}</p>
+   884→      </div>
+   885→    </li>
+   886→  )
+   887→}
+   888→
+   889→function ComposeAnnouncementDialog({
+   890→  open,
+   891→  onOpenChange,
+   892→  clubId,
+   893→  onCreated,
+   894→}: {
+   895→  open: boolean
+   896→  onOpenChange: (v: boolean) => void
+   897→  clubId: string
+   898→  onCreated: () => void
+   899→}) {
+   900→  const [title, setTitle] = useState("")
+   901→  const [body, setBody] = useState("")
+   902→  const [isPinned, setIsPinned] = useState(false)
+   903→  const [isUrgent, setIsUrgent] = useState(false)
+   904→
+   905→  const mutation = useMutation({
+   906→    mutationFn: () =>
+   907→      api(`/api/clubs/${clubId}/announcements`, {
+   908→        method: "POST",
+   909→        json: { title: title.trim(), body: body.trim(), isPinned, isUrgent },
+   910→      }),
+   911→    onSuccess: () => {
+   912→      toast.success("Announcement posted")
+   913→      setTitle("")
+   914→      setBody("")
+   915→      setIsPinned(false)
+   916→      setIsUrgent(false)
+   917→      onCreated()
+   918→    },
+   919→    onError: (e: Error) => toast.error(e.message),
+   920→  })
+   921→
+   922→  function handleSubmit(e: React.FormEvent) {
+   923→    e.preventDefault()
+   924→    if (!title.trim() || !body.trim()) {
+   925→      toast.error("Title and body are required")
+   926→      return
+   927→    }
+   928→    mutation.mutate()
+   929→  }
+   930→
+   931→  return (
+   932→    <Dialog open={open} onOpenChange={onOpenChange}>
+   933→      <DialogContent className="max-w-lg">
+   934→        <DialogHeader>
+   935→          <DialogTitle>New announcement</DialogTitle>
+   936→          <DialogDescription>
+   937→            Share an update with all members. Plain text is fine — line breaks are preserved.
+   938→          </DialogDescription>
+   939→        </DialogHeader>
+   940→        <form onSubmit={handleSubmit} className="space-y-4">
+   941→          <div className="space-y-2">
+   942→            <Label htmlFor="ann-title">Title</Label>
+   943→            <Input
+   944→              id="ann-title"
+   945→              value={title}
+   946→              onChange={(e) => setTitle(e.target.value)}
+   947→              placeholder="e.g. Spring service drive kicks off next week"
+   948→              maxLength={200}
+   949→              required
+   950→            />
+   951→          </div>
+   952→          <div className="space-y-2">
+   953→            <Label htmlFor="ann-body">Body</Label>
+   954→            <Textarea
+   955→              id="ann-body"
+   956→              value={body}
+   957→              onChange={(e) => setBody(e.target.value)}
+   958→              placeholder="Write your announcement. URLs will become clickable links automatically."
+   959→              rows={6}
+   960→              maxLength={8000}
+   961→              required
+   962→            />
+   963→            <p className="text-xs text-muted-foreground">
+   964→              {body.length}/8000 characters · URLs auto-link
+   965→            </p>
+   966→          </div>
+   967→          <div className="flex items-center gap-3 rounded-lg border p-3">
+   968→            <Switch checked={isPinned} onCheckedChange={setIsPinned} id="ann-pinned" />
+   969→            <Label htmlFor="ann-pinned" className="cursor-pointer">
+   970→              <div className="text-sm font-medium">Pin to top</div>
+   971→              <div className="text-xs text-muted-foreground">
+   972→                Pinned announcements appear first for all members.
+   973→              </div>
+   974→            </Label>
+   975→          </div>
+   976→          <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+   977→            <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="ann-urgent" />
+   978→            <Label htmlFor="ann-urgent" className="cursor-pointer">
+   979→              <div className="text-sm font-medium flex items-center gap-1.5">
+   980→                <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
+   981→              </div>
+   982→              <div className="text-xs text-muted-foreground">
+   983→                Shows a dismissible banner at the top of the app for all members until they dismiss it.
+   984→              </div>
+   985→            </Label>
+   986→          </div>
+   987→          <DialogFooter>
+   988→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+   989→              Cancel
+   990→            </Button>
+   991→            <Button
+   992→              type="submit"
+   993→              variant="club"
+   994→              disabled={mutation.isPending || !title.trim() || !body.trim()}
+   995→            >
+   996→              {mutation.isPending ? (
+   997→                <>
+   998→                  <Loader2 className="h-4 w-4 animate-spin" /> Posting…
+   999→                </>
+  1000→              ) : (
+  1001→                "Post announcement"
+  1002→              )}
+  1003→            </Button>
+  1004→          </DialogFooter>
+  1005→        </form>
+  1006→      </DialogContent>
+  1007→    </Dialog>
+  1008→  )
+  1009→}
+  1010→
+  1011→function EditAnnouncementDialog({
+  1012→  open,
+  1013→  onOpenChange,
+  1014→  clubId,
+  1015→  announcement,
+  1016→  isExec,
+  1017→  onSaved,
+  1018→}: {
+  1019→  open: boolean
+  1020→  onOpenChange: (v: boolean) => void
+  1021→  clubId: string
+  1022→  announcement: AnnouncementItem
+  1023→  isExec: boolean
+  1024→  onSaved: () => void
+  1025→}) {
+  1026→  const [title, setTitle] = useState(announcement.title)
+  1027→  const [body, setBody] = useState(announcement.body)
+  1028→  const [isPinned, setIsPinned] = useState(announcement.isPinned)
+  1029→  const [isUrgent, setIsUrgent] = useState(announcement.isUrgent)
+  1030→
+  1031→  const mutation = useMutation({
+  1032→    mutationFn: () =>
+  1033→      api<{ item: AnnouncementItem }>(
+  1034→        `/api/clubs/${clubId}/announcements/${announcement.id}`,
+  1035→        { method: "PATCH", json: { title: title.trim(), body: body.trim(), isPinned, isUrgent } }
+  1036→      ),
+  1037→    onSuccess: () => {
+  1038→      toast.success("Announcement updated")
+  1039→      onSaved()
+  1040→    },
+  1041→    onError: (e: Error) => toast.error(e.message),
+  1042→  })
+  1043→
+  1044→  function handleSubmit(e: React.FormEvent) {
+  1045→    e.preventDefault()
+  1046→    if (!title.trim() || !body.trim()) {
+  1047→      toast.error("Title and body are required")
+  1048→      return
+  1049→    }
+  1050→    mutation.mutate()
+  1051→  }
+  1052→
+  1053→  return (
+  1054→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1055→      <DialogContent className="max-w-lg">
+  1056→        <DialogHeader>
+  1057→          <DialogTitle>Edit announcement</DialogTitle>
+  1058→          <DialogDescription>Update the title, body, or pin status.</DialogDescription>
+  1059→        </DialogHeader>
+  1060→        <form onSubmit={handleSubmit} className="space-y-4">
+  1061→          <div className="space-y-2">
+  1062→            <Label htmlFor="edit-title">Title</Label>
+  1063→            <Input
+  1064→              id="edit-title"
+  1065→              value={title}
+  1066→              onChange={(e) => setTitle(e.target.value)}
+  1067→              maxLength={200}
+  1068→              required
+  1069→            />
+  1070→          </div>
+  1071→          <div className="space-y-2">
+  1072→            <Label htmlFor="edit-body">Body</Label>
+  1073→            <Textarea
+  1074→              id="edit-body"
+  1075→              value={body}
+  1076→              onChange={(e) => setBody(e.target.value)}
+  1077→              rows={6}
+  1078→              maxLength={8000}
+  1079→              required
+  1080→            />
+  1081→          </div>
+  1082→          {isExec && (
+  1083→            <div className="flex items-center gap-3 rounded-lg border p-3">
+  1084→              <Switch checked={isPinned} onCheckedChange={setIsPinned} id="edit-pinned" />
+  1085→              <Label htmlFor="edit-pinned" className="cursor-pointer">
+  1086→                <div className="text-sm font-medium">Pin to top</div>
+  1087→                <div className="text-xs text-muted-foreground">
+  1088→                  Pinned announcements appear first.
+  1089→                </div>
+  1090→              </Label>
+  1091→            </div>
+  1092→          )}
+  1093→          {isExec && (
+  1094→            <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+  1095→              <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="edit-urgent" />
+  1096→              <Label htmlFor="edit-urgent" className="cursor-pointer">
+  1097→                <div className="text-sm font-medium flex items-center gap-1.5">
+  1098→                  <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
+  1099→                </div>
+  1100→                <div className="text-xs text-muted-foreground">
+  1101→                  Shows a dismissible banner at the top of the app until members dismiss it.
+  1102→                </div>
+  1103→              </Label>
+  1104→            </div>
+  1105→          )}
+  1106→          <DialogFooter>
+  1107→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+  1108→              Cancel
+  1109→            </Button>
+  1110→            <Button
+  1111→              type="submit"
+  1112→              variant="club"
+  1113→              disabled={mutation.isPending}
+  1114→            >
+  1115→              {mutation.isPending ? (
+  1116→                <>
+  1117→                  <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+  1118→                </>
+  1119→              ) : (
+  1120→                "Save changes"
+  1121→              )}
+  1122→            </Button>
+  1123→          </DialogFooter>
+  1124→        </form>
+  1125→      </DialogContent>
+  1126→    </Dialog>
+  1127→  )
+  1128→}
+  1129→
+  1130→// --- helpers ---
+  1131→
+  1132→async function cancelAllAnnouncementQueries(
+  1133→  queryClient: ReturnType<typeof useQueryClient>,
+  1134→  clubId: string
+  1135→) {
+  1136→  await queryClient.cancelQueries({ queryKey: [...announcementListKey(clubId)] })
+  1137→}
+  1138→
+  1139→function patchAnnouncementInCache(
+  1140→  queryClient: ReturnType<typeof useQueryClient>,
+  1141→  clubId: string,
+  1142→  announcementId: string,
+  1143→  updater: (item: AnnouncementItem) => AnnouncementItem
+  1144→) {
+  1145→  const keys = queryClient.getQueriesData<{ pages: AnnouncementsResponse[] }>({
+  1146→    queryKey: [...announcementListKey(clubId)],
+  1147→  })
+  1148→  for (const [key, value] of keys) {
+  1149→    if (!value?.pages) continue
+  1150→    queryClient.setQueryData(key, {
+  1151→      ...value,
+  1152→      pages: value.pages.map((p) => ({
+  1153→        ...p,
+  1154→        items: p.items.map((it) => (it.id === announcementId ? updater(it) : it)),
+  1155→      })),
+  1156→    })
+  1157→  }
+  1158→}
+  1159→
+  1160→function applyReactionOptimistic(
+  1161→  item: AnnouncementItem,
+  1162→  emoji: string,
+  1163→  currentUser?: { id: string; name: string; avatarUrl: string | null }
+  1164→): AnnouncementItem {
+  1165→  const prev = item.myReaction
+  1166→  const me = currentUser
+  1167→    ? { id: currentUser.id, name: currentUser.name, avatarUrl: currentUser.avatarUrl ?? null }
+  1168→    : { id: "me", name: "You", avatarUrl: null }
+  1169→
+  1170→  let reactions = item.reactions.map((r) => ({
+  1171→    emoji: r.emoji,
+  1172→    count: r.count,
+  1173→    users: r.users.map((u) => ({ ...u })),
+  1174→  }))
+  1175→
+  1176→  // Decrement previous reaction (swap or toggle off)
+  1177→  if (prev) {
+  1178→    const idx = reactions.findIndex((r) => r.emoji === prev)
+  1179→    if (idx >= 0) {
+  1180→      const newUsers = reactions[idx].users.filter((u) => u.id !== me.id)
+  1181→      const newCount = Math.max(0, reactions[idx].count - 1)
+  1182→      if (newCount <= 0) {
+  1183→        reactions.splice(idx, 1)
+  1184→      } else {
+  1185→        reactions[idx] = { ...reactions[idx], count: newCount, users: newUsers }
+  1186→      }
+  1187→    }
+  1188→  }
+  1189→
+  1190→  if (prev === emoji) {
+  1191→    // Toggling off — already removed above
+  1192→    return { ...item, myReaction: null, reactions }
+  1193→  }
+  1194→
+  1195→  // Add / swap to new emoji
+  1196→  const idx = reactions.findIndex((r) => r.emoji === emoji)
+  1197→  if (idx >= 0) {
+  1198→    reactions[idx] = {
+  1199→      ...reactions[idx],
+  1200→      count: reactions[idx].count + 1,
+  1201→      users: [...reactions[idx].users, me],
+  1202→    }
+  1203→  } else {
+  1204→    reactions.push({ emoji, count: 1, users: [me] })
+  1205→  }
+  1206→
+  1207→  return { ...item, myReaction: emoji, reactions }
+  1208→}
+  1209→

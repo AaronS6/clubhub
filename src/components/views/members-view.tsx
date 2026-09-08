@@ -94,6 +94,16 @@ import {
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
+// Mobile full-screen dialog className — makes a Dialog fill the viewport on
+// phones (sticky header / scrollable body / sticky footer so action buttons
+// stay reachable above the soft keyboard) and centers as a normal modal on
+// sm+ screens.
+// ---------------------------------------------------------------------------
+const MOBILE_FULLSCREEN_DIALOG =
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -179,7 +189,7 @@ export function MembersView() {
         title="Members"
         description="Browse, search, and manage everyone in this club."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {isExec && (
               <Button variant="club" onClick={() => setImportOpen(true)}>
                 <Upload className="mr-1.5 h-4 w-4" /> Import CSV
@@ -500,7 +510,7 @@ function ClubCodeSection({
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9"
               aria-label={passwordVisible ? "Hide password" : "Show password"}
               onClick={togglePasswordVisible}
               disabled={passwordLoading}
@@ -631,7 +641,7 @@ function ChangePasswordDialog({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9"
                 aria-label={show ? "Hide password" : "Show password"}
                 onClick={() => setShow((s) => !s)}
               >
@@ -791,7 +801,7 @@ function MemberRow({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-9 w-9"
                   aria-label={`Actions for ${member.user.name}`}
                 >
                   <MoreVertical className="h-4 w-4" />
@@ -1203,8 +1213,8 @@ function ImportCsvDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-4 w-4" /> Import members from CSV
           </DialogTitle>
@@ -1216,71 +1226,75 @@ function ImportCsvDialog({
         </DialogHeader>
 
         {result ? (
-          <ImportResults result={result} onAgain={reset} onCopyCode={handleCopyCode} />
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0">
+            <ImportResults result={result} onAgain={reset} onCopyCode={handleCopyCode} />
+          </div>
         ) : (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>CSV file</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) {
-                      setFile(f)
-                      setError(null)
-                    }
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 justify-start truncate"
-                >
-                  <FileSpreadsheet className="mr-2 h-4 w-4 shrink-0" />
-                  {file ? (
-                    <span className="truncate">{file.name}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Choose a .csv file…</span>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={downloadTemplateCsv}
-                  className="text-club"
-                >
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Template
-                </Button>
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+              <div className="space-y-2">
+                <Label>CSV file</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) {
+                        setFile(f)
+                        setError(null)
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 justify-start truncate min-w-0"
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4 shrink-0" />
+                    {file ? (
+                      <span className="truncate">{file.name}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Choose a .csv file…</span>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={downloadTemplateCsv}
+                    className="text-club shrink-0"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> Template
+                  </Button>
+                </div>
+                {file && (
+                  <p className="text-xs text-muted-foreground">
+                    {file.name} · {(file.size / 1024).toFixed(1)} KB
+                  </p>
+                )}
               </div>
-              {file && (
-                <p className="text-xs text-muted-foreground">
-                  {file.name} · {(file.size / 1024).toFixed(1)} KB
-                </p>
+
+              <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground mb-1">Requirements</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>Header row with <code>name</code> and <code>email</code> columns.</li>
+                  <li>Maximum 1 MB · 500 rows.</li>
+                  <li>Quoted fields with embedded commas are supported.</li>
+                </ul>
+              </div>
+
+              {error && (
+                <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                  {error}
+                </div>
               )}
             </div>
 
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground mb-1">Requirements</p>
-              <ul className="list-disc list-inside space-y-0.5">
-                <li>Header row with <code>name</code> and <code>email</code> columns.</li>
-                <li>Maximum 1 MB · 500 rows.</li>
-                <li>Quoted fields with embedded commas are supported.</li>
-              </ul>
-            </div>
-
-            {error && (
-              <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-                {error}
-              </div>
-            )}
-
-            <DialogFooter>
+            <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={uploading}>
                 Cancel
               </Button>
@@ -1323,7 +1337,7 @@ function ImportResults({
     result.pendingInvites.length
 
   return (
-    <div className="space-y-4 max-h-[60vh] overflow-y-auto scrollbar-thin pr-1">
+    <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <ResultStat
           icon={<CheckCircle2 className="h-4 w-4 text-club" />}

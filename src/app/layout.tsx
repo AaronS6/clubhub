@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -27,6 +27,22 @@ export const metadata: Metadata = {
   title: "ClubHub — Multi-Club Management Platform",
   description:
     "Create or join clubs, track service hours, manage tasks, post announcements, schedule meetings, and more.",
+};
+
+// Explicit viewport config — critical for mobile:
+// - viewportFit: "cover" lets content extend under the notch/home indicator
+//   on iPhones (combined with safe-area-inset padding on fixed elements).
+// - themeColor matches the actual light/dark backgrounds.
+// - We do NOT set maximumScale/userScalable — pinch-zoom is an accessibility
+//   requirement, not just a preference.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({

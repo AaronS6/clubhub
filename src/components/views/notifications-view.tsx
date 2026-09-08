@@ -407,13 +407,13 @@ function NotifListItem({
         </div>
       </div>
 
-      {/* Hover-only mark-read affordance */}
+      {/* Mark-read affordance — always visible on touch (no hover); hover-reveal on md+. */}
       {!n.isRead && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onMarkRead() }}
           aria-label="Mark as read"
-          className="absolute right-2 top-2.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-accent hover:text-foreground focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-opacity"
+          className="absolute right-2 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 md:focus:opacity-100 hover:bg-accent hover:text-foreground focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-opacity"
         >
           <CheckCheck className="h-3.5 w-3.5" />
         </button>

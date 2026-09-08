@@ -1174,3 +1174,67 @@ Stage Summary:
 - Files modified: `src/lib/server-auth.ts` (getSessionUserWithMemberships), `src/app/api/me/route.ts` (use it), `src/components/app-shell.tsx` (timeout + retry UI), `src/components/views/dashboard-view.tsx` (remove activity feed dead code), `src/lib/admin-passcode.ts` (env var), `src/app/api/clubs/verify-admin-passcode/route.ts` (new), `src/components/auth/create-club-dialog.tsx` (server-side verification, no client literal), `src/app/layout.tsx` (Geist font), `src/app/globals.css` (font variable), `src/components/auth/auth-screen.tsx` (dot-grid, blob, stagger, returning-user flag, tightened copy).
 - Browser-verified: Geist font applied everywhere, landing page dot-grid + accent blob + stagger animations render, activity feed gone from dashboard, admin passcode rejects wrong / accepts correct via server verification, passcode literal NOT in client bundle, dark mode works, mobile 375px no overflow, /api/me 13ms.
 - Lint clean. No test files exist (tests dir only has build scripts).
+
+---
+Task ID: R7-MOBILE
+Agent: full-stack-developer (mobile views)
+Task: Full mobile optimization pass — announcements/activity/teams/notifications/hours/members/meetings views + create-club dialog + NotificationBell. Forms → full-screen sheets on mobile, hover-only affordances → touch-visible, touch-target audit, table-to-card re-verification.
+
+Work Log:
+- §1 ANNOUNCEMENTS (`announcements-view.tsx`): Reaction emoji popover could overflow at 360px → added `max-w-[calc(100vw-1.5rem)]` + `flex-wrap` on the emoji grid. Reaction badges + "React" trigger bumped `h-7`→`h-8 min-h-8` for touch. Comment delete button was hover-only (`opacity-0 group-hover:opacity-100`) → unreachable on touch; changed to `opacity-100 md:opacity-0 md:group-hover:opacity-100` and bumped to `h-8 w-8` button. Comment avatar `h-7`→`h-8`. Added `truncate min-w-0` to author name so it doesn't crowd the timestamp. AnnouncementMenu trigger `h-8 w-8`→`h-9 w-9`. Compose + Edit Announcement dialogs converted to mobile full-screen sheets (sticky header / scrollable body / sticky footer with Cancel/Submit always reachable above the keyboard).
+- §2 ACTIVITY LOG (`activity-view.tsx`): The user assumed this was a dense table, but it's ALREADY a stacked timeline list (avatar + actor + action chip + timestamp + description). Did NOT add a redundant table/card split. Polished instead: filter Select `w-[180px]`→`w-[150px] sm:w-[220px]`; Refresh button `h-7`→`h-9` (touch); timeline meta row `gap-2`→`gap-x-2 gap-y-1` + timestamp `w-full sm:w-auto sm:ml-auto` so it wraps to its own line on narrow screens instead of crowding the action chip; actor name `truncate min-w-0`.
+- §3 TEAMS (`teams-view.tsx`): Grid already `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` ✓. Card footer (members/tasks/upcoming) `flex justify-between`→`flex flex-wrap gap-x-4 gap-y-1.5` so the 3 stats wrap on narrow screens. Card menu trigger, detail-sheet close, roster remove button all `h-7 w-7`→`h-9 w-9`. CreateTeamDialog, EditTeamDialog, AddMembersDialog all converted to mobile full-screen sheets. AddMembersDialog: search input sticky at top, candidate list scrolls, footer (N selected + Cancel/Add) sticky at bottom; candidate rows `min-h-11` (44px), avatar `h-7`→`h-8`.
+- §4 NOTIFICATIONS BELL (`app-shell.tsx` — NotificationBell only): Refactored to render a bottom **Sheet** on mobile (`useIsMobile()` < 768px) and the existing **Popover** on desktop. Extracted `BellBody` component (header/list/footer) shared by both so there's no markup duplication. Mobile Sheet: `side="bottom"`, `max-h-[90dvh]`, `rounded-t-xl`, drag-handle bar, full-width. ScrollArea `max-h-[60vh] sm:max-h-[420px]`. NotifRow mark-read button was hover-only `h-6 w-6 opacity-0 group-hover:opacity-100` → `h-8 w-8 opacity-100 md:opacity-0 md:group-hover:opacity-100`. Header/footer link buttons got `min-h-9` + `h-3.5` icons.
+- §4 NOTIFICATIONS VIEW (`notifications-view.tsx`): NotifListItem mark-read button same hover-only fix (`h-7 w-7`→`h-8 w-8`, `opacity-100 md:opacity-0 md:group-hover:opacity-100`). The rest of the view was already responsive.
+- §5 FORMS → FULL-SCREEN SHEETS: Converted all content-heavy dialogs to mobile full-screen via a shared `MOBILE_FULLSCREEN_DIALOG` className pattern (fills `h-[100dvh]` on mobile with sticky header / scrollable body / sticky footer; restores centered modal at `sm:`):
+  - `create-club-dialog.tsx` — CreateClubDialog (accent color swatches `h-7 w-7`→`h-9 w-9` too)
+  - `teams-view.tsx` — CreateTeamDialog, EditTeamDialog, AddMembersDialog
+  - `meetings-view.tsx` — CreateMeetingDialog, EditMeetingDialog, MeetingDetailDialog (read-only detail with sticky RSVP/Edit/Close footer)
+  - `announcements-view.tsx` — ComposeAnnouncementDialog, EditAnnouncementDialog
+  - `hours-view.tsx` — SubmitHoursDialog (proof upload row `flex`→`flex-wrap`)
+  - `members-view.tsx` — ImportCsvDialog (both upload-form and results states; removed redundant inner `max-h-[60vh] overflow-y-auto` from ImportResults since the dialog body now scrolls)
+  Each file defines a local `MOBILE_FULLSCREEN_DIALOG` constant. All use `showCloseButton={false}` since each form has an explicit Cancel button.
+- §6 TABLE-TO-CARD VERIFICATION: Hours history (`hours-view.tsx`) already had `hidden md:block` table + `md:hidden` cards ✓. Members list (`members-view.tsx`) already had the same split ✓. Activity log is a timeline list, not a table — N/A. Dashboard leaderboard is OFF-LIMITS (visually verified it renders as a list). CSV-import preview (ImportResults) uses `grid grid-cols-2 sm:grid-cols-4` stat cards + div-based rows — already responsive.
+- §7 TOUCH TARGET AUDIT: Bumped every `h-7 w-7` (28px) icon-only button in touched views to `h-9 w-9` (36px): announcements (menu trigger, comment delete), teams (card menu, sheet close, roster remove), hours (delete buttons ×2), members (2× password toggles, member-row actions trigger), create-club (color swatches), notifications (mark-read buttons ×2, header/footer link buttons). All hover-only opacity patterns converted to `opacity-100 md:opacity-0 md:group-hover:opacity-100` so touch users can reach delete/mark-read affordances.
+
+Stage Summary:
+- Files modified (9):
+  1. `src/components/views/announcements-view.tsx` — reaction popover overflow + comment row touch/visibility + 2 dialogs → mobile sheets
+  2. `src/components/views/activity-view.tsx` — filter width + refresh touch + timeline meta wrapping (already a list, not a table)
+  3. `src/components/views/teams-view.tsx` — card footer wrap + 3× touch targets + 3 dialogs → mobile sheets
+  4. `src/components/views/notifications-view.tsx` — mark-read button touch/visibility
+  5. `src/components/views/hours-view.tsx` — SubmitHoursDialog → mobile sheet + delete button touch targets
+  6. `src/components/views/members-view.tsx` — header actions wrap + ImportCsvDialog → mobile sheet + 3× touch targets
+  7. `src/components/views/meetings-view.tsx` — 3 dialogs → mobile sheets
+  8. `src/components/auth/create-club-dialog.tsx` — CreateClubDialog → mobile sheet + color swatch touch targets
+  9. `src/components/app-shell.tsx` — NotificationBell refactored to Sheet (mobile) / Popover (desktop) + BellBody extracted + NotifRow touch/visibility
+- **Flagged for main agent:** Create Task dialog in `tasks-view.tsx` (off-limits to me) is a content-heavy form that should get the same MOBILE_FULLSCREEN_DIALOG treatment. Pattern is documented in each of the 5 view files I touched (search for `MOBILE_FULLSCREEN_DIALOG`).
+- Validation: `bun run lint` → 0 errors. `bunx tsc --noEmit` → 1 pre-existing error in `hours-view.tsx:464` (`apiUpload<{ url: string }>` generic — unrelated to my changes, called out in R5 worklog). Dev server healthy. No off-limits files touched.
+
+---
+Task ID: R7 (Mobile optimization + Board task delete)
+Agent: main (Z.ai Code) + subagent R7-MOBILE
+Task: Full mobile optimization pass — viewport config, Kanban touch fix, board task delete, view-specific mobile passes, forms→sheets, touch targets
+
+Work Log:
+- **§1 VIEWPORT CONFIG** (main): Added explicit `viewport` export to `src/app/layout.tsx`: `width: device-width`, `initialScale: 1`, `viewportFit: "cover"` (critical for notch handling), `themeColor` for light/dark. Did NOT set `maximumScale`/`userScalable` (pinch-zoom is an accessibility requirement). Added `env(safe-area-inset-top)` padding + dynamic height to the mobile sticky header, and `env(safe-area-inset-bottom)` padding to the footer. Verified the inline styles are present on the elements (evaluate to 0px on desktop, will apply real insets on notched iPhones).
+- **§2 KANBAN TOUCH FIX** (main): Added `TouchSensor` with `{ delay: 200, tolerance: 8 }` (delay-based activation, not distance-based) alongside the existing `PointerSensor` (distance: 6). This means a quick tap/scroll gesture is never mistaken for a drag, but a deliberate press-and-hold reliably starts one. Moved the dnd-kit `listeners` from the entire card wrapper to a dedicated drag-handle button (the GripVertical icon) so action buttons (delete, status dropdown) don't trigger drags. Added a visual drag cue: `scale-[1.02] shadow-lg ring-2 ring-club/40` when `isDragging` is true, so mobile users know the hold-delay has triggered.
+- **BOARD TASK DELETE** (main, user's explicit request): Added a delete button to `TaskCardContent` — visible on hover (desktop) or always visible (mobile, `md:opacity-0 md:group-hover:opacity-100`). Gated to exec OR assignee (`canDelete = isExec || task.assignedToUserId === myUserId`). Uses the same soft-delete + 5s undo toast pattern as the detail dialog. Passed `myUserId` + `clubId` through BoardView → BoardColumn → SortableTaskCard → TaskCardContent. Verified: clicking the delete button shows "Deleted 'task name'" toast with Undo button, task disappears from the board.
+- **MOBILE STATUS DROPDOWN** (main): Added a mobile-only status `<Select>` (Not started / In progress / Done) to each task card, shown below the `md` breakpoint only (`md:hidden`). Desktop keeps pure drag-and-drop. Verified at 390px: 6 dropdowns visible, changed a task from "Not started" to "In progress" via the dropdown — task moved columns without dragging. At 768px (tablet): 0 dropdowns visible (correctly hidden, drag is primary).
+- **§3-7 VIEW MOBILE PASSES** (subagent R7-MOBILE):
+  - Announcements: emoji popover constrained to viewport width, comment delete button touch-visible (32px), compose/edit dialogs → mobile full-screen sheets with sticky footer.
+  - Activity Log: filter Select narrowed for mobile, timeline meta wraps timestamp to its own line. (Was already a stacked timeline, not a table.)
+  - Teams: card footer stats wrap, icon buttons bumped to 36px, create/edit/add-members dialogs → mobile full-screen sheets.
+  - Notifications: mark-read button touch-visible (32px).
+  - Hours: SubmitHoursDialog → mobile full-screen sheet, delete buttons bumped to 36px. (Table→card already present.)
+  - Members: header actions wrap, ImportCsvDialog → mobile full-screen sheet, icon buttons bumped to 36px. (Table→card already present.)
+  - Meetings: create/edit/detail dialogs → mobile full-screen sheets with sticky footers.
+  - Create Club: dialog → mobile full-screen sheet, color swatches bumped to 36px.
+  - NotificationBell: refactored to render a bottom Sheet on mobile and Popover on desktop, sharing an extracted BellBody component.
+- **CREATE TASK DIALOG** (main): Applied the same mobile full-screen sheet treatment (`h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col`) with a sticky header, scrollable body, and sticky footer so submit/cancel buttons are always reachable even when the keyboard is open.
+
+Stage Summary:
+- Browser-verified at 360px, 390px, 428px, 768px: no overflow at any width. Mobile status dropdown visible at <768px, hidden at ≥768px. Board delete button works with undo toast. Dark mode verified on mobile. Safe-area-inset styles present on header + footer.
+- Files modified (main): `src/app/layout.tsx` (viewport export), `src/components/app-shell.tsx` (safe-area padding on header + footer), `src/components/views/tasks-view.tsx` (TouchSensor, drag handle, board delete, mobile status dropdown, New Task dialog sheet treatment).
+- Files modified (subagent): announcements-view, activity-view, teams-view, notifications-view, hours-view, members-view, meetings-view, create-club-dialog, app-shell (NotificationBell only).
+- Lint clean. Dev server healthy.

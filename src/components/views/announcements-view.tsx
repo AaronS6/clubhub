@@ -67,6 +67,16 @@ import {
 // Reaction feature data — fixed set of emojis for the picker.
 const REACTION_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83C\uDF89", "\uD83D\uDC4F", "\uD83D\uDE02"]
 
+/**
+ * DialogContent className that makes a Dialog full-screen on mobile (slides
+ * up to fill the viewport) and a normal centered modal on sm+ screens.
+ * Pair with a flex-col layout inside: sticky header / scrollable body /
+ * sticky footer so the action buttons stay reachable above the soft keyboard.
+ */
+const MOBILE_FULLSCREEN_DIALOG =
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
+
 const URL_REGEX = /(https?:\/\/[^\s]+)/g
 const MENTION_REGEX = /@([A-Za-z0-9._-]+[A-Za-z0-9])/g
 
@@ -518,7 +528,7 @@ function AnnouncementMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Announcement actions">
+        <Button variant="ghost" size="icon" className="h-9 w-9 -mr-1.5" aria-label="Announcement actions">
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -592,7 +602,7 @@ function ReactionBar({
                 aria-pressed={isMine}
                 aria-label={`React ${entry.emoji} · ${entry.count} ${entry.count === 1 ? "person" : "people"}`}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-all h-7",
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-all h-8 min-h-8",
                   isMine
                     ? "bg-club-muted border-transparent text-club ring-1 ring-club"
                     : "bg-background border-border hover:bg-muted text-foreground hover:border-foreground/20"
@@ -643,7 +653,7 @@ function ReactionBar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+            className="h-8 min-h-8 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
             disabled={disabled}
             aria-label={myReaction ? "Change your reaction" : "Add a reaction"}
           >
@@ -651,9 +661,9 @@ function ReactionBar({
             <span className="hidden sm:inline">{myReaction ? "Change" : "React"}</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-3">
+        <PopoverContent align="start" className="w-auto max-w-[calc(100vw-1.5rem)] p-3">
           <div className="space-y-2">
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {REACTION_EMOJIS.map((emoji) => {
                 const isMine = myReaction === emoji
                 return (
@@ -663,7 +673,7 @@ function ReactionBar({
                     onClick={() => onReact(emoji)}
                     disabled={disabled}
                     className={cn(
-                      "flex h-9 w-9 items-center justify-center rounded-md text-xl hover:bg-muted transition-all",
+                      "flex h-10 w-10 items-center justify-center rounded-md text-xl hover:bg-muted transition-all",
                       isMine && "bg-club-muted ring-1 ring-club"
                     )}
                     aria-label={`React with ${emoji}`}
@@ -861,22 +871,23 @@ function CommentRow({
   }
   return (
     <li className="flex gap-2 group">
-      <Avatar className="h-7 w-7 mt-0.5">
+      <Avatar className="h-8 w-8 mt-0.5 shrink-0">
         <AvatarImage src={comment.author?.avatarUrl ?? undefined} alt={comment.author?.name} />
         <AvatarFallback className="text-[10px]">{initials(comment.author?.name)}</AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-caption-medium text-foreground">{comment.author?.name ?? "Unknown"}</span>
-          <span className="text-caption">{relativeTime(comment.createdAt)}</span>
+          <span className="text-caption-medium text-foreground truncate min-w-0">{comment.author?.name ?? "Unknown"}</span>
+          <span className="text-caption text-muted-foreground whitespace-nowrap">{relativeTime(comment.createdAt)}</span>
           {canDelete && (
             <button
               onClick={onDelete}
               disabled={deleting}
               aria-label="Delete comment"
-              className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 disabled:opacity-50"
+              // Always visible on touch (no hover); hover-reveal on md+.
+              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-muted/60 disabled:opacity-50 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 -mr-1.5"
             >
-              {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             </button>
           )}
         </div>
@@ -930,61 +941,63 @@ function ComposeAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>New announcement</DialogTitle>
           <DialogDescription>
             Share an update with all members. Plain text is fine — line breaks are preserved.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="ann-title">Title</Label>
-            <Input
-              id="ann-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Spring service drive kicks off next week"
-              maxLength={200}
-              required
-            />
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="ann-title">Title</Label>
+              <Input
+                id="ann-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Spring service drive kicks off next week"
+                maxLength={200}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ann-body">Body</Label>
+              <Textarea
+                id="ann-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Write your announcement. URLs will become clickable links automatically."
+                rows={6}
+                maxLength={8000}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {body.length}/8000 characters · URLs auto-link
+              </p>
+            </div>
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              <Switch checked={isPinned} onCheckedChange={setIsPinned} id="ann-pinned" />
+              <Label htmlFor="ann-pinned" className="cursor-pointer">
+                <div className="text-sm font-medium">Pin to top</div>
+                <div className="text-xs text-muted-foreground">
+                  Pinned announcements appear first for all members.
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+              <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="ann-urgent" />
+              <Label htmlFor="ann-urgent" className="cursor-pointer">
+                <div className="text-sm font-medium flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Shows a dismissible banner at the top of the app for all members until they dismiss it.
+                </div>
+              </Label>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="ann-body">Body</Label>
-            <Textarea
-              id="ann-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your announcement. URLs will become clickable links automatically."
-              rows={6}
-              maxLength={8000}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              {body.length}/8000 characters · URLs auto-link
-            </p>
-          </div>
-          <div className="flex items-center gap-3 rounded-lg border p-3">
-            <Switch checked={isPinned} onCheckedChange={setIsPinned} id="ann-pinned" />
-            <Label htmlFor="ann-pinned" className="cursor-pointer">
-              <div className="text-sm font-medium">Pin to top</div>
-              <div className="text-xs text-muted-foreground">
-                Pinned announcements appear first for all members.
-              </div>
-            </Label>
-          </div>
-          <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
-            <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="ann-urgent" />
-            <Label htmlFor="ann-urgent" className="cursor-pointer">
-              <div className="text-sm font-medium flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Shows a dismissible banner at the top of the app for all members until they dismiss it.
-              </div>
-            </Label>
-          </div>
-          <DialogFooter>
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -1052,58 +1065,60 @@ function EditAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit announcement</DialogTitle>
           <DialogDescription>Update the title, body, or pin status.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-title">Title</Label>
-            <Input
-              id="edit-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={200}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-body">Body</Label>
-            <Textarea
-              id="edit-body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={6}
-              maxLength={8000}
-              required
-            />
-          </div>
-          {isExec && (
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <Switch checked={isPinned} onCheckedChange={setIsPinned} id="edit-pinned" />
-              <Label htmlFor="edit-pinned" className="cursor-pointer">
-                <div className="text-sm font-medium">Pin to top</div>
-                <div className="text-xs text-muted-foreground">
-                  Pinned announcements appear first.
-                </div>
-              </Label>
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={200}
+                required
+              />
             </div>
-          )}
-          {isExec && (
-            <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
-              <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="edit-urgent" />
-              <Label htmlFor="edit-urgent" className="cursor-pointer">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Shows a dismissible banner at the top of the app until members dismiss it.
-                </div>
-              </Label>
+            <div className="space-y-2">
+              <Label htmlFor="edit-body">Body</Label>
+              <Textarea
+                id="edit-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={6}
+                maxLength={8000}
+                required
+              />
             </div>
-          )}
-          <DialogFooter>
+            {isExec && (
+              <div className="flex items-center gap-3 rounded-lg border p-3">
+                <Switch checked={isPinned} onCheckedChange={setIsPinned} id="edit-pinned" />
+                <Label htmlFor="edit-pinned" className="cursor-pointer">
+                  <div className="text-sm font-medium">Pin to top</div>
+                  <div className="text-xs text-muted-foreground">
+                    Pinned announcements appear first.
+                  </div>
+                </Label>
+              </div>
+            )}
+            {isExec && (
+              <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+                <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="edit-urgent" />
+                <Label htmlFor="edit-urgent" className="cursor-pointer">
+                  <div className="text-sm font-medium flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Shows a dismissible banner at the top of the app until members dismiss it.
+                  </div>
+                </Label>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

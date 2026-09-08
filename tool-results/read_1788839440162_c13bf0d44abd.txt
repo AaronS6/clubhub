@@ -1,0 +1,1064 @@
+     1→"use client"
+     2→
+     3→import { useState, useMemo } from "react"
+     4→import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+     5→import { toast } from "sonner"
+     6→import { api } from "@/lib/api/client"
+     7→import { useAppStore } from "@/lib/store"
+     8→import { usePresence } from "@/lib/use-presence"
+     9→import { cn } from "@/lib/utils"
+    10→import { usePollingFallback, useRemoteChange } from "@/lib/realtime-store"
+    11→import {
+    12→  PageHeader,
+    13→  EmptyState,
+    14→  StatusBadge,
+    15→  CardSkeleton,
+    16→  initials,
+    17→  relativeTime,
+    18→} from "@/components/shared/page-header"
+    19→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    20→import { Button } from "@/components/ui/button"
+    21→import { Input } from "@/components/ui/input"
+    22→import { Label } from "@/components/ui/label"
+    23→import { Textarea } from "@/components/ui/textarea"
+    24→import { Badge } from "@/components/ui/badge"
+    25→import { Separator } from "@/components/ui/separator"
+    26→import { ScrollArea } from "@/components/ui/scroll-area"
+    27→import { Checkbox } from "@/components/ui/checkbox"
+    28→import {
+    29→  Dialog,
+    30→  DialogContent,
+    31→  DialogDescription,
+    32→  DialogFooter,
+    33→  DialogHeader,
+    34→  DialogTitle,
+    35→} from "@/components/ui/dialog"
+    36→import {
+    37→  Sheet,
+    38→  SheetContent,
+    39→  SheetDescription,
+    40→  SheetHeader,
+    41→  SheetTitle,
+    42→} from "@/components/ui/sheet"
+    43→import {
+    44→  AlertDialog,
+    45→  AlertDialogAction,
+    46→  AlertDialogCancel,
+    47→  AlertDialogContent,
+    48→  AlertDialogDescription,
+    49→  AlertDialogFooter,
+    50→  AlertDialogHeader,
+    51→  AlertDialogTitle,
+    52→} from "@/components/ui/alert-dialog"
+    53→import {
+    54→  DropdownMenu,
+    55→  DropdownMenuContent,
+    56→  DropdownMenuItem,
+    57→  DropdownMenuSeparator,
+    58→  DropdownMenuTrigger,
+    59→} from "@/components/ui/dropdown-menu"
+    60→import {
+    61→  Users,
+    62→  Plus,
+    63→  MoreVertical,
+    64→  Pencil,
+    65→  Trash2,
+    66→  UserPlus,
+    67→  UserMinus,
+    68→  CalendarDays,
+    69→  CheckSquare,
+    70→  Clock,
+    71→  Hash,
+    72→  X,
+    73→  Loader2,
+    74→  Inbox,
+    75→} from "lucide-react"
+    76→
+    77→// ---------------------------------------------------------------------------
+    78→// Types
+    79→// ---------------------------------------------------------------------------
+    80→
+    81→interface TeamUser {
+    82→  id: string
+    83→  name: string
+    84→  avatarUrl?: string | null
+    85→}
+    86→interface TeamMember {
+    87→  id: string
+    88→  userId: string
+    89→  joinedAt: string
+    90→  user: TeamUser
+    91→}
+    92→interface TeamTask {
+    93→  id: string
+    94→  title: string
+    95→  status: string
+    96→  dueDate: string | null
+    97→  assignee: { id: string; name: string; avatarUrl?: string | null } | null
+    98→}
+    99→interface TeamMeeting {
+   100→  id: string
+   101→  title: string
+   102→  startTime: string
+   103→  endTime: string
+   104→  location: string
+   105→}
+   106→interface Team {
+   107→  id: string
+   108→  name: string
+   109→  description: string | null
+   110→  createdAt: string
+   111→  members: TeamMember[]
+   112→  memberCount: number
+   113→  taskCount: number
+   114→  upcomingMeetingCount: number
+   115→  tasks: TeamTask[]
+   116→  upcomingMeetings: TeamMeeting[]
+   117→}
+   118→interface TeamsResponse {
+   119→  teams: Team[]
+   120→  myRole: "member" | "executive"
+   121→  myUserId: string
+   122→}
+   123→
+   124→interface ClubMemberUser {
+   125→  id: string
+   126→  name: string
+   127→  email: string
+   128→  avatarUrl?: string | null
+   129→  bio?: string | null
+   130→}
+   131→interface ClubMember {
+   132→  membershipId: string
+   133→  role: "member" | "executive"
+   134→  joinedAt: string
+   135→  user: ClubMemberUser
+   136→  teams: { id: string; name: string }[]
+   137→  approvedHours: number
+   138→}
+   139→interface MembersResponse {
+   140→  members: ClubMember[]
+   141→  myUserId: string
+   142→  myRole: "member" | "executive"
+   143→}
+   144→
+   145→// ---------------------------------------------------------------------------
+   146→// Main view
+   147→// ---------------------------------------------------------------------------
+   148→
+   149→export function TeamsView() {
+   150→  const clubId = useAppStore((s) => s.currentClubId)
+   151→  const role = useAppStore((s) => s.currentClub?.role)
+   152→  const isExec = role === "executive"
+   153→
+   154→  const { data, isLoading, isError, refetch } = useQuery<TeamsResponse>({
+   155→    queryKey: ["teams", clubId],
+   156→    queryFn: () => api(`/api/clubs/${clubId}/teams`),
+   157→    enabled: !!clubId,
+   158→    // Realtime is primary; poll only as a fallback while the socket is down.
+   159→    refetchInterval: usePollingFallback(30_000),
+   160→  })
+   161→
+   162→  // Live presence — green dot on avatars of currently-online club members.
+   163→  const online = usePresence(clubId ?? null)
+   164→
+   165→  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+   166→  const [createOpen, setCreateOpen] = useState(false)
+   167→
+   168→  const selectedTeam = data?.teams.find((t) => t.id === selectedTeamId) ?? null
+   169→
+   170→  if (!clubId) {
+   171→    return <div className="p-8 text-sm text-muted-foreground">No club selected.</div>
+   172→  }
+   173→
+   174→  return (
+   175→    <div className="space-y-6">
+   176→      <PageHeader
+   177→        title="Teams"
+   178→        description="Organize your club into working teams with dedicated rosters, tasks, and meetings."
+   179→        actions={
+   180→          isExec ? (
+   181→            <Button variant="club" onClick={() => setCreateOpen(true)}>
+   182→              <Plus className="mr-2 h-4 w-4" /> New team
+   183→            </Button>
+   184→          ) : undefined
+   185→        }
+   186→      />
+   187→
+   188→      {isError ? (
+   189→        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">
+   190→          Failed to load teams.{" "}
+   191→          <button className="underline" onClick={() => refetch()}>
+   192→            Try again
+   193→          </button>
+   194→        </div>
+   195→      ) : isLoading ? (
+   196→        <TeamsSkeleton />
+   197→      ) : !data || data.teams.length === 0 ? (
+   198→        <EmptyState
+   199→          icon={<Users className="h-8 w-8" />}
+   200→          title="No teams yet"
+   201→          description={
+   202→            isExec
+   203→              ? "Create your first team to organize members around specific projects, events, or ongoing responsibilities."
+   204→              : "Your club hasn't created any teams yet. Check back soon."
+   205→          }
+   206→          action={
+   207→            isExec ? (
+   208→              <Button variant="club" onClick={() => setCreateOpen(true)}>
+   209→                <Plus className="mr-2 h-4 w-4" /> Create a team
+   210→              </Button>
+   211→            ) : undefined
+   212→          }
+   213→        />
+   214→      ) : (
+   215→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   216→          {data.teams.map((team) => (
+   217→            <TeamCard
+   218→              key={team.id}
+   219→              clubId={clubId}
+   220→              team={team}
+   221→              isExec={isExec}
+   222→              online={online}
+   223→              onOpen={() => setSelectedTeamId(team.id)}
+   224→            />
+   225→          ))}
+   226→        </div>
+   227→      )}
+   228→
+   229→      {/* Team detail sheet */}
+   230→      <Sheet open={!!selectedTeamId} onOpenChange={(o) => !o && setSelectedTeamId(null)}>
+   231→        <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col" side="right">
+   232→          {selectedTeam ? (
+   233→            <TeamDetailSheet
+   234→              clubId={clubId}
+   235→              team={selectedTeam}
+   236→              isExec={isExec}
+   237→              online={online}
+   238→              onClose={() => setSelectedTeamId(null)}
+   239→            />
+   240→          ) : (
+   241→            <div className="p-8 flex items-center justify-center">
+   242→              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+   243→            </div>
+   244→          )}
+   245→        </SheetContent>
+   246→      </Sheet>
+   247→
+   248→      <CreateTeamDialog clubId={clubId} open={createOpen} onOpenChange={setCreateOpen} />
+   249→    </div>
+   250→  )
+   251→}
+   252→
+   253→// ---------------------------------------------------------------------------
+   254→// Skeleton
+   255→// ---------------------------------------------------------------------------
+   256→
+   257→function TeamsSkeleton() {
+   258→  return (
+   259→    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   260→      {Array.from({ length: 6 }).map((_, i) => (
+   261→        <CardSkeleton key={i} />
+   262→      ))}
+   263→    </div>
+   264→  )
+   265→}
+   266→
+   267→// ---------------------------------------------------------------------------
+   268→// Team card
+   269→// ---------------------------------------------------------------------------
+   270→
+   271→function TeamCard({
+   272→  clubId,
+   273→  team,
+   274→  isExec,
+   275→  online,
+   276→  onOpen,
+   277→}: {
+   278→  clubId: string
+   279→  team: Team
+   280→  isExec: boolean
+   281→  online: Set<string>
+   282→  onOpen: () => void
+   283→}) {
+   284→  const visibleMembers = team.members.slice(0, 5)
+   285→  const overflow = team.members.length - visibleMembers.length
+   286→  // Briefly highlight when this card was just touched by another user's
+   287→  // realtime action (create/rename/member add/remove).
+   288→  const flash = useRemoteChange("team", team.id)
+   289→
+   290→  return (
+   291→    <div
+   292→      role="button"
+   293→      tabIndex={0}
+   294→      aria-label={`Open team ${team.name}`}
+   295→      onClick={onOpen}
+   296→      onKeyDown={(e) => {
+   297→        if (e.key === "Enter" || e.key === " ") {
+   298→          e.preventDefault()
+   299→          onOpen()
+   300→        }
+   301→      }}
+   302→      className={cn(
+   303→        "card-quiet p-5 cursor-pointer hover:shadow-md hover:border-club/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-club animate-fade-in",
+   304→        flash && "ring-2 ring-club/50 shadow-md"
+   305→      )}
+   306→    >
+   307→      <div className="pb-3">
+   308→        <div className="flex items-start justify-between gap-2">
+   309→          <div className="min-w-0">
+   310→            <h3 className="text-card-title truncate">{team.name}</h3>
+   311→            {team.description ? (
+   312→              <p className="text-caption mt-1 line-clamp-2">
+   313→                {team.description}
+   314→              </p>
+   315→            ) : (
+   316→              <p className="text-caption text-muted-foreground/70 mt-1 italic">No description</p>
+   317→            )}
+   318→          </div>
+   319→          {isExec && <TeamCardMenu clubId={clubId} team={team} />}
+   320→        </div>
+   321→      </div>
+   322→      <div className="space-y-3">
+   323→        <div className="flex items-center gap-2 min-h-[32px]">
+   324→          {team.members.length === 0 ? (
+   325→            <span className="text-caption text-muted-foreground/70">No members yet</span>
+   326→          ) : (
+   327→            <div className="flex -space-x-2">
+   328→              {visibleMembers.map((m) => (
+   329→                <Avatar
+   330→                  key={m.id}
+   331→                  className="h-7 w-7 border-2 border-background"
+   332→                  title={m.user.name}
+   333→                >
+   334→                  <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+   335→                  <AvatarFallback className="text-[10px]">{initials(m.user.name)}</AvatarFallback>
+   336→                  {online.has(m.userId) && (
+   337→                    <span
+   338→                      aria-label="Online"
+   339→                      className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-background"
+   340→                    />
+   341→                  )}
+   342→                </Avatar>
+   343→              ))}
+   344→              {overflow > 0 && (
+   345→                <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium text-muted-foreground">
+   346→                  +{overflow}
+   347→                </div>
+   348→              )}
+   349→            </div>
+   350→          )}
+   351→        </div>
+   352→        <Separator />
+   353→        <div className="flex items-center justify-between text-caption text-muted-foreground">
+   354→          <span className="inline-flex items-center gap-1.5">
+   355→            <Users className="h-3.5 w-3.5" />
+   356→            {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
+   357→          </span>
+   358→          <span className="inline-flex items-center gap-1.5">
+   359→            <CheckSquare className="h-3.5 w-3.5" />
+   360→            {team.taskCount} {team.taskCount === 1 ? "task" : "tasks"}
+   361→          </span>
+   362→          <span className="inline-flex items-center gap-1.5">
+   363→            <CalendarDays className="h-3.5 w-3.5" />
+   364→            {team.upcomingMeetingCount} upcoming
+   365→          </span>
+   366→        </div>
+   367→      </div>
+   368→    </div>
+   369→  )
+   370→}
+   371→
+   372→function TeamCardMenu({ clubId, team }: { clubId: string; team: Team }) {
+   373→  const [editOpen, setEditOpen] = useState(false)
+   374→  const [deleteOpen, setDeleteOpen] = useState(false)
+   375→
+   376→  const deleteMut = useMutation({
+   377→    mutationFn: () => api(`/api/clubs/${clubId}/teams/${team.id}`, { method: "DELETE" }),
+   378→    onSuccess: () => {
+   379→      toast.success(`Team "${team.name}" deleted`)
+   380→      setDeleteOpen(false)
+   381→    },
+   382→    onError: (e: Error) => toast.error(e.message),
+   383→  })
+   384→
+   385→  return (
+   386→    <>
+   387→      <div onClick={(e) => e.stopPropagation()} role="presentation">
+   388→        <DropdownMenu>
+   389→          <DropdownMenuTrigger asChild>
+   390→            <Button
+   391→              variant="ghost"
+   392→              size="icon"
+   393→              className="h-7 w-7"
+   394→              aria-label={`Actions for team ${team.name}`}
+   395→            >
+   396→              <MoreVertical className="h-4 w-4" />
+   397→            </Button>
+   398→          </DropdownMenuTrigger>
+   399→          <DropdownMenuContent align="end">
+   400→            <DropdownMenuItem onClick={() => setEditOpen(true)}>
+   401→              <Pencil className="mr-2 h-4 w-4" /> Edit
+   402→            </DropdownMenuItem>
+   403→            <DropdownMenuSeparator />
+   404→            <DropdownMenuItem
+   405→              className="text-red-600 focus:text-red-700"
+   406→              onClick={() => setDeleteOpen(true)}
+   407→            >
+   408→              <Trash2 className="mr-2 h-4 w-4" /> Delete
+   409→            </DropdownMenuItem>
+   410→          </DropdownMenuContent>
+   411→        </DropdownMenu>
+   412→      </div>
+   413→      <EditTeamDialog
+   414→        key={team.id}
+   415→        clubId={clubId}
+   416→        team={team}
+   417→        open={editOpen}
+   418→        onOpenChange={setEditOpen}
+   419→      />
+   420→      <DeleteTeamDialog
+   421→        team={team}
+   422→        open={deleteOpen}
+   423→        onOpenChange={setDeleteOpen}
+   424→        onConfirm={() => deleteMut.mutate()}
+   425→        loading={deleteMut.isPending}
+   426→      />
+   427→    </>
+   428→  )
+   429→}
+   430→
+   431→// ---------------------------------------------------------------------------
+   432→// Team detail sheet
+   433→// ---------------------------------------------------------------------------
+   434→
+   435→function TeamDetailSheet({
+   436→  clubId,
+   437→  team,
+   438→  isExec,
+   439→  online,
+   440→  onClose,
+   441→}: {
+   442→  clubId: string
+   443→  team: Team
+   444→  isExec: boolean
+   445→  online: Set<string>
+   446→  onClose: () => void
+   447→}) {
+   448→  const qc = useQueryClient()
+   449→  const [addOpen, setAddOpen] = useState(false)
+   450→  const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null)
+   451→
+   452→  const removeMut = useMutation({
+   453→    mutationFn: (userId: string) =>
+   454→      api(`/api/clubs/${clubId}/teams/${team.id}/members/${userId}`, { method: "DELETE" }),
+   455→    onSuccess: () => {
+   456→      toast.success("Member removed")
+   457→      qc.invalidateQueries({ queryKey: ["teams", clubId] })
+   458→      qc.invalidateQueries({ queryKey: ["members", clubId] })
+   459→      setRemoveTarget(null)
+   460→    },
+   461→    onError: (e: Error) => toast.error(e.message),
+   462→  })
+   463→
+   464→  return (
+   465→    <>
+   466→      <SheetHeader className="px-5 pt-5 pb-3 border-b">
+   467→        <div className="flex items-start justify-between gap-2">
+   468→          <div className="min-w-0">
+   469→            <SheetTitle className="text-xl truncate">{team.name}</SheetTitle>
+   470→            {team.description ? (
+   471→              <SheetDescription className="mt-1 text-sm">{team.description}</SheetDescription>
+   472→            ) : (
+   473→              <SheetDescription className="mt-1 italic">No description</SheetDescription>
+   474→            )}
+   475→          </div>
+   476→          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose} aria-label="Close">
+   477→            <X className="h-4 w-4" />
+   478→          </Button>
+   479→        </div>
+   480→        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+   481→          <span className="inline-flex items-center gap-1">
+   482→            <Clock className="h-3.5 w-3.5" /> Created {relativeTime(team.createdAt)}
+   483→          </span>
+   484→        </div>
+   485→      </SheetHeader>
+   486→
+   487→      <ScrollArea className="flex-1 min-h-0">
+   488→        <div className="p-5 space-y-6">
+   489→          {/* Roster */}
+   490→          <section className="space-y-3">
+   491→            <div className="flex items-center justify-between">
+   492→              <h3 className="text-sm font-semibold flex items-center gap-2">
+   493→                <Users className="h-4 w-4" /> Roster
+   494→                <span className="text-muted-foreground font-normal">({team.memberCount})</span>
+   495→              </h3>
+   496→              {isExec && (
+   497→                <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+   498→                  <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add members
+   499→                </Button>
+   500→              )}
+   501→            </div>
+   502→            {team.members.length === 0 ? (
+   503→              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+   504→                {isExec ? "Add your first team member." : "No members yet."}
+   505→              </div>
+   506→            ) : (
+   507→              <ul className="space-y-1.5">
+   508→                {team.members.map((m) => (
+   509→                  <li
+   510→                    key={m.id}
+   511→                    className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50 transition-colors"
+   512→                  >
+   513→                    <Avatar className="h-8 w-8">
+   514→                      <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+   515→                      <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
+   516→                      {online.has(m.userId) && (
+   517→                        <span
+   518→                          aria-label="Online"
+   519→                          className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-background"
+   520→                        />
+   521→                      )}
+   522→                    </Avatar>
+   523→                    <div className="min-w-0 flex-1">
+   524→                      <div className="text-sm font-medium truncate">{m.user.name}</div>
+   525→                      <div className="text-xs text-muted-foreground">
+   526→                        Joined {relativeTime(m.joinedAt)}
+   527→                      </div>
+   528→                    </div>
+   529→                    {isExec && (
+   530→                      <Button
+   531→                        variant="ghost"
+   532→                        size="icon"
+   533→                        className="h-7 w-7 text-muted-foreground hover:text-red-600"
+   534→                        aria-label={`Remove ${m.user.name} from team`}
+   535→                        onClick={() => setRemoveTarget(m)}
+   536→                      >
+   537→                        <UserMinus className="h-4 w-4" />
+   538→                      </Button>
+   539→                    )}
+   540→                  </li>
+   541→                ))}
+   542→              </ul>
+   543→            )}
+   544→          </section>
+   545→
+   546→          <Separator />
+   547→
+   548→          {/* Tasks */}
+   549→          <section className="space-y-3">
+   550→            <h3 className="text-sm font-semibold flex items-center gap-2">
+   551→              <CheckSquare className="h-4 w-4" /> Tasks
+   552→              <span className="text-muted-foreground font-normal">({team.taskCount})</span>
+   553→            </h3>
+   554→            {team.tasks.length === 0 ? (
+   555→              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+   556→                <Inbox className="h-5 w-5" />
+   557→                No tasks assigned to this team.
+   558→              </div>
+   559→            ) : (
+   560→              <ul className="space-y-1.5">
+   561→                {team.tasks.map((t) => (
+   562→                  <li
+   563→                    key={t.id}
+   564→                    className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50 transition-colors"
+   565→                  >
+   566→                    <div className="min-w-0 flex-1">
+   567→                      <div className="text-sm font-medium truncate">{t.title}</div>
+   568→                      <div className="text-xs text-muted-foreground flex items-center gap-2">
+   569→                        {t.assignee ? (
+   570→                          <span className="inline-flex items-center gap-1">
+   571→                            <Avatar className="h-4 w-4">
+   572→                              <AvatarImage src={t.assignee.avatarUrl ?? undefined} alt={t.assignee.name} />
+   573→                              <AvatarFallback className="text-[8px]">{initials(t.assignee.name)}</AvatarFallback>
+   574→                            </Avatar>
+   575→                            {t.assignee.name}
+   576→                          </span>
+   577→                        ) : (
+   578→                          <span className="italic">Unassigned</span>
+   579→                        )}
+   580→                        {t.dueDate && (
+   581→                          <span className="inline-flex items-center gap-1">
+   582→                            · due {new Date(t.dueDate).toLocaleDateString()}
+   583→                          </span>
+   584→                        )}
+   585→                      </div>
+   586→                    </div>
+   587→                    <TaskStatusBadge status={t.status} />
+   588→                  </li>
+   589→                ))}
+   590→              </ul>
+   591→            )}
+   592→          </section>
+   593→
+   594→          <Separator />
+   595→
+   596→          {/* Upcoming meetings */}
+   597→          <section className="space-y-3">
+   598→            <h3 className="text-sm font-semibold flex items-center gap-2">
+   599→              <CalendarDays className="h-4 w-4" /> Upcoming meetings
+   600→              <span className="text-muted-foreground font-normal">({team.upcomingMeetingCount})</span>
+   601→            </h3>
+   602→            {team.upcomingMeetings.length === 0 ? (
+   603→              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+   604→                <CalendarDays className="h-5 w-5" />
+   605→                No upcoming meetings scheduled.
+   606→              </div>
+   607→            ) : (
+   608→              <ul className="space-y-2">
+   609→                {team.upcomingMeetings.map((mtg) => (
+   610→                  <li key={mtg.id} className="rounded-lg border p-3">
+   611→                    <div className="text-sm font-medium truncate">{mtg.title}</div>
+   612→                    <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+   613→                      <span className="inline-flex items-center gap-1">
+   614→                        <CalendarDays className="h-3 w-3" />
+   615→                        {new Date(mtg.startTime).toLocaleString(undefined, {
+   616→                          weekday: "short",
+   617→                          month: "short",
+   618→                          day: "numeric",
+   619→                          hour: "numeric",
+   620→                          minute: "2-digit",
+   621→                        })}
+   622→                      </span>
+   623→                      <span className="inline-flex items-center gap-1">
+   624→                        <Hash className="h-3 w-3" />
+   625→                        {mtg.location}
+   626→                      </span>
+   627→                    </div>
+   628→                  </li>
+   629→                ))}
+   630→              </ul>
+   631→            )}
+   632→          </section>
+   633→        </div>
+   634→      </ScrollArea>
+   635→
+   636→      <AddMembersDialog
+   637→        clubId={clubId}
+   638→        team={team}
+   639→        open={addOpen}
+   640→        onOpenChange={setAddOpen}
+   641→      />
+   642→
+   643→      <AlertDialog open={!!removeTarget} onOpenChange={(o) => !o && setRemoveTarget(null)}>
+   644→        <AlertDialogContent>
+   645→          <AlertDialogHeader>
+   646→            <AlertDialogTitle>Remove member?</AlertDialogTitle>
+   647→            <AlertDialogDescription>
+   648→              Remove{" "}
+   649→              <span className="font-medium text-foreground">{removeTarget?.user.name}</span> from the{" "}
+   650→              <span className="font-medium text-foreground">{team.name}</span> team? They remain a member of the club.
+   651→            </AlertDialogDescription>
+   652→          </AlertDialogHeader>
+   653→          <AlertDialogFooter>
+   654→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   655→            <AlertDialogAction
+   656→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   657→              onClick={() => removeTarget && removeMut.mutate(removeTarget.userId)}
+   658→              disabled={removeMut.isPending}
+   659→            >
+   660→              {removeMut.isPending ? "Removing…" : "Remove"}
+   661→            </AlertDialogAction>
+   662→          </AlertDialogFooter>
+   663→        </AlertDialogContent>
+   664→      </AlertDialog>
+   665→    </>
+   666→  )
+   667→}
+   668→
+   669→function TaskStatusBadge({ status }: { status: string }) {
+   670→  const kindMap: Record<string, "not_started" | "in_progress" | "done" | "neutral"> = {
+   671→    not_started: "not_started",
+   672→    in_progress: "in_progress",
+   673→    done: "done",
+   674→  }
+   675→  const kind = kindMap[status] ?? "neutral"
+   676→  return <StatusBadge status={kind} />
+   677→}
+   678→
+   679→// ---------------------------------------------------------------------------
+   680→// Create / edit / delete dialogs
+   681→// ---------------------------------------------------------------------------
+   682→
+   683→function CreateTeamDialog({
+   684→  clubId,
+   685→  open,
+   686→  onOpenChange,
+   687→}: {
+   688→  clubId: string
+   689→  open: boolean
+   690→  onOpenChange: (v: boolean) => void
+   691→}) {
+   692→  const qc = useQueryClient()
+   693→  const [name, setName] = useState("")
+   694→  const [description, setDescription] = useState("")
+   695→  const [loading, setLoading] = useState(false)
+   696→
+   697→  async function submit(e: React.FormEvent) {
+   698→    e.preventDefault()
+   699→    if (!name.trim()) {
+   700→      toast.error("Team name is required")
+   701→      return
+   702→    }
+   703→    setLoading(true)
+   704→    try {
+   705→      await api(`/api/clubs/${clubId}/teams`, {
+   706→        method: "POST",
+   707→        json: { name: name.trim(), description: description.trim() || undefined },
+   708→      })
+   709→      toast.success("Team created")
+   710→      setName("")
+   711→      setDescription("")
+   712→      qc.invalidateQueries({ queryKey: ["teams", clubId] })
+   713→      onOpenChange(false)
+   714→    } catch (err: any) {
+   715→      toast.error(err.message)
+   716→    } finally {
+   717→      setLoading(false)
+   718→    }
+   719→  }
+   720→
+   721→  return (
+   722→    <Dialog open={open} onOpenChange={onOpenChange}>
+   723→      <DialogContent>
+   724→        <DialogHeader>
+   725→          <DialogTitle>Create a team</DialogTitle>
+   726→          <DialogDescription>
+   727→            Teams organize members around specific projects, events, or ongoing responsibilities.
+   728→          </DialogDescription>
+   729→        </DialogHeader>
+   730→        <form onSubmit={submit} className="space-y-4">
+   731→          <div className="space-y-2">
+   732→            <Label htmlFor="team-name">Team name</Label>
+   733→            <Input
+   734→              id="team-name"
+   735→              value={name}
+   736→              onChange={(e) => setName(e.target.value)}
+   737→              maxLength={80}
+   738→              placeholder="e.g. Logistics, Outreach, Decorations"
+   739→              autoFocus
+   740→            />
+   741→          </div>
+   742→          <div className="space-y-2">
+   743→            <Label htmlFor="team-desc">Description (optional)</Label>
+   744→            <Textarea
+   745→              id="team-desc"
+   746→              value={description}
+   747→              onChange={(e) => setDescription(e.target.value)}
+   748→              maxLength={1000}
+   749→              rows={3}
+   750→              placeholder="What does this team do?"
+   751→            />
+   752→          </div>
+   753→          <DialogFooter>
+   754→            <Button type="submit" variant="club" disabled={loading}>
+   755→              {loading ? "Creating…" : "Create team"}
+   756→            </Button>
+   757→          </DialogFooter>
+   758→        </form>
+   759→      </DialogContent>
+   760→    </Dialog>
+   761→  )
+   762→}
+   763→
+   764→function EditTeamDialog({
+   765→  clubId,
+   766→  team,
+   767→  open,
+   768→  onOpenChange,
+   769→}: {
+   770→  clubId: string
+   771→  team: Team
+   772→  open: boolean
+   773→  onOpenChange: (v: boolean) => void
+   774→}) {
+   775→  const qc = useQueryClient()
+   776→  const [name, setName] = useState(team.name)
+   777→  const [description, setDescription] = useState(team.description ?? "")
+   778→  const [loading, setLoading] = useState(false)
+   779→
+   780→  async function submit(e: React.FormEvent) {
+   781→    e.preventDefault()
+   782→    if (!name.trim()) {
+   783→      toast.error("Team name is required")
+   784→      return
+   785→    }
+   786→    setLoading(true)
+   787→    try {
+   788→      await api(`/api/clubs/${clubId}/teams/${team.id}`, {
+   789→        method: "PATCH",
+   790→        json: {
+   791→          name: name.trim(),
+   792→          description: description.trim() ? description.trim() : null,
+   793→        },
+   794→      })
+   795→      toast.success("Team updated")
+   796→      qc.invalidateQueries({ queryKey: ["teams", clubId] })
+   797→      onOpenChange(false)
+   798→    } catch (err: any) {
+   799→      toast.error(err.message)
+   800→    } finally {
+   801→      setLoading(false)
+   802→    }
+   803→  }
+   804→
+   805→  return (
+   806→    <Dialog open={open} onOpenChange={onOpenChange}>
+   807→      <DialogContent>
+   808→        <DialogHeader>
+   809→          <DialogTitle>Edit team</DialogTitle>
+   810→          <DialogDescription>Update the name and description for this team.</DialogDescription>
+   811→        </DialogHeader>
+   812→        <form onSubmit={submit} className="space-y-4">
+   813→          <div className="space-y-2">
+   814→            <Label htmlFor="edit-team-name">Team name</Label>
+   815→            <Input
+   816→              id="edit-team-name"
+   817→              value={name}
+   818→              onChange={(e) => setName(e.target.value)}
+   819→              maxLength={80}
+   820→              autoFocus
+   821→            />
+   822→          </div>
+   823→          <div className="space-y-2">
+   824→            <Label htmlFor="edit-team-desc">Description (optional)</Label>
+   825→            <Textarea
+   826→              id="edit-team-desc"
+   827→              value={description}
+   828→              onChange={(e) => setDescription(e.target.value)}
+   829→              maxLength={1000}
+   830→              rows={3}
+   831→            />
+   832→          </div>
+   833→          <DialogFooter>
+   834→            <Button type="submit" variant="club" disabled={loading}>
+   835→              {loading ? "Saving…" : "Save changes"}
+   836→            </Button>
+   837→          </DialogFooter>
+   838→        </form>
+   839→      </DialogContent>
+   840→    </Dialog>
+   841→  )
+   842→}
+   843→
+   844→function DeleteTeamDialog({
+   845→  team,
+   846→  open,
+   847→  onOpenChange,
+   848→  onConfirm,
+   849→  loading,
+   850→}: {
+   851→  team: Team
+   852→  open: boolean
+   853→  onOpenChange: (v: boolean) => void
+   854→  onConfirm: () => void
+   855→  loading: boolean
+   856→}) {
+   857→  return (
+   858→    <AlertDialog open={open} onOpenChange={onOpenChange}>
+   859→      <AlertDialogContent>
+   860→        <AlertDialogHeader>
+   861→          <AlertDialogTitle>Delete team?</AlertDialogTitle>
+   862→          <AlertDialogDescription>
+   863→            Delete <span className="font-medium text-foreground">{team.name}</span>? This removes the
+   864→            roster. Tasks and meetings associated with this team remain in the club but become
+   865→            unassigned to a team. This cannot be undone.
+   866→          </AlertDialogDescription>
+   867→        </AlertDialogHeader>
+   868→        <AlertDialogFooter>
+   869→          <AlertDialogCancel>Cancel</AlertDialogCancel>
+   870→          <AlertDialogAction
+   871→            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   872→            onClick={onConfirm}
+   873→            disabled={loading}
+   874→          >
+   875→            {loading ? "Deleting…" : "Delete team"}
+   876→          </AlertDialogAction>
+   877→        </AlertDialogFooter>
+   878→      </AlertDialogContent>
+   879→    </AlertDialog>
+   880→  )
+   881→}
+   882→
+   883→// ---------------------------------------------------------------------------
+   884→// Add members dialog (multi-select)
+   885→// ---------------------------------------------------------------------------
+   886→
+   887→function AddMembersDialog({
+   888→  clubId,
+   889→  team,
+   890→  open,
+   891→  onOpenChange,
+   892→}: {
+   893→  clubId: string
+   894→  team: Team
+   895→  open: boolean
+   896→  onOpenChange: (v: boolean) => void
+   897→}) {
+   898→  const qc = useQueryClient()
+   899→  const [selected, setSelected] = useState<Set<string>>(new Set())
+   900→  const [search, setSearch] = useState("")
+   901→  const [loading, setLoading] = useState(false)
+   902→
+   903→  const { data: membersData, isLoading: membersLoading } = useQuery<MembersResponse>({
+   904→    queryKey: ["members", clubId],
+   905→    queryFn: () => api(`/api/clubs/${clubId}/members`),
+   906→    enabled: !!clubId && open,
+   907→  })
+   908→
+   909→  const existingIds = useMemo(
+   910→    () => new Set(team.members.map((m) => m.userId)),
+   911→    [team.members]
+   912→  )
+   913→
+   914→  const candidates = useMemo(() => {
+   915→    const list = membersData?.members ?? []
+   916→    const q = search.trim().toLowerCase()
+   917→    return list.filter((m) => {
+   918→      if (existingIds.has(m.user.id)) return false
+   919→      if (!q) return true
+   920→      return (
+   921→        m.user.name.toLowerCase().includes(q) ||
+   922→        m.user.email.toLowerCase().includes(q)
+   923→      )
+   924→    })
+   925→  }, [membersData, existingIds, search])
+   926→
+   927→  function reset() {
+   928→    setSelected(new Set())
+   929→    setSearch("")
+   930→  }
+   931→
+   932→  async function submit() {
+   933→    if (selected.size === 0) {
+   934→      toast.error("Select at least one member")
+   935→      return
+   936→    }
+   937→    setLoading(true)
+   938→    let ok = 0
+   939→    let fail = 0
+   940→    for (const userId of Array.from(selected)) {
+   941→      try {
+   942→        await api(`/api/clubs/${clubId}/teams/${team.id}/members`, {
+   943→          method: "POST",
+   944→          json: { userId },
+   945→        })
+   946→        ok++
+   947→      } catch {
+   948→        fail++
+   949→      }
+   950→    }
+   951→    setLoading(false)
+   952→    if (ok > 0) {
+   953→      toast.success(
+   954→        `Added ${ok} ${ok === 1 ? "member" : "members"}${fail > 0 ? ` (${fail} failed)` : ""}`
+   955→      )
+   956→      qc.invalidateQueries({ queryKey: ["teams", clubId] })
+   957→      qc.invalidateQueries({ queryKey: ["members", clubId] })
+   958→    } else if (fail > 0) {
+   959→      toast.error("Failed to add members")
+   960→    }
+   961→    reset()
+   962→    onOpenChange(false)
+   963→  }
+   964→
+   965→  function toggle(id: string) {
+   966→    setSelected((prev) => {
+   967→      const next = new Set(prev)
+   968→      if (next.has(id)) next.delete(id)
+   969→      else next.add(id)
+   970→      return next
+   971→    })
+   972→  }
+   973→
+   974→  return (
+   975→    <Dialog
+   976→      open={open}
+   977→      onOpenChange={(o) => {
+   978→        if (!o) reset()
+   979→        onOpenChange(o)
+   980→      }}
+   981→    >
+   982→      <DialogContent className="max-w-md">
+   983→        <DialogHeader>
+   984→          <DialogTitle>Add members to {team.name}</DialogTitle>
+   985→          <DialogDescription>
+   986→            Select club members to add to this team. {team.memberCount} current{" "}
+   987→            {team.memberCount === 1 ? "member" : "members"}.
+   988→          </DialogDescription>
+   989→        </DialogHeader>
+   990→
+   991→        <Input
+   992→          placeholder="Search by name or email…"
+   993→          value={search}
+   994→          onChange={(e) => setSearch(e.target.value)}
+   995→          aria-label="Search members"
+   996→        />
+   997→
+   998→        <div className="max-h-72 overflow-y-auto rounded-lg border -mx-1">
+   999→          {membersLoading ? (
+  1000→            <div className="p-6 text-center text-sm text-muted-foreground">Loading members…</div>
+  1001→          ) : candidates.length === 0 ? (
+  1002→            <div className="p-6 text-center text-sm text-muted-foreground">
+  1003→              {membersData && membersData.members.length === 0
+  1004→                ? "No club members found."
+  1005→                : "No members match your search or all are already on this team."}
+  1006→            </div>
+  1007→          ) : (
+  1008→            <ul className="divide-y">
+  1009→              {candidates.map((m) => {
+  1010→                const checked = selected.has(m.user.id)
+  1011→                return (
+  1012→                  <li key={m.membershipId}>
+  1013→                    <label
+  1014→                      className={cn(
+  1015→                        "flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors",
+  1016→                        checked && "bg-club-muted"
+  1017→                      )}
+  1018→                    >
+  1019→                      <Checkbox
+  1020→                        checked={checked}
+  1021→                        onCheckedChange={() => toggle(m.user.id)}
+  1022→                        aria-label={`Select ${m.user.name}`}
+  1023→                      />
+  1024→                      <Avatar className="h-7 w-7">
+  1025→                        <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+  1026→                        <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
+  1027→                      </Avatar>
+  1028→                      <div className="min-w-0 flex-1">
+  1029→                        <div className="text-sm font-medium truncate">{m.user.name}</div>
+  1030→                        <div className="text-xs text-muted-foreground truncate">{m.user.email}</div>
+  1031→                      </div>
+  1032→                      {m.role === "executive" && (
+  1033→                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+  1034→                          exec
+  1035→                        </Badge>
+  1036→                      )}
+  1037→                    </label>
+  1038→                  </li>
+  1039→                )
+  1040→              })}
+  1041→            </ul>
+  1042→          )}
+  1043→        </div>
+  1044→
+  1045→        <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
+  1046→          <span className="text-xs text-muted-foreground">{selected.size} selected</span>
+  1047→          <div className="flex items-center gap-2">
+  1048→            <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1049→              Cancel
+  1050→            </Button>
+  1051→            <Button
+  1052→              variant="club"
+  1053→              onClick={submit}
+  1054→              disabled={loading || selected.size === 0}
+  1055→            >
+  1056→              {loading ? "Adding…" : `Add${selected.size > 0 ? ` ${selected.size}` : ""}`}
+  1057→            </Button>
+  1058→          </div>
+  1059→        </DialogFooter>
+  1060→      </DialogContent>
+  1061→    </Dialog>
+  1062→  )
+  1063→}
+  1064→

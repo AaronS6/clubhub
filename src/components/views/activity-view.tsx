@@ -131,7 +131,7 @@ export function ActivityView() {
         description={`Audit trail of everything happening in this club · ${total} ${total === 1 ? "entry" : "entries"}`}
         actions={
           <Select value={actionType} onValueChange={setActionType}>
-            <SelectTrigger className="w-[180px] sm:w-[220px]" aria-label="Filter by action type">
+            <SelectTrigger className="w-[150px] sm:w-[220px]" aria-label="Filter by action type">
               <span className="inline-flex items-center gap-2 text-muted-foreground">
                 <Filter className="h-3.5 w-3.5" />
                 <SelectValue placeholder="All actions" />
@@ -158,11 +158,11 @@ export function ActivityView() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 text-caption-medium"
+            className="h-9 text-caption-medium"
             onClick={() => refetch()}
             disabled={isLoading || isFetchingNextPage}
           >
-            <History className="h-3 w-3 mr-1" /> Refresh
+            <History className="h-3.5 w-3.5 mr-1" /> Refresh
           </Button>
         </div>
         <span className="sr-only">Activity entries, newest first.</span>
@@ -206,8 +206,8 @@ export function ActivityView() {
                       </Avatar>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-body-medium truncate">{item.actorName}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-body-medium truncate min-w-0">{item.actorName}</span>
                         <span
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-caption-medium",
@@ -217,7 +217,7 @@ export function ActivityView() {
                           {meta.icon}
                           {meta.label}
                         </span>
-                        <span className="text-caption text-muted-foreground ml-auto whitespace-nowrap">
+                        <span className="text-caption text-muted-foreground w-full sm:w-auto sm:ml-auto whitespace-nowrap mt-0.5 sm:mt-0">
                           {relativeTime(item.createdAt)}
                         </span>
                       </div>

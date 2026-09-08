@@ -93,6 +93,16 @@ function fmtDate(d: string) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
 }
 
+/**
+ * DialogContent className that makes a Dialog full-screen on mobile (fills
+ * the viewport) and a normal centered modal on sm+ screens. Pair with a
+ * flex-col layout inside: sticky header / scrollable body / sticky footer
+ * so action buttons stay reachable above the soft keyboard.
+ */
+const MOBILE_FULLSCREEN_DIALOG =
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
+
 function todayISO() {
   const d = new Date()
   const y = d.getFullYear()
@@ -320,7 +330,7 @@ function HoursRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+            className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
             onClick={onDelete}
             disabled={deleting}
             aria-label="Delete entry"
@@ -375,7 +385,7 @@ function HoursCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+              className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
               onClick={onDelete}
               disabled={deleting}
               aria-label="Delete entry"
@@ -503,111 +513,113 @@ function SubmitHoursDialog({
         onOpenChange(v)
       }}
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Submit service hours</DialogTitle>
           <DialogDescription>
             Record the hours you volunteered. An executive will review your submission.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="hours-date">Date</Label>
+                <Input
+                  id="hours-date"
+                  type="date"
+                  value={date}
+                  max={todayISO()}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hours-num">Hours</Label>
+                <Input
+                  id="hours-num"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.25"
+                  min="0.25"
+                  max="1000"
+                  placeholder="e.g. 3.5"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <Label htmlFor="hours-date">Date</Label>
-              <Input
-                id="hours-date"
-                type="date"
-                value={date}
-                max={todayISO()}
-                onChange={(e) => setDate(e.target.value)}
+              <Label htmlFor="hours-reason">What did you do?</Label>
+              <Textarea
+                id="hours-reason"
+                rows={3}
+                placeholder="e.g. Helped set up the spring fair booths and cleaned up afterwards."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                maxLength={2000}
                 required
               />
+              <div className="text-right text-xs text-muted-foreground">{reason.length}/2000</div>
             </div>
+
             <div className="space-y-2">
-              <Label htmlFor="hours-num">Hours</Label>
-              <Input
-                id="hours-num"
-                type="number"
-                inputMode="decimal"
-                step="0.25"
-                min="0.25"
-                max="1000"
-                placeholder="e.g. 3.5"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="hours-reason">What did you do?</Label>
-            <Textarea
-              id="hours-reason"
-              rows={3}
-              placeholder="e.g. Helped set up the spring fair booths and cleaned up afterwards."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={2000}
-              required
-            />
-            <div className="text-right text-xs text-muted-foreground">{reason.length}/2000</div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="hours-category">Category (optional)</Label>
-            {categoriesLoading ? (
-              <Skeleton className="h-9 w-full" />
-            ) : (
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger id="hours-category" className="w-full">
-                  <SelectValue placeholder="No category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">No category</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Proof file (optional)</Label>
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                onChange={handleFile}
-                className="hidden"
-                id="hours-proof-input"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                <span>{uploading ? "Uploading…" : proofUrl ? "Replace file" : "Upload file"}</span>
-              </Button>
-              {proofUrl ? (
-                <span className="text-caption-medium text-club truncate flex items-center gap-1">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{proofLabel || "uploaded"}</span>
-                </span>
+              <Label htmlFor="hours-category">Category (optional)</Label>
+              {categoriesLoading ? (
+                <Skeleton className="h-9 w-full" />
               ) : (
-                <span className="text-caption text-muted-foreground">JPG, PNG, WebP, or PDF (max 10MB)</span>
+                <Select value={categoryId} onValueChange={setCategoryId}>
+                  <SelectTrigger id="hours-category" className="w-full">
+                    <SelectValue placeholder="No category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No category</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
+
+            <div className="space-y-2">
+              <Label>Proof file (optional)</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={handleFile}
+                  className="hidden"
+                  id="hours-proof-input"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  <span>{uploading ? "Uploading…" : proofUrl ? "Replace file" : "Upload file"}</span>
+                </Button>
+                {proofUrl ? (
+                  <span className="text-caption-medium text-club truncate flex items-center gap-1 min-w-0">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{proofLabel || "uploaded"}</span>
+                  </span>
+                ) : (
+                  <span className="text-caption text-muted-foreground">JPG, PNG, WebP, or PDF (max 10MB)</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancel
             </Button>

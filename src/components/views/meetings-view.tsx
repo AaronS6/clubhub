@@ -86,6 +86,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PageHeader, EmptyState, initials } from "@/components/shared/page-header"
 
 // ---------------------------------------------------------------------------
+// Mobile full-screen dialog className — makes a Dialog fill the viewport on
+// phones (sticky header / scrollable body / sticky footer so the action
+// buttons stay reachable above the soft keyboard) and centers as a normal
+// modal on sm+ screens.
+// ---------------------------------------------------------------------------
+const MOBILE_FULLSCREEN_DIALOG =
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -806,121 +816,123 @@ function CreateMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && onOpenChange(v)}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Schedule a meeting</DialogTitle>
           <DialogDescription>
             Create a meeting — RSVPs open immediately to all members.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="m-title">Title</Label>
-            <Input
-              id="m-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Weekly standup"
-              maxLength={120}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="m-desc">Description</Label>
-            <Textarea
-              id="m-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Agenda, links, etc."
-              maxLength={2000}
-              rows={3}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="m-loc">Location</Label>
-            <Input
-              id="m-loc"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Room 101 / Zoom link"
-              maxLength={200}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="m-start">Start</Label>
+              <Label htmlFor="m-title">Title</Label>
               <Input
-                id="m-start"
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                id="m-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Weekly standup"
+                maxLength={120}
                 required
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="m-end">End</Label>
+              <Label htmlFor="m-desc">Description</Label>
+              <Textarea
+                id="m-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Agenda, links, etc."
+                maxLength={2000}
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="m-loc">Location</Label>
               <Input
-                id="m-end"
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                id="m-loc"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Room 101 / Zoom link"
+                maxLength={200}
                 required
               />
             </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="m-team">Team (optional)</Label>
-            <Select value={teamId} onValueChange={setTeamId}>
-              <SelectTrigger id="m-team">
-                <SelectValue placeholder="No team" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No team</SelectItem>
-                {teams.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-3 rounded-lg border p-3">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="m-recurring"
-                checked={isRecurring}
-                onCheckedChange={(v) => setIsRecurring(!!v)}
-              />
-              <Label htmlFor="m-recurring" className="cursor-pointer">
-                Make this meeting recurring
-              </Label>
-            </div>
-            {isRecurring && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="m-recurrence">Repeat</Label>
-                <Select
-                  value={recurrenceRule}
-                  onValueChange={(v) => setRecurrenceRule(v as "weekly" | "biweekly" | "monthly")}
-                >
-                  <SelectTrigger id="m-recurrence">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Biweekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Creates the next 8 occurrences (9 total). You can cancel individual ones or the
-                  entire series later.
-                </p>
+                <Label htmlFor="m-start">Start</Label>
+                <Input
+                  id="m-start"
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                />
               </div>
-            )}
+              <div className="grid gap-2">
+                <Label htmlFor="m-end">End</Label>
+                <Input
+                  id="m-end"
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="m-team">Team (optional)</Label>
+              <Select value={teamId} onValueChange={setTeamId}>
+                <SelectTrigger id="m-team">
+                  <SelectValue placeholder="No team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No team</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-3 rounded-lg border p-3">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="m-recurring"
+                  checked={isRecurring}
+                  onCheckedChange={(v) => setIsRecurring(!!v)}
+                />
+                <Label htmlFor="m-recurring" className="cursor-pointer">
+                  Make this meeting recurring
+                </Label>
+              </div>
+              {isRecurring && (
+                <div className="grid gap-2">
+                  <Label htmlFor="m-recurrence">Repeat</Label>
+                  <Select
+                    value={recurrenceRule}
+                    onValueChange={(v) => setRecurrenceRule(v as "weekly" | "biweekly" | "monthly")}
+                  >
+                    <SelectTrigger id="m-recurrence">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="biweekly">Biweekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Creates the next 8 occurrences (9 total). You can cancel individual ones or the
+                    entire series later.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={pending}>
                 Cancel
@@ -1011,8 +1023,8 @@ function EditMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && onOpenChange(v)}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit meeting</DialogTitle>
           <DialogDescription>
             {meeting.isRecurring ? (
@@ -1022,76 +1034,78 @@ function EditMeetingDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="e-title">Title</Label>
-            <Input
-              id="e-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={120}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="e-desc">Description</Label>
-            <Textarea
-              id="e-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={2000}
-              rows={3}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="e-loc">Location</Label>
-            <Input
-              id="e-loc"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              maxLength={200}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="e-start">Start</Label>
+              <Label htmlFor="e-title">Title</Label>
               <Input
-                id="e-start"
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                id="e-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={120}
                 required
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="e-end">End</Label>
+              <Label htmlFor="e-desc">Description</Label>
+              <Textarea
+                id="e-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={2000}
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="e-loc">Location</Label>
               <Input
-                id="e-end"
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                id="e-loc"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                maxLength={200}
                 required
               />
             </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="e-start">Start</Label>
+                <Input
+                  id="e-start"
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="e-end">End</Label>
+                <Input
+                  id="e-end"
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="e-team">Team</Label>
+              <Select value={teamId} onValueChange={setTeamId}>
+                <SelectTrigger id="e-team">
+                  <SelectValue placeholder="No team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No team</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="e-team">Team</Label>
-            <Select value={teamId} onValueChange={setTeamId}>
-              <SelectTrigger id="e-team">
-                <SelectValue placeholder="No team" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No team</SelectItem>
-                {teams.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={pending}>
                 Cancel
@@ -1161,8 +1175,8 @@ function MeetingDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !attendeesLoading && onOpenChange(v)}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
             <span className="truncate">{meeting.title}</span>
             {meeting.isRecurring && meeting.recurrenceRule && (
@@ -1175,7 +1189,7 @@ function MeetingDetailDialog({
           <DialogDescription>{formatMeetingRange(meeting.startTime, meeting.endTime)}</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 text-sm">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 grid gap-3 text-sm">
           <div className="flex items-start gap-2">
             <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span className="break-words">{meeting.location}</span>
@@ -1194,65 +1208,65 @@ function MeetingDetailDialog({
           <div className="text-xs text-muted-foreground">
             Scheduled by {meeting.creator.name} · {format(parseISO(meeting.createdAt), "MMM d, yyyy")}
           </div>
-        </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <RsvpTally label="Going" value={meeting.rsvpCounts.going} kind="going" />
-          <RsvpTally label="Maybe" value={meeting.rsvpCounts.maybe} kind="maybe" />
-          <RsvpTally label="Not Going" value={meeting.rsvpCounts.notGoing} kind="not_going" />
-        </div>
-
-        {!isPast && (
-          <div className="flex flex-wrap gap-2">
-            <RsvpButton meeting={meeting} status="going" />
-            <RsvpButton meeting={meeting} status="maybe" />
-            <RsvpButton meeting={meeting} status="not_going" />
+          <div className="grid grid-cols-3 gap-2">
+            <RsvpTally label="Going" value={meeting.rsvpCounts.going} kind="going" />
+            <RsvpTally label="Maybe" value={meeting.rsvpCounts.maybe} kind="maybe" />
+            <RsvpTally label="Not Going" value={meeting.rsvpCounts.notGoing} kind="not_going" />
           </div>
-        )}
 
-        {isExec && (
-          <div className="rounded-md border">
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <div className="text-sm font-medium">Attendees</div>
-              <div className="text-xs text-muted-foreground">
-                {attendees?.length ?? 0} response{attendees?.length === 1 ? "" : "s"}
-              </div>
+          {!isPast && (
+            <div className="flex flex-wrap gap-2">
+              <RsvpButton meeting={meeting} status="going" />
+              <RsvpButton meeting={meeting} status="maybe" />
+              <RsvpButton meeting={meeting} status="not_going" />
             </div>
-            <ScrollArea className="max-h-60">
-              {attendeesLoading ? (
-                <div className="space-y-2 p-3">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-8 w-full rounded" />
-                  ))}
-                </div>
-              ) : attendees && attendees.length > 0 ? (
-                <ul className="divide-y">
-                  {attendees.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2 px-3 py-2">
-                      <Avatar className="size-7">
-                        <AvatarImage src={a.user.avatarUrl ?? undefined} alt="" />
-                        <AvatarFallback className="text-xs">
-                          {initials(a.user.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">{a.user.name}</div>
-                        <div className="truncate text-xs text-muted-foreground">{a.user.email}</div>
-                      </div>
-                      <RsvpPill status={a.status} />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="p-4 text-center text-sm text-muted-foreground">
-                  No RSVPs yet.
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-        )}
+          )}
 
-        <DialogFooter>
+          {isExec && (
+            <div className="rounded-md border">
+              <div className="flex items-center justify-between border-b px-3 py-2">
+                <div className="text-sm font-medium">Attendees</div>
+                <div className="text-xs text-muted-foreground">
+                  {attendees?.length ?? 0} response{attendees?.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <ScrollArea className="max-h-60">
+                {attendeesLoading ? (
+                  <div className="space-y-2 p-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-8 w-full rounded" />
+                    ))}
+                  </div>
+                ) : attendees && attendees.length > 0 ? (
+                  <ul className="divide-y">
+                    {attendees.map((a) => (
+                      <li key={a.id} className="flex items-center gap-2 px-3 py-2">
+                        <Avatar className="size-7">
+                          <AvatarImage src={a.user.avatarUrl ?? undefined} alt="" />
+                          <AvatarFallback className="text-xs">
+                            {initials(a.user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium">{a.user.name}</div>
+                          <div className="truncate text-xs text-muted-foreground">{a.user.email}</div>
+                        </div>
+                        <RsvpPill status={a.status} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    No RSVPs yet.
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
           {isExec && !isPast && (
             <Button
               variant="outline"
