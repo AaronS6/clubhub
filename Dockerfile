@@ -1,5 +1,7 @@
 # --- Web service Dockerfile (Next.js standalone) -----------------------------
-# Multi-stage build for a small production image.
+# Multi-stage build. We copy the FULL node_modules into the runner (not
+# cherry-picked packages) because Prisma's CLI uses symlinks + relative paths
+# to .wasm files that break when copied individually.
 FROM node:20-slim AS base
 RUN npm install -g bun
 # OpenSSL is required by Prisma's query engine on Debian-based images.
@@ -22,26 +24,27 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# OpenSSL is needed by Prisma's query engine at runtime too.
+# OpenSSL is needed by Prisma's query engine at runtime.
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Copy the standalone build output
+# Copy the standalone build output (server.js + minimal deps)
 COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/.next/standalone/.next ./.next
 COPY --from=base /app/.next/standalone/public ./public
 
-# Prisma needs its schema, engine binaries, AND the prisma CLI (pinned version)
+# Copy the FULL node_modules from base — this preserves Prisma's symlinks
+# and .wasm files that break when cherry-picked. Also includes @prisma/client
+# which the app needs at runtime.
+COPY --from=base /app/node_modules ./node_modules
+
+# Prisma schema (needed by `prisma db push`)
 COPY --from=base /app/prisma ./prisma
-COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=base /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=base /app/node_modules/prisma ./node_modules/prisma
-COPY --from=base /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 EXPOSE 3000
 # Render sets the PORT env var; the standalone server respects it.
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Push the schema on startup (using the PINNED prisma version, not npx),
-# then start the server.
-CMD ["sh", "-c", "./node_modules/.bin/prisma db push --accept-data-loss && node server.js"]
+# Push the schema on startup (using the PINNED prisma 6.x from node_modules,
+# not npx which fetches 7.x), then start the server.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma && node server.js"]
