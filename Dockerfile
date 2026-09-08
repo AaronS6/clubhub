@@ -43,14 +43,12 @@ COPY --from=base /app/prisma ./prisma
 EXPOSE 3000
 ENV HOSTNAME=0.0.0.0
 
-# Start the server IMMEDIATELY (no blocking migration). Render's port scanner
-# detects port 3000 within seconds, and the deploy succeeds.
-#
-# The database migration (`prisma db push`) is run SEPARATELY — either:
-#  - As a Render Shell command after the first deploy (see DEPLOY.md), OR
-#  - Via a startup script that runs the migration in the background after the
-#    server is already accepting connections.
-#
-# We use the background approach here so the migration runs automatically on
-# every deploy, but doesn't block the port binding.
-CMD ["sh", "-c", "node server.js & sleep 2; node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma || echo 'migration deferred'; wait"]
+# Copy the startup script
+COPY startup.sh ./startup.sh
+RUN chmod +x startup.sh
+
+# The startup script runs the database migration SYNCHRONOUSLY (with retries
+# for Supabase cold starts) BEFORE starting the Next.js server. This ensures
+# all tables exist before the server accepts requests. The migration takes
+# 5-15s typically — well within Render's 60s port-scan timeout.
+CMD ["./startup.sh"]
