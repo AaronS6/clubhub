@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { sendEmail, renderEmailHtml, getFromAddress, isEmailConfigured } from "@/lib/email"
+import { sendEmail, renderEmailHtml, isEmailConfigured } from "@/lib/email"
 
 const schema = z.object({
   email: z.string().email(),
@@ -15,15 +15,16 @@ const schema = z.object({
  * (expires in 1 hour), and emails a reset link to the user.
  *
  * SECURITY: always returns `{ ok: true }` regardless of whether the email
- * exists — this prevents email enumeration (an attacker can't probe which
- * emails have accounts by watching the response).
+ * exists — this prevents email enumeration. BUT if email SENDING fails, we
+ * return the error reason so the user can diagnose the problem (wrong API
+ * key, wrong EMAIL_FROM, etc.).
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ ok: true }) // don't reveal validation error
+      return NextResponse.json({ ok: true })
     }
     const email = parsed.data.email.toLowerCase().trim()
 
@@ -48,13 +49,19 @@ export async function POST(req: Request) {
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000"
     const resetUrl = `${baseUrl}/?reset=${token}`
 
-    // Send the email
+    // Check if email is configured
     if (!isEmailConfigured()) {
-      console.warn("[forgot-password] RESEND_API_KEY not set — email not sent. Reset URL:", resetUrl)
-      return NextResponse.json({ ok: true, warning: "Email not configured" })
+      console.error("[forgot-password] RESEND_API_KEY is NOT set. Email not sent.")
+      console.error("[forgot-password] Reset URL (for manual testing):", resetUrl)
+      return NextResponse.json({
+        ok: true,
+        error: "Email is not configured. Set RESEND_API_KEY in Render env vars.",
+        resetUrl: resetUrl, // Include the URL so the user can test manually
+      })
     }
 
-    await sendEmail({
+    // Send the email — check the result!
+    const result = await sendEmail({
       to: email,
       subject: "Reset your ClubHub password",
       html: renderEmailHtml({
@@ -70,9 +77,19 @@ export async function POST(req: Request) {
       }),
     })
 
+    if (!result.ok) {
+      console.error("[forgot-password] Email send FAILED:", result.reason)
+      return NextResponse.json({
+        ok: true,
+        error: `Email failed to send: ${result.reason}`,
+        resetUrl: resetUrl, // Include the URL so the user can test manually
+      })
+    }
+
+    console.log("[forgot-password] Email sent successfully to:", email, "ID:", result.id)
     return NextResponse.json({ ok: true })
   } catch (err: any) {
     console.error("[forgot-password] error:", err?.message)
-    return NextResponse.json({ ok: true }) // don't reveal errors either
+    return NextResponse.json({ ok: true, error: err?.message || "Unknown error" })
   }
 }

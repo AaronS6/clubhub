@@ -68,6 +68,8 @@ export function AuthScreen() {
   const [forgotEmail, setForgotEmail] = useState("")
   const [forgotLoading, setForgotLoading] = useState(false)
   const [forgotSent, setForgotSent] = useState(false)
+  const [forgotError, setForgotError] = useState<string | null>(null)
+  const [forgotResetUrl, setForgotResetUrl] = useState<string | null>(null)
 
   // Password reset view (triggered by ?reset=token query param)
   const searchParams = useSearchParams()
@@ -131,14 +133,20 @@ export function AuthScreen() {
     e.preventDefault()
     if (!forgotEmail.trim()) return
     setForgotLoading(true)
+    setForgotError(null)
+    setForgotResetUrl(null)
     try {
-      await api("/api/auth/forgot-password", {
-        method: "POST",
-        json: { email: forgotEmail.trim() },
-      })
+      const res = await api<{ ok: boolean; error?: string; resetUrl?: string }>(
+        "/api/auth/forgot-password",
+        { method: "POST", json: { email: forgotEmail.trim() } }
+      )
+      if (res.error) {
+        setForgotError(res.error)
+        if (res.resetUrl) setForgotResetUrl(res.resetUrl)
+      }
       setForgotSent(true)
     } catch (err: any) {
-      // Don't reveal whether the email exists — just show success
+      setForgotError(err.message || "Request failed")
       setForgotSent(true)
     } finally {
       setForgotLoading(false)
@@ -430,11 +438,28 @@ export function AuthScreen() {
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-club-muted">
                 <Mail className="h-6 w-6 text-club" />
               </div>
-              <p className="text-body-medium font-medium">Check your email</p>
-              <p className="text-sm text-muted-foreground">
-                If an account exists for <span className="font-medium text-foreground">{forgotEmail}</span>,
-                you&apos;ll receive a password reset link shortly. The link expires in 1 hour.
-              </p>
+              {forgotError ? (
+                <>
+                  <p className="text-body-medium font-medium text-red-600 dark:text-red-400">Email not sent</p>
+                  <p className="text-sm text-muted-foreground">{forgotError}</p>
+                  {forgotResetUrl && (
+                    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-left">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">
+                        Test link (copy into your browser):
+                      </p>
+                      <p className="text-xs text-muted-foreground break-all font-mono">{forgotResetUrl}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-body-medium font-medium">Check your email</p>
+                  <p className="text-sm text-muted-foreground">
+                    If an account exists for <span className="font-medium text-foreground">{forgotEmail}</span>,
+                    you&apos;ll receive a password reset link shortly. The link expires in 1 hour.
+                  </p>
+                </>
+              )}
               <Button variant="outline" className="w-full" onClick={() => setForgotOpen(false)}>
                 Close
               </Button>
