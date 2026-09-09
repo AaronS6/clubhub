@@ -89,10 +89,8 @@ export function MentionableTextarea({
 
   const filteredMembers = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return members.slice(0, 8)
-    return members
-      .filter((m) => m.name.toLowerCase().includes(q))
-      .slice(0, 8)
+    if (!q) return members
+    return members.filter((m) => m.name.toLowerCase().includes(q))
   }, [members, query])
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -175,12 +173,13 @@ export function MentionableTextarea({
         <div
           role="listbox"
           aria-label={listLabel}
-          className="absolute bottom-full left-0 mb-1 w-64 max-w-full rounded-md border border-border bg-popover p-1 shadow-md z-30 animate-fade-in"
+          className="absolute bottom-full left-0 right-0 mb-1 min-w-[240px] max-w-[400px] rounded-md border border-border bg-popover p-1 shadow-md z-30 animate-fade-in"
         >
           <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
             {query ? `Matching “${query}”` : "Mention a member"}
           </div>
-          {filteredMembers.map((m, i) => (
+          <div className="max-h-[132px] overflow-y-auto">
+            {filteredMembers.map((m, i) => (
             <button
               key={m.userId}
               type="button"
@@ -201,9 +200,10 @@ export function MentionableTextarea({
                 <AvatarImage src={m.avatarUrl ?? undefined} alt={m.name} />
                 <AvatarFallback className="text-[10px]">{initials(m.name)}</AvatarFallback>
               </Avatar>
-              <span className="truncate">{m.name}</span>
+              <span className="whitespace-nowrap">{m.name}</span>
             </button>
           ))}
+          </div>
         </div>
       )}
     </div>
