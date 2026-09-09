@@ -91,6 +91,8 @@ import {
   EyeOff,
   Lock,
   Pencil,
+  Trash2,
+  ImagePlus,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -202,7 +204,8 @@ export function MembersView() {
         }
       />
 
-      {/* Club code section — exec only */}
+      {/* Club logo + code section — exec only */}
+      {isExec && <ClubLogoSection clubId={clubId} />}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
 
       {/* Search */}
@@ -349,6 +352,132 @@ export function MembersView() {
         online={online}
         onOpenChange={(o) => !o && setDetailMember(null)}
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Club logo section (exec only) — upload / remove the club logo image
+// ---------------------------------------------------------------------------
+
+function ClubLogoSection({ clubId }: { clubId: string }) {
+  const qc = useQueryClient()
+  const patchCurrentClub = useAppStore((s) => s.patchCurrentClub)
+  const setClubs = useAppStore((s) => s.setClubs)
+  const clubs = useAppStore((s) => s.clubs)
+  const currentClub = useAppStore((s) => s.currentClub)
+
+  const logoUrl = currentClub?.logoUrl ?? null
+  const clubName = currentClub?.clubName ?? "Club"
+
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image is too large (5MB max)")
+      return
+    }
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await apiUpload<{ logoUrl: string }>(
+        `/api/clubs/${clubId}/logo`,
+        fd
+      )
+      patchCurrentClub({ logoUrl: res.logoUrl })
+      setClubs(
+        clubs.map((c) =>
+          c.clubId === clubId ? { ...c, logoUrl: res.logoUrl } : c
+        )
+      )
+      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      toast.success("Club logo updated")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't upload logo")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function removeLogo() {
+    setUploading(true)
+    try {
+      await api(`/api/clubs/${clubId}/logo`, { method: "DELETE" })
+      patchCurrentClub({ logoUrl: null })
+      setClubs(
+        clubs.map((c) =>
+          c.clubId === clubId ? { ...c, logoUrl: null } : c
+        )
+      )
+      toast.success("Club logo removed")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't remove logo")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <div className="pb-3">
+        <h3 className="text-section-title flex items-center gap-2">
+          <ImagePlus className="h-4 w-4" /> Club logo
+        </h3>
+      </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <Avatar className="h-16 w-16 rounded-md shrink-0">
+          <AvatarImage src={logoUrl ?? undefined} alt={clubName} />
+          <AvatarFallback className="rounded-md text-lg">
+            {initials(clubName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="space-y-1">
+          <p className="text-body text-muted-foreground">
+            Shown in the sidebar, club switcher, and public profile. PNG, JPG, or
+            GIF — resized to 256×256. 5MB max.
+          </p>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onFileChosen}
+          />
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {uploading ? "Uploading…" : "Upload logo"}
+            </Button>
+            {logoUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={removeLogo}
+                disabled={uploading}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -419,11 +419,7 @@ export function TasksView() {
       />
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Filter className="size-4" />
-          <span className="hidden sm:inline">Filters</span>
-        </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Select value={teamFilter} onValueChange={setTeamFilter}>
           <SelectTrigger className="w-full sm:w-44" size="sm">
             <SelectValue placeholder="Team" />

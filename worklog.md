@@ -1337,3 +1337,21 @@ Stage Summary:
   - `src/components/views/dashboard/hours-trend-chart.tsx` — extracted chart component (client) for dynamic import
 - Validation: `bun run lint` → 0 errors. `bun run build` → succeeded (Compiled successfully in 19.2s, 12 static pages generated, standalone output). Dev server still healthy (Ready in 1.4s, no compile errors). No off-limits files touched (prisma schema, all API routes, auth files, next.config.ts all unchanged).
 - Note: `@mdxeditor/editor` and `react-syntax-highlighter` are in package.json but unused in `src/` — they're dead deps that could be removed from package.json in a future cleanup task (out of scope for this perf pass since removing them doesn't affect runtime bundle).
+
+---
+Task ID: R11-IMAGES
+Agent: full-stack-developer (image uploads)
+Task: Profile picture + club logo upload
+
+Work Log:
+- Created `src/app/api/me/avatar/route.ts`: POST accepts multipart `file` (5MB cap), processes with `sharp` (resize 256×256 cover, JPEG q80), stores as base64 data URL in `User.avatarUrl`. Auth via `getSessionUser()`. Returns `{ avatarUrl }`. DELETE clears `avatarUrl` (null). try/catch throughout with clear messages.
+- Created `src/app/api/clubs/[clubId]/logo/route.ts`: POST same sharp pipeline, stores in `Club.logoUrl`. Exec-only via `getClubContext` + role check. Returns `{ logoUrl }`, logs `club_logo_changed` activity. DELETE clears `logoUrl` (exec-only), logs `club_logo_removed`.
+- Modified `src/components/app-shell.tsx` (SettingsDialog Profile tab): replaced the free-text "Avatar URL" input with a real upload UI — 64px avatar preview (image or initials fallback), hidden `<input type="file" accept="image/*">`, Upload button with Loader2 spinner, conditional Remove button. On upload POSTs to `/api/me/avatar` via `apiUpload`, updates local state, then calls `useSession().update()` so the top-bar/sidebar avatars refresh (session callback re-reads avatarUrl from DB). Added `apiUpload` + `Upload`/`Trash2` imports.
+- Modified `src/components/views/members-view.tsx`: added new `ClubLogoSection` (exec-only) rendered above the existing `ClubCodeSection`. Shows current logo (or initials) at 64px with Upload logo + conditional Remove buttons. On upload POSTs to `/api/clubs/[clubId]/logo`, then syncs the store via `patchCurrentClub({ logoUrl })` + `setClubs(...)` so sidebar/switcher update instantly. Added `Trash2`/`ImagePlus` icons.
+- No changes to `prisma/schema.prisma`, `auth.ts`, `authOptions.ts`, `server-auth.ts`, or existing API route logic.
+- `bun run lint`: clean. `bun run build`: success — both new routes registered (`/api/me/avatar`, `/api/clubs/[clubId]/logo`). Dev server healthy.
+
+Stage Summary:
+- Files created: `src/app/api/me/avatar/route.ts`, `src/app/api/clubs/[clubId]/logo/route.ts`
+- Files modified: `src/components/app-shell.tsx`, `src/components/views/members-view.tsx`
+- Work record: `agent-ctx/R11-IMAGES-full-stack-developer.md`

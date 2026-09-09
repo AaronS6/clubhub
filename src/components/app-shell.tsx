@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { useAppStore, View } from "@/lib/store"
-import { api } from "@/lib/api/client"
+import { api, apiUpload } from "@/lib/api/client"
 import { useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { toast } from "sonner"
@@ -36,6 +36,7 @@ import {
   ScrollText, Settings, Bell, LogOut, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, Keyboard, RefreshCw,
+  Upload, Trash2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -249,7 +250,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        <Footer />
         <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       </div>
     )
@@ -330,11 +330,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //   RIGHT:  connection dot, keyboard help, notification bell, profile avatar
   // The theme toggle lives in the LEFT SIDEBAR (not the top bar).
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
-      {/* App brand mark — visible on all screens (desktop + mobile) */}
-      <div className="flex items-center gap-2 shrink-0">
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+      {/* App brand mark — desktop only (hidden on mobile to save space) */}
+      <div className="hidden md:flex items-center gap-2 shrink-0">
         <BrandMark size={28} />
-        <span className="hidden sm:inline text-sm font-semibold tracking-tight">ClubHub</span>
+        <span className="text-sm font-semibold tracking-tight">ClubHub</span>
       </div>
       {/* Mobile hamburger */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
@@ -357,10 +357,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SheetContent>
       </Sheet>
 
-      {/* Search (center, desktop) — bordered trigger styled to match a real
-          input. The previous outline/ring mismatched the dimensions; this
-          uses a single border + matching py-1.5 so the focus ring sits
-          flush on the box instead of offset. */}
+      {/* Search (center, desktop) */}
       <button
         type="button"
         onClick={() => openGlobalSearch()}
@@ -380,7 +377,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {currentClub?.clubName}
       </div>
 
-      {/* Right side: search icon (mobile), connection, keyboard, bell, profile */}
+      {/* Right side: search icon (mobile), connection, bell, profile */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
@@ -393,21 +390,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SearchIcon className="h-4 w-4" />
         </Button>
         <ConnectionIndicator />
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Keyboard shortcuts"
-          title="Keyboard shortcuts (press ?)"
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("open-keyboard-shortcuts"))
-          }
-        >
-          <Keyboard className="h-4 w-4" />
-        </Button>
-        {/* Mobile: theme toggle stays in the top bar (the sidebar drawer is hidden) */}
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
         <NotificationBell />
         {/* Profile avatar menu — RIGHT side of the top bar */}
         <UserMenu compact />
@@ -416,7 +398,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="h-dvh flex flex-col bg-background overflow-hidden">
       <UrgentBanner />
       {topBar}
       <div className="flex flex-1 min-h-0">
@@ -442,41 +424,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {children}
             </div>
           </div>
-          <Footer />
         </main>
       </div>
 
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <GlobalSearch />
-      <KeyboardShortcutsHelp />
     </div>
   )
 }
 
-function Footer() {
-  return (
-    <footer className="border-t bg-background px-4 md:px-6 py-3 text-center text-xs text-muted-foreground shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <div className="flex items-center justify-center gap-3 flex-wrap">
-        <span>ClubHub · Multi-club management platform</span>
-        <span aria-hidden className="text-muted-foreground/40">·</span>
-        <button
-          type="button"
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("open-keyboard-shortcuts"))
-          }
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          aria-label="Keyboard shortcuts help"
-        >
-          <Keyboard className="h-3 w-3" />
-          <span>Shortcuts</span>
-          <kbd className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded border bg-muted text-[10px] font-mono">
-            ?
-          </kbd>
-        </button>
-      </div>
-    </footer>
-  )
-}
+// Footer removed per user request (was showing "ClubHub · Multi-club management platform" + keyboard shortcuts link)
 
 /**
  * Dismissible banner shown at the very top of the app whenever the current
@@ -880,11 +837,13 @@ function SettingsDialog({
   tab: "profile" | "notifications" | "security"
   onTabChange: (v: "profile" | "notifications" | "security") => void
 }) {
-  const { data: session } = useSession()
+  const { data: session, update: updateSession } = useSession()
   const [name, setName] = useState(session?.user?.name ?? "")
   const [bio, setBio] = useState("")
   const [avatarUrl, setAvatarUrl] = useState(session?.user?.image ?? "")
   const [loading, setLoading] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const setClubs = useAppStore((s) => s.setClubs)
@@ -900,6 +859,46 @@ function SettingsDialog({
       toast.error(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function onAvatarFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Reset the input so the same file can be re-selected later.
+    e.target.value = ""
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image is too large (5MB max)")
+      return
+    }
+    setAvatarUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await apiUpload<{ avatarUrl: string }>("/api/me/avatar", fd)
+      setAvatarUrl(res.avatarUrl)
+      // Refresh the session so the top-bar / sidebar avatar updates too —
+      // the session callback in authOptions re-reads avatarUrl from the DB.
+      await updateSession()
+      toast.success("Profile picture updated")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't upload image")
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
+  async function removeAvatar() {
+    setAvatarUploading(true)
+    try {
+      await api("/api/me/avatar", { method: "DELETE" })
+      setAvatarUrl("")
+      await updateSession()
+      toast.success("Profile picture removed")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't remove image")
+    } finally {
+      setAvatarUploading(false)
     }
   }
   async function changePassword() {
@@ -932,13 +931,57 @@ function SettingsDialog({
 
           <TabsContent value="profile" className="mt-4">
             <div className="space-y-4">
+              {/* Profile picture upload */}
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16 shrink-0">
+                  <AvatarImage src={avatarUrl || undefined} alt={name} />
+                  <AvatarFallback className="text-lg">
+                    {initials(name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onAvatarFileChosen}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarUploading}
+                  >
+                    {avatarUploading ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {avatarUploading ? "Uploading…" : "Upload"}
+                  </Button>
+                  {avatarUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={removeAvatar}
+                      disabled={avatarUploading}
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="text-caption text-muted-foreground -mt-1">
+                PNG, JPG, or GIF. Resized to 256×256. 5MB max.
+              </p>
+
               <div className="space-y-2">
                 <Label>Display name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Avatar URL</Label>
-                <Input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." />
               </div>
               <div className="space-y-2">
                 <Label>Bio</Label>
@@ -1504,105 +1547,4 @@ function NotifRow({
     </div>
   )
 }
-
-/**
- * Keyboard shortcuts help dialog.
- *
- * Listens globally for `?` (Shift+/) and opens a small Dialog listing every
- * keyboard shortcut available in the app. The listener is intentionally
- * suppressed when the user is typing in an input/textarea/contentEditable
- * element, or when a meta key (Cmd/Ctrl/Alt) is held — those combinations
- * belong to the OS or browser, not us.
- *
- * Other UI surfaces (the footer "Shortcuts" button, the top-bar `?` button)
- * dispatch an `open-keyboard-shortcuts` CustomEvent to trigger the same dialog
- * — same pattern the SettingsDialog uses for its `open-settings` event.
- */
-function KeyboardShortcutsHelp() {
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      // Ignore when a meta/ctrl/alt key is held — those are browser/OS
-      // shortcuts, not ours.
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      // Ignore when the user is typing in an input, textarea, or any
-      // contentEditable element. (Selects are included too — typing `?`
-      // inside a select wouldn't make sense anyway.)
-      const t = e.target as HTMLElement | null
-      if (t) {
-        const tag = t.tagName
-        if (
-          tag === "INPUT" ||
-          tag === "TEXTAREA" ||
-          tag === "SELECT" ||
-          t.isContentEditable
-        ) {
-          return
-        }
-      }
-      if (e.key === "?") {
-        e.preventDefault()
-        setOpen(true)
-      }
-    }
-    function onOpenEvent(e: Event) {
-      setOpen(true)
-    }
-    window.addEventListener("keydown", onKey)
-    window.addEventListener("open-keyboard-shortcuts", onOpenEvent as EventListener)
-    return () => {
-      window.removeEventListener("keydown", onKey)
-      window.removeEventListener("open-keyboard-shortcuts", onOpenEvent as EventListener)
-    }
-  }, [])
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Keyboard className="h-4 w-4 text-club" />
-            Keyboard shortcuts
-          </DialogTitle>
-          <DialogDescription>
-            Press these keys anywhere in the app to navigate faster.
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="space-y-2 mt-2">
-          {SHORTCUTS.map((s) => (
-            <li
-              key={s.label}
-              className="flex items-center justify-between gap-3 rounded-md border bg-card/40 px-3 py-2"
-            >
-              <span className="text-body-medium">{s.label}</span>
-              <span className="flex items-center gap-1 shrink-0">
-                {s.keys.map((k, i) => (
-                  <kbd
-                    key={i}
-                    className="inline-flex items-center justify-center min-w-6 h-5 px-1.5 rounded border bg-muted text-[11px] font-mono text-foreground"
-                  >
-                    {k}
-                  </kbd>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-caption text-muted-foreground mt-3">
-          Tip: shortcuts are ignored while you&apos;re typing in a text field.
-        </p>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/** Keyboard shortcuts surfaced in the help dialog. */
-const SHORTCUTS: { label: string; keys: string[] }[] = [
-  { label: "Open search", keys: ["⌘/Ctrl", "K"] },
-  { label: "Open search (alt)", keys: ["/"] },
-  { label: "Open this help", keys: ["?"] },
-  { label: "Send chat message", keys: ["Enter"] },
-  { label: "New line in chat", keys: ["Shift", "Enter"] },
-  { label: "Close dialog or menu", keys: ["Esc"] },
-]
+// KeyboardShortcutsHelp + SHORTCUTS removed per user request
