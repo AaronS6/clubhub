@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getClubContext, error } from "@/lib/server-auth"
 
@@ -26,40 +27,46 @@ function fmtDateTime(d: Date): string {
  * Exports the current user's APPROVED service hours as a CSV download.
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string }> }) {
-  const { clubId } = await ctx.params
-  const c = await getClubContext(clubId)
-  if (!c) return error("Not a member of this club", 403)
+  try {
+    const { clubId } = await ctx.params
+    const c = await getClubContext(clubId)
+    if (!c) return error("Not a member of this club", 403)
 
-  const items = await db.serviceHour.findMany({
-    where: { clubId, userId: c.user.id, status: "approved" },
-    include: {
-      category: { select: { name: true } },
-      reviewer: { select: { name: true } },
-    },
-    orderBy: [{ dateOfService: "desc" }, { submittedAt: "desc" }],
-  })
+    const items = await db.serviceHour.findMany({
+      where: { clubId, userId: c.user.id, status: "approved" },
+      include: {
+        category: { select: { name: true } },
+        reviewer: { select: { name: true } },
+      },
+      orderBy: [{ dateOfService: "desc" }, { submittedAt: "desc" }],
+    })
 
-  const header = ["Date", "Hours", "Reason", "Category", "Reviewed By", "Reviewed At"]
-  const rows: string[] = [header.join(",")]
-  for (const it of items) {
-    rows.push(
-      [
-        fmtDate(it.dateOfService),
-        String(it.hours),
-        csvEscape(it.reasonText),
-        csvEscape(it.category?.name ?? ""),
-        csvEscape(it.reviewer?.name ?? ""),
-        it.reviewedAt ? fmtDateTime(it.reviewedAt) : "",
-      ].join(",")
-    )
+    const header = ["Date", "Hours", "Reason", "Category", "Reviewed By", "Reviewed At"]
+    const rows: string[] = [header.join(",")]
+    for (const it of items) {
+      rows.push(
+        [
+          fmtDate(it.dateOfService),
+          String(it.hours),
+          csvEscape(it.reasonText),
+          csvEscape(it.category?.name ?? ""),
+          csvEscape(it.reviewer?.name ?? ""),
+          it.reviewedAt ? fmtDateTime(it.reviewedAt) : "",
+        ].join(",")
+      )
+    }
+
+    const csv = rows.join("\n")
+    return new Response(csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="service-hours.csv"`,
+        "Cache-Control": "no-store",
+      },
+    })
+
+  } catch (err: any) {
+    console.error("[clubs/hours/export GET] error:", err?.message, err?.code, err?.meta)
+    return NextResponse.json({ error: "Failed to export data: " + (err?.message || "Unknown error") }, { status: 500 })
   }
-
-  const csv = rows.join("\n")
-  return new Response(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="service-hours.csv"`,
-      "Cache-Control": "no-store",
-    },
-  })
 }

@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
 
@@ -97,67 +98,73 @@ export async function GET(
   _req: Request,
   ctx: { params: Promise<{ clubId: string; userId: string }> }
 ) {
-  const { clubId, userId } = await ctx.params
-  const c = await getClubContext(clubId)
-  if (!c) return error("Not a member of this club", 403)
+  try {
+    const { clubId, userId } = await ctx.params
+    const c = await getClubContext(clubId)
+    if (!c) return error("Not a member of this club", 403)
 
-  // The target user must be an active member of this club.
-  const targetMembership = await db.clubMember.findUnique({
-    where: { clubId_userId: { clubId, userId } },
-    select: { id: true, status: true, role: true, joinedAt: true },
-  })
-  if (!targetMembership || targetMembership.status !== "active") {
-    return error("Member not found", 404)
+    // The target user must be an active member of this club.
+    const targetMembership = await db.clubMember.findUnique({
+      where: { clubId_userId: { clubId, userId } },
+      select: { id: true, status: true, role: true, joinedAt: true },
+    })
+    if (!targetMembership || targetMembership.status !== "active") {
+      return error("Member not found", 404)
+    }
+
+    // Gather the user's stats within this club — all in parallel.
+    const [tasksDone, hoursAgg, meetingsGoing, announcementsPosted, teamCount] =
+      await Promise.all([
+        db.task.count({
+          where: {
+            clubId,
+            assignedToUserId: userId,
+            status: "done",
+            deletedAt: null,
+          },
+        }),
+        db.serviceHour.aggregate({
+          where: { clubId, userId, status: "approved" },
+          _sum: { hours: true },
+        }),
+        db.meetingRsvp.count({
+          where: { userId, status: "going", meeting: { clubId } },
+        }),
+        db.announcement.count({
+          where: { clubId, authorId: userId, deletedAt: null },
+        }),
+        db.teamMember.count({
+          where: { userId, team: { clubId } },
+        }),
+      ])
+
+    const stats: UserStats = {
+      tasksDone,
+      approvedHours: hoursAgg._sum.hours ?? 0,
+      meetingsGoing,
+      announcementsPosted,
+      teamCount,
+    }
+    const earned = computeEarned(stats)
+
+    return json({
+      badges: BADGE_DEFS.map((b) => ({
+        id: b.id,
+        label: b.label,
+        description: b.description,
+        icon: b.icon,
+        earned: !!earned[b.id],
+      })),
+      stats,
+      target: {
+        userId,
+        role: targetMembership.role as "member" | "executive",
+        joinedAt: targetMembership.joinedAt,
+      },
+    })
+
+  } catch (err: any) {
+    console.error("[clubs/members/badges GET] error:", err?.message, err?.code, err?.meta)
+    return NextResponse.json({ error: "Failed to load badges: " + (err?.message || "Unknown error") }, { status: 500 })
   }
-
-  // Gather the user's stats within this club — all in parallel.
-  const [tasksDone, hoursAgg, meetingsGoing, announcementsPosted, teamCount] =
-    await Promise.all([
-      db.task.count({
-        where: {
-          clubId,
-          assignedToUserId: userId,
-          status: "done",
-          deletedAt: null,
-        },
-      }),
-      db.serviceHour.aggregate({
-        where: { clubId, userId, status: "approved" },
-        _sum: { hours: true },
-      }),
-      db.meetingRsvp.count({
-        where: { userId, status: "going", meeting: { clubId } },
-      }),
-      db.announcement.count({
-        where: { clubId, authorId: userId, deletedAt: null },
-      }),
-      db.teamMember.count({
-        where: { userId, team: { clubId } },
-      }),
-    ])
-
-  const stats: UserStats = {
-    tasksDone,
-    approvedHours: hoursAgg._sum.hours ?? 0,
-    meetingsGoing,
-    announcementsPosted,
-    teamCount,
-  }
-  const earned = computeEarned(stats)
-
-  return json({
-    badges: BADGE_DEFS.map((b) => ({
-      id: b.id,
-      label: b.label,
-      description: b.description,
-      icon: b.icon,
-      earned: !!earned[b.id],
-    })),
-    stats,
-    target: {
-      userId,
-      role: targetMembership.role as "member" | "executive",
-      joinedAt: targetMembership.joinedAt,
-    },
-  })
 }

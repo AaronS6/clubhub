@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
 import { logActivity, notify } from "@/lib/activity"
@@ -171,166 +172,181 @@ interface ImportResult {
  * the code to share.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ clubId: string }> }) {
-  const { clubId } = await ctx.params
-  const c = await getClubContext(clubId)
-  if (!c) return error("Not a member of this club", 403)
-  if (c.membership.role !== "executive") return error("Only executives can import members", 403)
-
-  // Rate limit: 5 imports per club per minute. Keyed by clubId so a
-  // compromised exec can't bypass by switching accounts.
-  const rlKey = `import:${clubId}`
-  const rl = rateLimit(rlKey, IMPORT_RATE_LIMIT_MAX, IMPORT_RATE_LIMIT_WINDOW_MS)
-  if (!rl.ok) {
-    const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000)
-    return Response.json(
-      { error: "Too many imports. Please wait a minute and try again." },
-      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
-    )
-  }
-
-  let formData: FormData
   try {
-    formData = await req.formData()
-  } catch {
-    return error("Expected multipart/form-data", 400)
-  }
+    const { clubId } = await ctx.params
+    const c = await getClubContext(clubId)
+    if (!c) return error("Not a member of this club", 403)
+    if (c.membership.role !== "executive") return error("Only executives can import members", 403)
 
-  const file = formData.get("file")
-  if (!file || !(file instanceof File)) return error("No file uploaded", 400)
-
-  const name = file.name.toLowerCase()
-  if (!name.endsWith(".csv")) {
-    return error("File must be a .csv", 400)
-  }
-  if (file.size === 0) return error("File is empty", 400)
-  if (file.size > MAX_BYTES) return error("File too large (max 1MB)", 400)
-
-  // Parse the raw text. csv files are typically utf-8; in Node the File.text()
-  // decodes as utf-8 by default.
-  const text = await file.text()
-  const allRows = parseCsv(text)
-
-  // The first row is the header. Find the `name` and `email` columns.
-  if (allRows.length === 0) {
-    return error("CSV has no rows", 400)
-  }
-  const header = allRows[0].map((h) => h.trim().toLowerCase())
-  const nameIdx = header.indexOf("name")
-  const emailIdx = header.indexOf("email")
-  if (nameIdx === -1 || emailIdx === -1) {
-    return error("CSV must have 'name' and 'email' columns (header row required)", 400)
-  }
-
-  // Cap rows at MAX_ROWS (excluding the header).
-  const dataRows = allRows.slice(1)
-  if (dataRows.length > MAX_ROWS) {
-    return error(`Too many rows (max ${MAX_ROWS}; got ${dataRows.length})`, 400)
-  }
-
-  const added: AddedMember[] = []
-  const alreadyMembers: AlreadyMember[] = []
-  const invalid: InvalidRow[] = []
-  const pendingInvites: PendingInvite[] = []
-
-  // Track emails seen in this upload so we don't add the same user twice.
-  const seenEmails = new Set<string>()
-
-  // First pass: validate + collect unique emails (so we can pre-fetch all
-  // existing users in a single query rather than N per-row findUnique calls).
-  interface RowCandidate {
-    rowNumber: number
-    name: string
-    email: string // lowercased
-    rawEmail: string // original case for display
-  }
-  const candidates: RowCandidate[] = []
-  for (let i = 0; i < dataRows.length; i++) {
-    const row = dataRows[i]
-    const rowNumber = i + 2 // header is row 1
-    const rawName = (row[nameIdx] ?? "").trim()
-    const rawEmail = (row[emailIdx] ?? "").trim()
-    if (!rawName && !rawEmail) {
-      // Skip wholly-blank rows silently.
-      continue
-    }
-    if (!rawName) {
-      invalid.push({ row: rowNumber, email: rawEmail, reason: "Missing name" })
-      continue
-    }
-    if (!rawEmail) {
-      invalid.push({ row: rowNumber, name: rawName, reason: "Missing email" })
-      continue
-    }
-    if (!EMAIL_RE.test(rawEmail)) {
-      invalid.push({ row: rowNumber, name: rawName, email: rawEmail, reason: "Invalid email format" })
-      continue
-    }
-    const email = rawEmail.toLowerCase()
-    if (seenEmails.has(email)) {
-      invalid.push({ row: rowNumber, name: rawName, email: rawEmail, reason: "Duplicate email in this file" })
-      continue
-    }
-    seenEmails.add(email)
-    candidates.push({ rowNumber, name: rawName, email, rawEmail })
-  }
-
-  // Pre-fetch all existing users (by email) + their club memberships in 2
-  // PARALLEL queries. Previously this was 2N sequential per-row findUnique
-  // calls (one user lookup + one membership lookup per CSV row); now it's a
-  // single parallel wave.
-  //   - usersByEmail: every user matching any candidate email (regardless of
-  //     whether they're in this club yet — needed to distinguish "pending
-  //     invite" (no user) from "new membership" (user exists, no membership)).
-  //   - membershipByEmail: existing memberships for this club, filtered by
-  //     user.email, so we know who's already active / removed.
-  const uniqueEmails = candidates.map((c) => c.email)
-  const [usersWithEmail, memberships] = uniqueEmails.length === 0
-    ? [await Promise.resolve([]), await Promise.resolve([])]
-    : await Promise.all([
-        db.user.findMany({
-          where: { email: { in: uniqueEmails } },
-          select: { id: true, name: true, email: true },
-        }),
-        db.clubMember.findMany({
-          where: { clubId, user: { email: { in: uniqueEmails } } },
-          select: {
-            id: true,
-            userId: true,
-            status: true,
-            role: true,
-            user: { select: { email: true } },
-          },
-        }),
-      ])
-  const userByEmail = new Map(usersWithEmail.map((u) => [u.email, u]))
-  // Index memberships by lowercased email for O(1) lookup during the second pass.
-  const membershipByEmail = new Map(memberships.map((m) => [m.user.email, m]))
-
-  // Second pass: classify each candidate using the in-memory maps. Collect
-  // mutation tasks (reactivations + new creates) + notify targets for batched
-  // execution after the loop.
-  const reactivations: { membershipId: string; userId: string; name: string; rawEmail: string }[] = []
-  const newMemberships: { userId: string; name: string; rawEmail: string }[] = []
-  const notifyTargets: { userId: string; message: string }[] = []
-
-  for (const cand of candidates) {
-    const existingUser = userByEmail.get(cand.email)
-    if (!existingUser) {
-      // No user with this email at all → pending invite (no DB row to create).
-      pendingInvites.push({ name: cand.name, email: cand.rawEmail })
-      continue
-    }
-    const existingMembership = membershipByEmail.get(cand.email)
-
-    if (existingMembership && existingMembership.status === "active") {
-      alreadyMembers.push({ email: cand.rawEmail })
-      continue
+    // Rate limit: 5 imports per club per minute. Keyed by clubId so a
+    // compromised exec can't bypass by switching accounts.
+    const rlKey = `import:${clubId}`
+    const rl = rateLimit(rlKey, IMPORT_RATE_LIMIT_MAX, IMPORT_RATE_LIMIT_WINDOW_MS)
+    if (!rl.ok) {
+      const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000)
+      return Response.json(
+        { error: "Too many imports. Please wait a minute and try again." },
+        { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+      )
     }
 
-    if (existingMembership && existingMembership.status === "removed") {
-      // Reactivate as a member (reset role for cleanliness) — batched below.
-      reactivations.push({
-        membershipId: existingMembership.id,
+    let formData: FormData
+    try {
+      formData = await req.formData()
+    } catch {
+      return error("Expected multipart/form-data", 400)
+    }
+
+    const file = formData.get("file")
+    if (!file || !(file instanceof File)) return error("No file uploaded", 400)
+
+    const name = file.name.toLowerCase()
+    if (!name.endsWith(".csv")) {
+      return error("File must be a .csv", 400)
+    }
+    if (file.size === 0) return error("File is empty", 400)
+    if (file.size > MAX_BYTES) return error("File too large (max 1MB)", 400)
+
+    // Parse the raw text. csv files are typically utf-8; in Node the File.text()
+    // decodes as utf-8 by default.
+    const text = await file.text()
+    const allRows = parseCsv(text)
+
+    // The first row is the header. Find the `name` and `email` columns.
+    if (allRows.length === 0) {
+      return error("CSV has no rows", 400)
+    }
+    const header = allRows[0].map((h) => h.trim().toLowerCase())
+    const nameIdx = header.indexOf("name")
+    const emailIdx = header.indexOf("email")
+    if (nameIdx === -1 || emailIdx === -1) {
+      return error("CSV must have 'name' and 'email' columns (header row required)", 400)
+    }
+
+    // Cap rows at MAX_ROWS (excluding the header).
+    const dataRows = allRows.slice(1)
+    if (dataRows.length > MAX_ROWS) {
+      return error(`Too many rows (max ${MAX_ROWS}; got ${dataRows.length})`, 400)
+    }
+
+    const added: AddedMember[] = []
+    const alreadyMembers: AlreadyMember[] = []
+    const invalid: InvalidRow[] = []
+    const pendingInvites: PendingInvite[] = []
+
+    // Track emails seen in this upload so we don't add the same user twice.
+    const seenEmails = new Set<string>()
+
+    // First pass: validate + collect unique emails (so we can pre-fetch all
+    // existing users in a single query rather than N per-row findUnique calls).
+    interface RowCandidate {
+      rowNumber: number
+      name: string
+      email: string // lowercased
+      rawEmail: string // original case for display
+    }
+    const candidates: RowCandidate[] = []
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i]
+      const rowNumber = i + 2 // header is row 1
+      const rawName = (row[nameIdx] ?? "").trim()
+      const rawEmail = (row[emailIdx] ?? "").trim()
+      if (!rawName && !rawEmail) {
+        // Skip wholly-blank rows silently.
+        continue
+      }
+      if (!rawName) {
+        invalid.push({ row: rowNumber, email: rawEmail, reason: "Missing name" })
+        continue
+      }
+      if (!rawEmail) {
+        invalid.push({ row: rowNumber, name: rawName, reason: "Missing email" })
+        continue
+      }
+      if (!EMAIL_RE.test(rawEmail)) {
+        invalid.push({ row: rowNumber, name: rawName, email: rawEmail, reason: "Invalid email format" })
+        continue
+      }
+      const email = rawEmail.toLowerCase()
+      if (seenEmails.has(email)) {
+        invalid.push({ row: rowNumber, name: rawName, email: rawEmail, reason: "Duplicate email in this file" })
+        continue
+      }
+      seenEmails.add(email)
+      candidates.push({ rowNumber, name: rawName, email, rawEmail })
+    }
+
+    // Pre-fetch all existing users (by email) + their club memberships in 2
+    // PARALLEL queries. Previously this was 2N sequential per-row findUnique
+    // calls (one user lookup + one membership lookup per CSV row); now it's a
+    // single parallel wave.
+    //   - usersByEmail: every user matching any candidate email (regardless of
+    //     whether they're in this club yet — needed to distinguish "pending
+    //     invite" (no user) from "new membership" (user exists, no membership)).
+    //   - membershipByEmail: existing memberships for this club, filtered by
+    //     user.email, so we know who's already active / removed.
+    const uniqueEmails = candidates.map((c) => c.email)
+    const [usersWithEmail, memberships] = uniqueEmails.length === 0
+      ? [await Promise.resolve([]), await Promise.resolve([])]
+      : await Promise.all([
+          db.user.findMany({
+            where: { email: { in: uniqueEmails } },
+            select: { id: true, name: true, email: true },
+          }),
+          db.clubMember.findMany({
+            where: { clubId, user: { email: { in: uniqueEmails } } },
+            select: {
+              id: true,
+              userId: true,
+              status: true,
+              role: true,
+              user: { select: { email: true } },
+            },
+          }),
+        ])
+    const userByEmail = new Map(usersWithEmail.map((u) => [u.email, u]))
+    // Index memberships by lowercased email for O(1) lookup during the second pass.
+    const membershipByEmail = new Map(memberships.map((m) => [m.user.email, m]))
+
+    // Second pass: classify each candidate using the in-memory maps. Collect
+    // mutation tasks (reactivations + new creates) + notify targets for batched
+    // execution after the loop.
+    const reactivations: { membershipId: string; userId: string; name: string; rawEmail: string }[] = []
+    const newMemberships: { userId: string; name: string; rawEmail: string }[] = []
+    const notifyTargets: { userId: string; message: string }[] = []
+
+    for (const cand of candidates) {
+      const existingUser = userByEmail.get(cand.email)
+      if (!existingUser) {
+        // No user with this email at all → pending invite (no DB row to create).
+        pendingInvites.push({ name: cand.name, email: cand.rawEmail })
+        continue
+      }
+      const existingMembership = membershipByEmail.get(cand.email)
+
+      if (existingMembership && existingMembership.status === "active") {
+        alreadyMembers.push({ email: cand.rawEmail })
+        continue
+      }
+
+      if (existingMembership && existingMembership.status === "removed") {
+        // Reactivate as a member (reset role for cleanliness) — batched below.
+        reactivations.push({
+          membershipId: existingMembership.id,
+          userId: existingUser.id,
+          name: cand.name,
+          rawEmail: cand.rawEmail,
+        })
+        added.push({ name: cand.name, email: cand.rawEmail })
+        notifyTargets.push({
+          userId: existingUser.id,
+          message: `You were re-added to ${c.club.name}`,
+        })
+        continue
+      }
+
+      // User exists but has no membership in this club → create one (batched below).
+      newMemberships.push({
         userId: existingUser.id,
         name: cand.name,
         rawEmail: cand.rawEmail,
@@ -338,83 +354,74 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       added.push({ name: cand.name, email: cand.rawEmail })
       notifyTargets.push({
         userId: existingUser.id,
-        message: `You were re-added to ${c.club.name}`,
+        message: `You were added to ${c.club.name}`,
       })
-      continue
     }
 
-    // User exists but has no membership in this club → create one (batched below).
-    newMemberships.push({
-      userId: existingUser.id,
-      name: cand.name,
-      rawEmail: cand.rawEmail,
-    })
-    added.push({ name: cand.name, email: cand.rawEmail })
-    notifyTargets.push({
-      userId: existingUser.id,
-      message: `You were added to ${c.club.name}`,
-    })
-  }
+    // Execute mutations in parallel: bulk reactivation + bulk create.
+    const mutationPromises: Promise<unknown>[] = []
+    if (reactivations.length > 0) {
+      mutationPromises.push(
+        db.clubMember.updateMany({
+          where: { id: { in: reactivations.map((r) => r.membershipId) } },
+          data: { status: "active", role: "member" },
+        }),
+      )
+    }
+    if (newMemberships.length > 0) {
+      mutationPromises.push(
+        db.clubMember.createMany({
+          data: newMemberships.map((n) => ({
+            clubId,
+            userId: n.userId,
+            role: "member",
+          })),
+        }),
+      )
+    }
+    await Promise.all(mutationPromises)
 
-  // Execute mutations in parallel: bulk reactivation + bulk create.
-  const mutationPromises: Promise<unknown>[] = []
-  if (reactivations.length > 0) {
-    mutationPromises.push(
-      db.clubMember.updateMany({
-        where: { id: { in: reactivations.map((r) => r.membershipId) } },
-        data: { status: "active", role: "member" },
-      }),
-    )
-  }
-  if (newMemberships.length > 0) {
-    mutationPromises.push(
-      db.clubMember.createMany({
-        data: newMemberships.map((n) => ({
+    // Fan out the per-target notify calls in parallel (each is best-effort).
+    await Promise.all(
+      notifyTargets.map((t) =>
+        notify({
+          userId: t.userId,
           clubId,
-          userId: n.userId,
-          role: "member",
-        })),
-      }),
+          type: "new_member",
+          message: t.message,
+          linkUrl: "/?view=dashboard",
+        }),
+      ),
     )
-  }
-  await Promise.all(mutationPromises)
 
-  // Fan out the per-target notify calls in parallel (each is best-effort).
-  await Promise.all(
-    notifyTargets.map((t) =>
-      notify({
-        userId: t.userId,
+    // club.findUnique (for clubCode) + logActivity + emitClubEvent are independent — fan them out.
+    const [club] = await Promise.all([
+      db.club.findUnique({ where: { id: clubId }, select: { clubCode: true } }),
+      logActivity({
         clubId,
-        type: "new_member",
-        message: t.message,
-        linkUrl: "/?view=dashboard",
+        actorUserId: c.user.id,
+        actionType: "bulk_member_import",
+        targetType: "club",
+        targetId: clubId,
+        description: `${c.user.name} imported members (added ${added.length}, already ${alreadyMembers.length}, pending ${pendingInvites.length}, invalid ${invalid.length})`,
       }),
-    ),
-  )
+      // Only emit when membership actually changed.
+      added.length > 0
+        ? emitClubEvent(clubId, "new_member", { added: added.length })
+        : Promise.resolve(),
+    ])
 
-  // club.findUnique (for clubCode) + logActivity + emitClubEvent are independent — fan them out.
-  const [club] = await Promise.all([
-    db.club.findUnique({ where: { id: clubId }, select: { clubCode: true } }),
-    logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "bulk_member_import",
-      targetType: "club",
-      targetId: clubId,
-      description: `${c.user.name} imported members (added ${added.length}, already ${alreadyMembers.length}, pending ${pendingInvites.length}, invalid ${invalid.length})`,
-    }),
-    // Only emit when membership actually changed.
-    added.length > 0
-      ? emitClubEvent(clubId, "new_member", { added: added.length })
-      : Promise.resolve(),
-  ])
+    const result: ImportResult = {
+      added,
+      alreadyMembers,
+      invalid,
+      pendingInvites,
+      clubCode: club?.clubCode ?? "",
+    }
+    return json(result, 201)
 
-  const result: ImportResult = {
-    added,
-    alreadyMembers,
-    invalid,
-    pendingInvites,
-    clubCode: club?.clubCode ?? "",
+  } catch (err: any) {
+    console.error("[clubs/members/import POST] error:", err?.message, err?.code, err?.meta)
+    return NextResponse.json({ error: "Failed to import members: " + (err?.message || "Unknown error") }, { status: 500 })
   }
-  return json(result, 201)
 }

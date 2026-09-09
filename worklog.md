@@ -1260,3 +1260,30 @@ Stage Summary:
 - All config externalized to env vars.
 - Dockerfiles + render.yaml + DEPLOY.md created.
 - Ready to deploy to Render free tier.
+
+---
+Task ID: R9-ERRORS
+Agent: full-stack-developer (error handling)
+Task: Add try/catch to all API routes
+
+Work Log:
+- 59 routes processed, 81 functions wrapped ( signup/route.ts and clubs/route.ts already had try/catch — 3 functions total — and were explicitly skipped per the rules; auth/[...nextauth]/route.ts has no async handlers, only `export { handler as GET, handler as POST }`, so nothing to wrap there).
+- Wrote a one-off Bun script (`scripts/wrap-try-catch.ts`) that:
+  - Walks `src/app/api/` for all `route.ts` files (excluding the two skip files)
+  - For each `export async function (GET|POST|PATCH|PUT|DELETE)`, finds the function body via brace-counting (handles strings, template literals with `${...}`, line + block comments)
+  - Detects already-wrapped bodies (first non-whitespace/comment token is `try`) and skips them
+  - Wraps the body in `try { ... } catch (err: any) { ... }`, re-indents the original body by 2 spaces, and inserts a `console.error("[<tag> <METHOD>] error:", err?.message, err?.code, err?.meta)` + `NextResponse.json({ error: "Failed to <action>: ..." }, { status: 500 })` catch block
+  - Ensures `NextResponse` is imported — 47 files received a new `import { NextResponse } from "next/server"` at the top (the other 11 already had it for their existing handler logic); the remaining 1 file (`auth/[...nextauth]`) was untouched.
+- Wrote a second pass (`scripts/fix-catch-labels.ts`) that re-derived the `<tag>` and `<action>` for every catch block using a refined derivation:
+  - `<tag>` is the route's named path segments joined by `/` (dynamic `[id]` segments and route groups are filtered out), e.g. `clubs/announcements`, `clubs/chat/conversations/messages/pin`, `me/notifications/preferences`. The root `/api/route.ts` gets tag `root`. (The first-pass derivation was buggy — it used the raw last segment including dynamic ones like `[clubId]`, producing tags like `clubs/[clubId]` and actions like `update [clubId]`; the second pass fixed all 81 catch blocks with correct labels.)
+  - `<action>` is method- and path-aware: GET on a collection → `load <plural>`; GET on a single resource (path with a dynamic segment after the last named one) → `load <singular>`; POST → `create <singular>`; PATCH/PUT → `update <singular>`; DELETE → `delete <singular>`. Special-case routes get bespoke actions: `join club`, `leave club`, `regenerate club code`, `update club password`, `load dashboard`, `load leaderboard`, `search club`, `generate calendar feed`, `export data`, `review hours` (bulk-review and individual hours PATCH), `import members`, `load urgent announcements`, `restore announcement` / `restore task`, `mark notification read`, `mark all notifications read`, `load pinned messages`, `pin message`, `toggle reaction`, `RSVP to meeting`, `load attendees`, `load activity`, `submit hours` (POST), `update profile` (PATCH /api/me), `change password` (PUT /api/me), `load notification preferences` / `update notification preferences`, `verify admin passcode`. 72 unique action strings total.
+- All early returns (401, 400, 403, 404, 409, etc.) are preserved INSIDE the try block — only the outer wrap was added. `await ctx.params` stays at the top of the try block for routes with `ctx: { params: Promise<...> }`.
+- Verified: every one of the 84 `export async function (GET|POST|PATCH|PUT|DELETE)` handlers across all 60 route.ts files has a matching `} catch (err: any) {` block (81 added by this task + 3 pre-existing in signup + clubs/route.ts). No mismatches in any file. Sampled reads of clubs/[clubId]/route.ts, clubs/[clubId]/announcements/[id]/route.ts, me/route.ts, clubs/join/route.ts, clubs/[clubId]/dashboard/route.ts, clubs/[clubId]/tasks/[id]/route.ts, clubs/[clubId]/hours/ourId]/route.ts, clubs/[clubId]/chat/conversations/[conversationId]/messages/essageId]/route.ts — all structurally correct: `try {` opens, original body re-indented, `} catch (err: any) {` closes, console.error + NextResponse.json error response, then `}`.
+- `bun run lint` → 0 errors. Dev server still healthy (Ready in 1.4s, no compile errors).
+- Pre-existing path typos noted (not introduced by this task, not fixed): `clubs/[clubId]/hours/ourId]/route.ts` (should be `[hourId]`) and `clubs/[clubId]/chat/conversations/[conversationId]/messages/essageId]/route.ts` (should be `[messageId]`). Both files are functional — the route handler code reads `ctx.params.hourId` / `ctx.params.messageId` correctly; the directory name typo is a Next.js route-segment naming bug that should be fixed in a separate task. My catch blocks use clean tags (`clubs/hours` and `clubs/chat/conversations/messages`) because the typoed segments don't start with `[` and were filtered out by the named-segment logic.
+
+Stage Summary:
+- Files modified: 58 route.ts files under `src/app/api/` (every route file except the two skip files and the nextauth re-export). 81 functions wrapped. 47 of those files received a new `import { NextResponse } from "next/server"` at the top.
+- Files added (project tooling, not part of the app): `scripts/wrap-try-catch.ts`, `scripts/fix-catch-labels.ts` — kept for future use / auditing.
+- No business logic changed. No off-limits files touched (`src/lib/`, `src/components/`, `prisma/`, `next.config.ts`, `Dockerfile`, `startup.sh` all untouched). The dev server was not restarted.
+- Lint clean. Dev server healthy.
