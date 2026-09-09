@@ -43,6 +43,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
+import { BrandMark } from "@/components/brand-mark"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { useRealtimeSync } from "@/lib/use-realtime-sync"
 import { openGlobalSearch } from "@/components/global-search"
@@ -234,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/40 p-6">
           <div className="w-full max-w-md text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-club text-club-foreground shadow-sm">
-              <Sparkles className="h-7 w-7" />
+              <BrandMark size={36} />
             </div>
             <h1 className="text-page-title">Welcome to ClubHub</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
@@ -324,11 +325,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Persistent top bar — desktop + mobile.
   //   LEFT:   profile avatar menu (UserMenu)
+  //   LEFT:   (mobile hamburger)
   //   CENTER: global search trigger
-  //   RIGHT:  connection dot, keyboard help, theme toggle, notification bell
-  // The club switcher has moved to the BOTTOM of the sidebar.
+  //   RIGHT:  connection dot, keyboard help, notification bell, profile avatar
+  // The theme toggle lives in the LEFT SIDEBAR (not the top bar).
   const topBar = (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+      {/* App brand mark — visible on all screens (desktop + mobile) */}
+      <div className="flex items-center gap-2 shrink-0">
+        <BrandMark size={28} />
+        <span className="hidden sm:inline text-sm font-semibold tracking-tight">ClubHub</span>
+      </div>
       {/* Mobile hamburger */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetTrigger asChild>
@@ -337,16 +344,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0 flex flex-col">
+          {/* Club switcher at the TOP of the mobile drawer — primary navigation action */}
+          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Club switcher pinned to the bottom of the mobile drawer */}
-          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
+          {/* Theme toggle at the bottom of the mobile drawer */}
+          <div className="border-t p-2 shrink-0 flex items-center">
+            <Button variant="ghost" size="sm" className="w-full justify-start" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+              {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </Button>
+          </div>
         </SheetContent>
       </Sheet>
-
-      {/* Profile avatar menu — TOP LEFT of the top bar (desktop + mobile) */}
-      <div className="shrink-0">
-        <UserMenu compact />
-      </div>
 
       {/* Search (center, desktop) — bordered trigger styled to match a real
           input. The previous outline/ring mismatched the dimensions; this
@@ -371,7 +380,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {currentClub?.clubName}
       </div>
 
-      {/* Right side: search icon (mobile), connection, keyboard, theme, bell */}
+      {/* Right side: search icon (mobile), connection, keyboard, bell, profile */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
@@ -395,10 +404,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Keyboard className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+        {/* Mobile: theme toggle stays in the top bar (the sidebar drawer is hidden) */}
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
           {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
         <NotificationBell />
+        {/* Profile avatar menu — RIGHT side of the top bar */}
+        <UserMenu compact />
       </div>
     </header>
   )
@@ -409,11 +421,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {topBar}
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">
+          {/* Club switcher at the TOP of the sidebar — primary navigation action.
+              Switching clubs is frequent; it belongs above the nav, not at the
+              bottom with Profile/Settings/logout. */}
+          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Club switcher pinned to the BOTTOM of the sidebar (moved here
-              from the top bar per the user's request). */}
-          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
+          {/* Theme toggle at the bottom of the sidebar */}
+          <div className="border-t p-2 shrink-0">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+              {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </Button>
+          </div>
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col">

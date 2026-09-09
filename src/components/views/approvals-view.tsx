@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -614,12 +615,16 @@ function ProofThumb({ url }: { url: string | null }) {
       className="block overflow-hidden rounded-md border"
       title="Open proof"
     >
-      {/* proof thumbnail */}
-      <img
+      {/* proof thumbnail — `unoptimized` because proof files come from
+          arbitrary user-uploaded sources (no remotePatterns configured). */}
+      <Image
         src={url}
         alt="Proof of service"
+        width={40}
+        height={40}
         className="h-10 w-10 object-cover"
         loading="lazy"
+        unoptimized
         onError={(e) => {
           // fall back to an icon link if image can't be decoded
           const t = e.currentTarget as HTMLImageElement

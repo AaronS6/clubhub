@@ -186,7 +186,8 @@ export function MeetingsView() {
     queryFn: () => api<MeetingsResponse>(`/api/clubs/${currentClubId}/meetings`),
     enabled: !!currentClubId,
     // Realtime is primary; poll only as a fallback while the socket is down.
-    refetchInterval: usePollingFallback(8000),
+    // Bumped to 30s — meetings change infrequently so 8s was over-eager.
+    refetchInterval: usePollingFallback(30_000),
   })
 
   // Split into upcoming vs past using the server-provided "now".

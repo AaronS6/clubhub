@@ -1287,3 +1287,53 @@ Stage Summary:
 - Files added (project tooling, not part of the app): `scripts/wrap-try-catch.ts`, `scripts/fix-catch-labels.ts` — kept for future use / auditing.
 - No business logic changed. No off-limits files touched (`src/lib/`, `src/components/`, `prisma/`, `next.config.ts`, `Dockerfile`, `startup.sh` all untouched). The dev server was not restarted.
 - Lint clean. Dev server healthy.
+
+---
+Task ID: R10-PERF
+Agent: full-stack-developer (perf pass)
+Task: §4 client→server + §5 code-split + §6 images + §7 polling
+
+Work Log:
+- §4 (client→server audit): Audited all 59 files with "use client". Only one shared UI file qualified as purely presentational: `src/components/shared/page-header.tsx` — removed "use client" (no hooks, no event handlers, no browser APIs, no client-only libs). Build verified.
+  - `src/components/shared/badges-display.tsx`: KEPT as client — uses `useQuery` from tanstack-query.
+  - `src/components/brand-mark.tsx`: Already a server component (no "use client"). No change needed.
+  - `src/components/views/dashboard/badges.tsx`, `attention-card.tsx`, `hero-bar.tsx`, `onboarding-banner.tsx`, `club-stats-row.tsx`, `dashboard-skeleton.tsx`, `dashboard-utils.ts`: Already not "use client" (no directive at top). All presentational, imported by the client-side dashboard-view.tsx, treated as client components in that tree.
+  - All other UI components (Radix wrappers: aspect-ratio, separator, progress, dialog, etc.): KEPT as client — Radix primitives use React context and effects internally.
+  - All views (`*-view.tsx`): KEPT as client — each uses `useAppStore`, `useQuery`, `useState`, or other hooks.
+  - `providers.tsx`, `app-shell.tsx`, `club-accent-provider.tsx`, `global-search.tsx`, `public-club-profile.tsx`, `auth-screen.tsx`, `create-club-dialog.tsx`: KEPT as client — all use hooks/state.
+
+- §5 (code-split heavy deps):
+  - recharts: Created new file `src/components/views/dashboard/hours-trend-chart.tsx` containing the `HoursTrendChart` component (with its "use client" directive + recharts + date-fns imports). In `src/components/views/dashboard-view.tsx`, removed the static `recharts` import and the inline `HoursTrendChart` definition; added `import dynamic from "next/dynamic"` and a `const HoursTrendChart = dynamic(() => import("./dashboard/hours-trend-chart").then(m => m.HoursTrendChart), { ssr: false, loading: () => <div className="h-56 w-full" aria-hidden /> })`. Also removed the now-unused `parseISO` import from date-fns (it was only used inside the old inline chart). recharts now only ships to the client when the dashboard renders a non-empty hours trend.
+  - @mdxeditor/editor: Audited — NOT imported anywhere in `src/`. Listed in package.json but unused. No change needed (can be removed from package.json in a separate cleanup task).
+  - react-syntax-highlighter: Audited — NOT imported anywhere in `src/`. Listed in package.json but unused. No change needed.
+  - socket.io-client: Already lazy (connects on demand via `realtime-client.ts`). No change.
+
+- §6 (image optimization):
+  - `src/components/views/dashboard/hero-bar.tsx`: Replaced raw `<img>` with `next/image` (`<Image>`) using explicit `width={40}` and `height={40}` to prevent CLS. Added `unoptimized` because club logos can come from arbitrary user-uploaded sources and `next.config.ts` has no `remotePatterns` configured (and per hard constraint we can't change next.config beyond the two flags). Preserved `className="h-full w-full object-cover"` so the image fills the 40×40 container.
+  - `src/components/views/approvals-view.tsx` (ProofThumb component): Replaced raw `<img>` with `next/image` using explicit `width={40}` `height={40}` + `unoptimized` (proof files are user-uploaded PDFs/images from arbitrary sources). Preserved the existing `onError` fallback that swaps in an icon link when image decoding fails — next/image's underlying `<img>` supports onError and the parentElement replacement logic still works because next/image renders a bare `<img>` (no wrapper span for non-fill images).
+  - `src/components/ui/avatar.tsx`: Uses Radix's `AvatarPrimitive.Image`, not a raw `<img>`. Left unchanged as instructed.
+  - `src/components/brand-mark.tsx`: Uses inline SVG, not an `<img>` tag. No change.
+  - No other raw `<img>` tags found in `src/`.
+
+- §7 (polling interval reduction — only the values passed to `usePollingFallback`, the hook itself untouched):
+  - `dashboard-view.tsx`: 15000 → 60_000 (dashboard doesn't need 15s fallback; realtime handles live updates)
+  - `announcements-view.tsx`: 10000 → 30_000 (announcements change infrequently)
+  - `hours-view.tsx`: 10000 → 30_000 (hours change infrequently)
+  - `meetings-view.tsx`: 8000 → 30_000 (meetings change infrequently)
+  - KEPT at 5_000: `approvals-view.tsx` (queue benefits from fast fallback) and `tasks-view.tsx` (board benefits from fast fallback)
+  - KEPT as-is: `chat-view.tsx` (needs fast fallback), `members-view.tsx` (already 30s), `teams-view.tsx` (already 30s)
+  - `activity-view.tsx`: Confirmed — no `usePollingFallback` call (only refetches on mount + realtime). No change.
+
+Stage Summary:
+- Files modified (7):
+  1. `src/components/shared/page-header.tsx` — removed "use client" (now server component)
+  2. `src/components/views/dashboard-view.tsx` — dynamic-imported HoursTrendChart, removed recharts + parseISO imports, dashboard polling 15s→60s
+  3. `src/components/views/dashboard/hero-bar.tsx` — raw `<img>` → `next/image` (40×40, unoptimized)
+  4. `src/components/views/approvals-view.tsx` — raw `<img>` → `next/image` (40×40, unoptimized, onError preserved), added `import Image from "next/image"`
+  5. `src/components/views/announcements-view.tsx` — polling 10s→30s
+  6. `src/components/views/hours-view.tsx` — polling 10s→30s
+  7. `src/components/views/meetings-view.tsx` — polling 8s→30s
+- Files added (1):
+  - `src/components/views/dashboard/hours-trend-chart.tsx` — extracted chart component (client) for dynamic import
+- Validation: `bun run lint` → 0 errors. `bun run build` → succeeded (Compiled successfully in 19.2s, 12 static pages generated, standalone output). Dev server still healthy (Ready in 1.4s, no compile errors). No off-limits files touched (prisma schema, all API routes, auth files, next.config.ts all unchanged).
+- Note: `@mdxeditor/editor` and `react-syntax-highlighter` are in package.json but unused in `src/` — they're dead deps that could be removed from package.json in a future cleanup task (out of scope for this perf pass since removing them doesn't affect runtime bundle).

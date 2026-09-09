@@ -213,8 +213,9 @@ export function AnnouncementsView() {
     enabled: !!clubId,
     // Realtime is primary; poll only as a fallback while the socket is down
     // (was previously always-on 10s polling — now degrades to polling only
-    // when the realtime connection is lost).
-    refetchInterval: usePollingFallback(10000),
+    // when the realtime connection is lost). Bumped to 30s — announcements
+    // change infrequently so 10s was over-eager for a fallback.
+    refetchInterval: usePollingFallback(30_000),
   })
 
   const items: AnnouncementItem[] = query.data?.pages.flatMap((p) => p.items) ?? []

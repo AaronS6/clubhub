@@ -122,7 +122,8 @@ export function HoursView() {
     enabled: !!clubId,
     staleTime: 15_000,
     // Realtime is primary; poll only as a fallback while the socket is down.
-    refetchInterval: usePollingFallback(10000),
+    // Bumped to 30s — hours change infrequently so 10s was over-eager.
+    refetchInterval: usePollingFallback(30_000),
   })
 
   const catsQuery = useQuery<CategoryResponse>({

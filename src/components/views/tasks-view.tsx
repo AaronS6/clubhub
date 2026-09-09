@@ -816,7 +816,8 @@ function TaskCardContent({
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // Prevent button clicks from triggering the card's onClick (open detail).
+  // Prevent button clicks from triggering the card's onClick (open detail)
+  // or the drag listeners.
   const stop = (e: React.SyntheticEvent) => e.stopPropagation()
 
   return (
@@ -834,29 +835,26 @@ function TaskCardContent({
             }
           : undefined
       }
+      // Spread drag listeners on the ENTIRE card so the user can grab
+      // anywhere to drag. The PointerSensor's distance constraint (6px)
+      // means a simple click (no movement) won't start a drag — so onClick
+      // (open detail) still works. Action buttons stop propagation on
+      // pointerDown so they don't trigger drags.
+      {...dragListeners}
       className={cn(
-        "group card-quiet cursor-pointer p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet cursor-grab p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         dragging && "shadow-xl rotate-1 cursor-grabbing ring-2 ring-club/40",
         isDragging && "scale-[1.02] shadow-lg ring-2 ring-club/40 cursor-grabbing",
         flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
       )}
     >
       <div className="flex items-start gap-2">
-        {/* Drag handle — receives the dnd-kit listeners so only this area
-            starts a drag, not the action buttons. Shows a visual cue (scale +
-            shadow) when actively dragging so mobile users know the hold-delay
-            has triggered. */}
+        {/* Grip handle — visual indicator only (the whole card is draggable).
+            The actual listeners are on the parent div. */}
         {dragListeners && (
-          <button
-            type="button"
-            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 active:cursor-grabbing touch-none"
-            aria-label="Drag to move task"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={stop}
-            {...dragListeners}
-          >
+          <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center text-muted-foreground/40 cursor-grab" aria-hidden>
             <GripVertical className="size-4" />
-          </button>
+          </div>
         )}
         <div className="min-w-0 flex-1">
           <p className="text-body-medium leading-tight">{task.title}</p>
@@ -873,6 +871,7 @@ function TaskCardContent({
             type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors md:opacity-0 md:group-hover:opacity-100"
             aria-label="Delete task"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               stop(e)
               deleteMutation.mutate()

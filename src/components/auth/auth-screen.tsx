@@ -2,21 +2,20 @@
 
 import { useState, useEffect } from "react"
 import { signIn } from "next-auth/react"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  Users,
-  Clock,
-  CheckSquare,
-  Megaphone,
-  Loader2,
-  Sparkles,
-  ArrowRight,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Users, Clock, CheckSquare, Megaphone, Loader2, Sparkles, ArrowRight, Mail,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
+import { BrandMark } from "@/components/brand-mark"
 
 /**
  * Durable, dedicated flag marking that this device has an existing account.
@@ -63,6 +62,18 @@ export function AuthScreen() {
   const [signupName, setSignupName] = useState("")
   const [signupEmail, setSignupEmail] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
+
+  // Forgot password dialog state
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState("")
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+
+  // Password reset view (triggered by ?reset=token query param)
+  const searchParams = useSearchParams()
+  const resetToken = searchParams.get("reset")
+  const [resetPassword, setResetPassword] = useState("")
+  const [resetLoading, setResetLoading] = useState(false)
 
   // Returning-user logic: default to "login" view. The dedicated localStorage
   // flag is a hint, but both paths land on login-first — the flag is mainly
@@ -116,6 +127,85 @@ export function AuthScreen() {
     }
   }
 
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!forgotEmail.trim()) return
+    setForgotLoading(true)
+    try {
+      await api("/api/auth/forgot-password", {
+        method: "POST",
+        json: { email: forgotEmail.trim() },
+      })
+      setForgotSent(true)
+    } catch (err: any) {
+      // Don't reveal whether the email exists — just show success
+      setForgotSent(true)
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (!resetToken || resetPassword.length < 8) return
+    setResetLoading(true)
+    try {
+      await api("/api/auth/reset-password", {
+        method: "POST",
+        json: { token: resetToken, password: resetPassword },
+      })
+      toast.success("Password reset! You can now sign in with your new password.")
+      // Clear the reset token from the URL
+      window.location.href = window.location.pathname
+    } catch (err: any) {
+      toast.error(err.message || "Reset failed")
+      setResetLoading(false)
+    }
+  }
+
+  // If there's a reset token in the URL, show the reset password form
+  if (resetToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="w-full max-w-sm">
+          <div className="flex items-center justify-center gap-2 mb-8">
+            <BrandMark size={32} />
+            <span className="text-xl font-semibold tracking-tight">ClubHub</span>
+          </div>
+          <div className="mb-6">
+            <h1 className="text-page-title">Set a new password</h1>
+            <p className="text-body text-muted-foreground mt-1.5">
+              Enter your new password below.
+            </p>
+          </div>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-pass" className="text-body-medium">New password</Label>
+              <Input
+                id="reset-pass"
+                type="password"
+                required
+                autoComplete="new-password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="At least 8 chars, 1 letter & 1 number"
+                className="h-10"
+                minLength={8}
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum 8 characters with a letter and a number.
+              </p>
+            </div>
+            <Button type="submit" variant="club" className="w-full h-10" disabled={resetLoading || resetPassword.length < 8}>
+              {resetLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Reset password
+            </Button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-background">
       {/* Left: value proposition (hidden on small screens).
@@ -142,7 +232,7 @@ export function AuthScreen() {
 
         <div className="relative flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
-            <Users className="h-5 w-5" />
+            <BrandMark size={24} />
           </div>
           <span className="text-xl font-semibold tracking-tight">ClubHub</span>
         </div>
@@ -192,7 +282,7 @@ export function AuthScreen() {
         {/* Mobile brand header */}
         <div className="md:hidden flex items-center justify-center gap-2 mb-8">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
-            <Users className="h-5 w-5" />
+            <BrandMark size={24} />
           </div>
           <span className="text-xl font-semibold tracking-tight">ClubHub</span>
         </div>
@@ -225,7 +315,16 @@ export function AuthScreen() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-body-medium">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-body-medium">Password</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-club transition-colors"
+                    onClick={() => { setForgotEmail(loginEmail); setForgotOpen(true); setForgotSent(false) }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -316,6 +415,59 @@ export function AuthScreen() {
           By continuing you agree to use ClubHub responsibly.
         </p>
       </main>
+
+      {/* Forgot password dialog */}
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Reset your password</DialogTitle>
+            <DialogDescription>
+              Enter your email and we&apos;ll send you a link to reset your password.
+            </DialogDescription>
+          </DialogHeader>
+          {forgotSent ? (
+            <div className="py-4 text-center space-y-3">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-club-muted">
+                <Mail className="h-6 w-6 text-club" />
+              </div>
+              <p className="text-body-medium font-medium">Check your email</p>
+              <p className="text-sm text-muted-foreground">
+                If an account exists for <span className="font-medium text-foreground">{forgotEmail}</span>,
+                you&apos;ll receive a password reset link shortly. The link expires in 1 hour.
+              </p>
+              <Button variant="outline" className="w-full" onClick={() => setForgotOpen(false)}>
+                Close
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="forgot-email" className="text-body-medium">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="h-10"
+                  autoFocus
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setForgotOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="club" disabled={forgotLoading || !forgotEmail.trim()}>
+                  {forgotLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                  Send reset link
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

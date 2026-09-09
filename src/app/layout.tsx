@@ -27,6 +27,10 @@ export const metadata: Metadata = {
   title: "ClubHub — Multi-Club Management Platform",
   description:
     "Create or join clubs, track service hours, manage tasks, post announcements, schedule meetings, and more.",
+  icons: {
+    icon: "/club-logo.png",
+    apple: "/club-logo.png",
+  },
 };
 
 // Explicit viewport config — critical for mobile:
