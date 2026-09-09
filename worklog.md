@@ -1388,3 +1388,38 @@ Stage Summary:
   8. `src/components/app-shell.tsx` — added `LogIn` to imports; ClubSwitcher: dropped `onCreate` prop, internal `showJoin` state, label "Your clubs"→"Clubs", removed "Create new club" item, added "Join a club" item (LogIn icon) + JoinClubDialog render; UserMenu: added `showCreate` state, added "Create a club" menu item (Plus icon) between "Account settings" and "Sign out" + CreateClubDialog render, switched existing "Join a club" icon Plus→LogIn
 - No off-limits files touched (prisma schema, all API routes, auth.ts, authOptions.ts, server-auth.ts, next.config.ts all unchanged). The dev server was not restarted.
 - All `MOBILE_FULLSCREEN_DIALOG` references in `src/` are gone. All 7 dialog-bearing view/component files now use the shared `DIALOG_CLASS` constant. Lint clean. Build successful.
+
+---
+Task ID: R13-HOURS
+Agent: full-stack-developer (hours filter + past accepted)
+Task: Time period filter + past accepted hours for execs
+
+Work Log:
+- `src/components/views/hours-view.tsx`:
+  - Added `Period` type (`this_month | last_month | this_year | last_year | all_time`) and helper utilities (`Group`, `GroupedResult`, `monthKey`, `monthLabel`, `groupByMonth`, `groupByYear`, `computeGroups`). `computeGroups` filters items by the selected calendar window and groups them: single-month periods return one flat group, year periods return month-grouped sections (most-recent first), and `all_time` returns current-year month groups plus an `olderGroups` array (year-grouped) for entries older than the current year.
+  - Added `useState<Period>("this_month")` and a `<Select>` dropdown next to the "History" label with the five period options. All filtering is client-side against the existing 500-row API response — no new API params added.
+  - Added a `useMemo` (placed BEFORE the `if (!clubId)` early return to satisfy rules-of-hooks) that derives the grouped result from `hoursQuery.data?.items` + `period`.
+  - Replaced the single-table/cards render with a `<GroupedHours>` component that renders one `<HoursGroup>` per current-period group (each with its own header label + entry count + approved-hours subtotal + table/cards), plus a `<details>` "Older entries" collapsible (using `group-open:rotate-180` chevron) that wraps the olderGroups for the `all_time` view.
+  - Added an "Nothing in this period" empty-state branch when the filtered set is empty but the user has hours overall (with a "Show all time" shortcut button).
+  - Added `useMemo` and `ChevronDown` to imports.
+
+- `src/components/views/approvals-view.tsx`:
+  - Added a `tab` state (`pending | reviewed`, default `pending`) and a shadcn `<Tabs>` toggle (Pending / Reviewed) above the filters card. The Pending trigger shows a pending-count chip when > 0.
+  - Made the existing `approvalsQuery` lazy (only enabled when `tab === "pending"`) and added a new `reviewedQuery` that fetches `?status=approved` and `?status=rejected` in parallel via `Promise.all`, merges the two result arrays, and sorts by `reviewedAt desc` (falling back to `submittedAt`). Returns `{ items, myRole, myUserId }` so role-gate + presence hooks work on either tab.
+  - Updated `myRole`/`myUserId` to fall back to either query (`approvalsQuery.data?.myRole ?? reviewedQuery.data?.myRole`) so the executive-only gate still fires when the user lands on the Reviewed tab.
+  - Extracted `baseParams` (`scope=all` + optional `userId=`) into a `useMemo` so both queries share the same query-string fragment.
+  - Added a `deleteMutation` (DELETE `/api/clubs/[clubId]/hours/[hourId]`) for exec deletion of reviewed entries; invalidates `reviewed-hours` + `hours` query keys. Updated `reviewMutation`/`bulkMutation` `onSuccess` to also invalidate `reviewed-hours` so the Reviewed tab refreshes immediately after a review action.
+  - Extended the local `HoursItem` interface with `reviewedAt: string | null` and `reviewComment: string | null` (the API already returns these fields).
+  - The Member + From/To date-range + Clear filters card is shared between both tabs and applies client-side to whichever list is active.
+  - Added `ReviewedRow` (desktop): Member, Service date, Hours, Status badge (approved/rejected), Reviewed by, Reviewed on (relative with absolute tooltip), Comment (line-clamped 2 lines), and a delete icon button.
+  - Added `ReviewedCard` (mobile): member name + status badge header, hours/service-date/category subtitle, reason text, a bordered "Reviewed by X · Y ago" block with the comment quoted inside, and a delete button.
+  - Added `useMemo`, `Trash2`, `History`, and `Tabs/TabsList/TabsTrigger` imports.
+
+- No off-limits files touched (`prisma/schema.prisma`, all API routes, `src/lib/auth.ts`, `authOptions.ts`, `src/lib/server-auth.ts` all unchanged). Dev server not restarted.
+- `bun run lint` → 0 errors. `bun run build` → ✓ Compiled successfully in 18.2s, 15 static pages generated.
+
+Stage Summary:
+- Files modified (2):
+  1. `src/components/views/hours-view.tsx` — Period type + grouping helpers, period `<Select>` next to History label, `GroupedHours` + `HoursGroup` components, "Older" collapsible section for all-time view, "Nothing in this period" empty state.
+  2. `src/components/views/approvals-view.tsx` — Pending/Reviewed Tabs toggle, lazy `reviewedQuery` (parallel approved+rejected fetch), shared Member + date-range filters, `ReviewedRow` + `ReviewedCard` components, exec delete mutation, extended `HoursItem` interface with `reviewedAt`/`reviewComment`.
+- Work record: `agent-ctx/R13-HOURS-full-stack-developer.md`

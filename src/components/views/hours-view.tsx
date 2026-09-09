@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
 import { api, apiUpload } from "@/lib/api/client"
@@ -49,6 +49,7 @@ import {
   XCircle,
   Link as LinkIcon,
   History,
+  ChevronDown,
 } from "lucide-react"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
@@ -102,10 +103,134 @@ function todayISO() {
   return `${y}-${m}-${day}`
 }
 
+/* ---------- Time period filtering + grouping ---------- */
+
+type Period = "this_month" | "last_month" | "this_year" | "last_year" | "all_time"
+
+interface Group {
+  key: string
+  label: string
+  items: HoursItem[]
+}
+
+interface GroupedResult {
+  currentGroups: Group[]
+  /** only set for "all_time" — entries older than the current year */
+  olderGroups?: Group[]
+  /** total count across all groups (for empty-state checks) */
+  total: number
+}
+
+function monthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+}
+
+function monthLabel(d: Date) {
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "long" })
+}
+
+/** group items by calendar month — sorted most-recent first */
+function groupByMonth(items: HoursItem[]): Group[] {
+  const map = new Map<string, HoursItem[]>()
+  for (const it of items) {
+    const d = new Date(it.dateOfService)
+    if (isNaN(d.getTime())) continue
+    const key = monthKey(d)
+    let arr = map.get(key)
+    if (!arr) {
+      arr = []
+      map.set(key, arr)
+    }
+    arr.push(it)
+  }
+  const keys = [...map.keys()].sort((a, b) => b.localeCompare(a))
+  return keys.map((k) => {
+    const [y, m] = k.split("-")
+    const d = new Date(Number(y), Number(m) - 1, 1)
+    return { key: k, label: monthLabel(d), items: map.get(k)! }
+  })
+}
+
+/** group items by calendar year — sorted most-recent year first */
+function groupByYear(items: HoursItem[]): Group[] {
+  const map = new Map<number, HoursItem[]>()
+  for (const it of items) {
+    const d = new Date(it.dateOfService)
+    if (isNaN(d.getTime())) continue
+    const y = d.getFullYear()
+    let arr = map.get(y)
+    if (!arr) {
+      arr = []
+      map.set(y, arr)
+    }
+    arr.push(it)
+  }
+  const years = [...map.keys()].sort((a, b) => b - a)
+  return years.map((y) => ({ key: String(y), label: String(y), items: map.get(y)! }))
+}
+
+function computeGroups(items: HoursItem[], period: Period): GroupedResult {
+  const now = new Date()
+  const thisYear = now.getFullYear()
+  const startOfThisMonth = new Date(thisYear, now.getMonth(), 1)
+  const startOfNextMonth = new Date(thisYear, now.getMonth() + 1, 1)
+  const startOfLastMonth = new Date(thisYear, now.getMonth() - 1, 1)
+  const startOfThisYear = new Date(thisYear, 0, 1)
+  const startOfNextYear = new Date(thisYear + 1, 0, 1)
+  const startOfLastYear = new Date(thisYear - 1, 0, 1)
+
+  function inRange(it: HoursItem, from: Date, to: Date) {
+    const d = new Date(it.dateOfService)
+    if (isNaN(d.getTime())) return false
+    return d >= from && d < to
+  }
+
+  if (period === "this_month") {
+    const filtered = items.filter((it) => inRange(it, startOfThisMonth, startOfNextMonth))
+    return {
+      currentGroups: [
+        { key: "this_month", label: monthLabel(startOfThisMonth), items: filtered },
+      ],
+      total: filtered.length,
+    }
+  }
+
+  if (period === "last_month") {
+    const filtered = items.filter((it) => inRange(it, startOfLastMonth, startOfThisMonth))
+    return {
+      currentGroups: [
+        { key: "last_month", label: monthLabel(startOfLastMonth), items: filtered },
+      ],
+      total: filtered.length,
+    }
+  }
+
+  if (period === "this_year") {
+    const filtered = items.filter((it) => inRange(it, startOfThisYear, startOfNextYear))
+    return { currentGroups: groupByMonth(filtered), total: filtered.length }
+  }
+
+  if (period === "last_year") {
+    const filtered = items.filter((it) => inRange(it, startOfLastYear, startOfThisYear))
+    return { currentGroups: groupByMonth(filtered), total: filtered.length }
+  }
+
+  // all_time — current year grouped by month, older years grouped by year
+  const currentYearItems = items.filter((it) => inRange(it, startOfThisYear, startOfNextYear))
+  const olderItems = items.filter((it) => new Date(it.dateOfService) < startOfThisYear)
+  return {
+    currentGroups: groupByMonth(currentYearItems),
+    olderGroups: groupByYear(olderItems),
+    total: currentYearItems.length + olderItems.length,
+  }
+}
+
 export function HoursView() {
   const clubId = useAppStore((s) => s.currentClubId)
+  const isExec = useAppStore((s) => s.currentClub?.role) === "executive"
   const qc = useQueryClient()
   const [submitOpen, setSubmitOpen] = useState(false)
+  const [period, setPeriod] = useState<Period>("this_month")
 
   const hoursQuery = useQuery<HoursResponse>({
     queryKey: ["hours", clubId],
@@ -137,6 +262,19 @@ export function HoursView() {
     if (!clubId) return
     window.location.href = `/api/clubs/${clubId}/hours/export`
   }
+
+  // Client-side filter + grouping for the selected time period.
+  // The hours API already returns up to 500 most-recent items in one shot
+  // (no new query params needed); we slice & dice here in-memory.
+  // NOTE: this useMemo must run before any early-return so the rules-of-hooks
+  // hold — it reads hoursQuery.data defensively.
+  const grouped = useMemo<GroupedResult>(() => {
+    const items = hoursQuery.data?.items ?? []
+    if (items.length === 0) {
+      return { currentGroups: [], olderGroups: period === "all_time" ? [] : undefined, total: 0 }
+    }
+    return computeGroups(items, period)
+  }, [hoursQuery.data?.items, period])
 
   if (!clubId) {
     return <div className="p-8 text-muted-foreground">Loading…</div>
@@ -194,9 +332,23 @@ export function HoursView() {
 
       {/* History */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <History className="h-4 w-4" />
-          <span>History</span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <History className="h-4 w-4" />
+            <span>History</span>
+          </div>
+          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
+            <SelectTrigger className="w-[10rem]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="last_month">Last month</SelectItem>
+              <SelectItem value="this_year">This year</SelectItem>
+              <SelectItem value="last_year">Last year</SelectItem>
+              <SelectItem value="all_time">All time</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {hoursQuery.isLoading ? (
@@ -223,50 +375,24 @@ export function HoursView() {
               </Button>
             }
           />
+        ) : grouped.total === 0 ? (
+          <EmptyState
+            icon={<Clock className="h-8 w-8" />}
+            title="Nothing in this period"
+            description="No service hours fall inside the selected time window. Try a wider range."
+            action={
+              <Button variant="outline" size="sm" onClick={() => setPeriod("all_time")}>
+                Show all time
+              </Button>
+            }
+          />
         ) : (
-          <>
-            {/* Desktop: table */}
-            <div className="card-quiet p-0 overflow-hidden hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[7rem]">Date</TableHead>
-                    <TableHead className="min-w-[3rem]">Hours</TableHead>
-                    <TableHead className="min-w-[12rem]">Reason</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Proof</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.items.map((it) => (
-                    <HoursRow
-                      key={it.id}
-                      item={it}
-                      canDelete={it.status === "pending"}
-                      onDelete={() => deleteMutation.mutate(it.id)}
-                      deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Mobile: stacked cards */}
-            <div className="md:hidden space-y-3">
-              {data.items.map((it) => (
-                <HoursCard
-                  key={it.id}
-                  item={it}
-                  canDelete={it.status === "pending"}
-                  onDelete={() => deleteMutation.mutate(it.id)}
-                  deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
-                />
-              ))}
-            </div>
-          </>
+          <GroupedHours
+            grouped={grouped}
+            isExec={isExec}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            deletingId={deleteMutation.isPending ? (deleteMutation.variables as string) : null}
+          />
         )}
       </div>
 
@@ -280,6 +406,132 @@ export function HoursView() {
           qc.invalidateQueries({ queryKey: ["hours", clubId] })
         }}
       />
+    </div>
+  )
+}
+
+/* ---------- Group rendering ---------- */
+
+function GroupedHours({
+  grouped,
+  isExec,
+  onDelete,
+  deletingId,
+}: {
+  grouped: GroupedResult
+  isExec: boolean
+  onDelete: (id: string) => void
+  deletingId: string | null
+}) {
+  const hasOlder = !!grouped.olderGroups && grouped.olderGroups.length > 0
+
+  return (
+    <div className="space-y-5">
+      {/* Current-year (or selected-period) groups */}
+      {grouped.currentGroups.map((g) => (
+        <HoursGroup
+          key={g.key}
+          label={g.label}
+          items={g.items}
+          isExec={isExec}
+          onDelete={onDelete}
+          deletingId={deletingId}
+        />
+      ))}
+
+      {/* Older entries (only for "all_time") — collapsible */}
+      {hasOlder && (
+        <details className="group rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-muted-foreground select-none hover:text-foreground transition-colors">
+            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+            <span>Older entries</span>
+            <span className="text-caption text-muted-foreground/70">
+              ({grouped.olderGroups!.reduce((n, g) => n + g.items.length, 0)} entr
+              {grouped.olderGroups!.reduce((n, g) => n + g.items.length, 0) === 1 ? "y" : "ies"})
+            </span>
+          </summary>
+          <div className="mt-4 space-y-5">
+            {grouped.olderGroups!.map((g) => (
+              <HoursGroup
+                key={g.key}
+                label={g.label}
+                items={g.items}
+                isExec={isExec}
+                onDelete={onDelete}
+                deletingId={deletingId}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function HoursGroup({
+  label,
+  items,
+  isExec,
+  onDelete,
+  deletingId,
+}: {
+  label: string
+  items: HoursItem[]
+  isExec: boolean
+  onDelete: (id: string) => void
+  deletingId: string | null
+}) {
+  if (items.length === 0) return null
+  const totalHours = items.reduce((n, it) => n + (it.status === "approved" ? it.hours : 0), 0)
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-2 px-1">
+        <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+        <span className="text-caption text-muted-foreground tabular-nums">
+          {items.length} entr{items.length === 1 ? "y" : "ies"}
+          {totalHours > 0 && <> · {totalHours}h approved</>}
+        </span>
+      </div>
+      {/* Desktop: table */}
+      <div className="card-quiet p-0 overflow-hidden hidden md:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="min-w-[7rem]">Date</TableHead>
+              <TableHead className="min-w-[3rem]">Hours</TableHead>
+              <TableHead className="min-w-[12rem]">Reason</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Proof</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Submitted</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((it) => (
+              <HoursRow
+                key={it.id}
+                item={it}
+                canDelete={isExec || it.status === "pending"}
+                onDelete={() => onDelete(it.id)}
+                deleting={deletingId === it.id}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {/* Mobile: stacked cards */}
+      <div className="md:hidden space-y-3">
+        {items.map((it) => (
+          <HoursCard
+            key={it.id}
+            item={it}
+            canDelete={isExec || it.status === "pending"}
+            onDelete={() => onDelete(it.id)}
+            deleting={deletingId === it.id}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -532,10 +784,10 @@ function SubmitHoursDialog({
                   id="hours-num"
                   type="number"
                   inputMode="decimal"
-                  step="0.25"
-                  min="0.25"
+                  step="any"
+                  min="0.1"
                   max="1000"
-                  placeholder="e.g. 3.5"
+                  placeholder="e.g. 3.5 or 0.25"
                   value={hours}
                   onChange={(e) => setHours(e.target.value)}
                   required

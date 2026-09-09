@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,8 @@ import {
   Inbox,
   Filter,
   Eye,
+  Trash2,
+  History,
 } from "lucide-react"
 
 interface HoursItem {
@@ -60,6 +63,8 @@ interface HoursItem {
   proofFileUrl: string | null
   status: "pending" | "approved" | "rejected"
   submittedAt: string
+  reviewedAt: string | null
+  reviewComment: string | null
   category: { id: string; name: string } | null
   user: { id: string; name: string; avatarUrl?: string | null }
   reviewer?: { id: string; name: string } | null
@@ -106,6 +111,7 @@ function fmtDateInput(d: string) {
 export function ApprovalsView() {
   const clubId = useAppStore((s) => s.currentClubId)
   const qc = useQueryClient()
+  const [tab, setTab] = useState<"pending" | "reviewed">("pending")
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [memberFilter, setMemberFilter] = useState<string>("all")
   const [fromDate, setFromDate] = useState<string>("")
@@ -113,21 +119,54 @@ export function ApprovalsView() {
   const [rejectTarget, setRejectTarget] = useState<HoursItem | null>(null)
   const [rejectBulk, setRejectBulk] = useState(false)
 
-  const queryParams = new URLSearchParams()
-  queryParams.set("scope", "all")
-  queryParams.set("status", "pending")
-  if (memberFilter !== "all") queryParams.set("userId", memberFilter)
+  // Shared query string fragment — both pending and reviewed queries use the
+  // same `scope=all` (exec view) + optional `userId=` member filter. The status
+  // param differs per query.
+  const baseParams = useMemo(() => {
+    const p = new URLSearchParams()
+    p.set("scope", "all")
+    if (memberFilter !== "all") p.set("userId", memberFilter)
+    return p.toString()
+  }, [memberFilter])
 
+  // Pending queue — only fetched while the Pending tab is active.
   const approvalsQuery = useQuery<ApprovalsResponse>({
-    queryKey: ["approvals", clubId, memberFilter, fromDate, toDate],
-    queryFn: () => api<ApprovalsResponse>(`/api/clubs/${clubId}/hours?${queryParams.toString()}`),
-    enabled: !!clubId,
-    // Realtime is primary; poll only as a fallback while the socket is down
-    // (was previously always-on 5s polling — now degrades to polling only
-    // when the realtime connection is lost). The approvals queue benefits
-    // from feeling live, so the fallback interval stays tight at 5s.
+    queryKey: ["approvals", clubId, memberFilter],
+    queryFn: () =>
+      api<ApprovalsResponse>(`/api/clubs/${clubId}/hours?${baseParams}&status=pending`),
+    enabled: !!clubId && tab === "pending",
+    // Realtime is primary; poll only as a fallback while the socket is down.
+    // The pending queue benefits from feeling live, so the fallback interval
+    // stays tight at 5s.
     refetchInterval: usePollingFallback(5000),
     staleTime: 4_000,
+  })
+
+  // Reviewed history — approved + rejected in parallel. Only fetched while the
+  // Reviewed tab is active. Reviewed entries don't change often, so the fallback
+  // poll is gentler (15s).
+  const reviewedQuery = useQuery<{
+    items: HoursItem[]
+    myRole: "member" | "executive"
+    myUserId: string
+  }>({
+    queryKey: ["reviewed-hours", clubId, memberFilter],
+    queryFn: async () => {
+      const [approved, rejected] = await Promise.all([
+        api<ApprovalsResponse>(`/api/clubs/${clubId}/hours?${baseParams}&status=approved`),
+        api<ApprovalsResponse>(`/api/clubs/${clubId}/hours?${baseParams}&status=rejected`),
+      ])
+      const items = [...approved.items, ...rejected.items]
+      items.sort((a, b) => {
+        const aT = a.reviewedAt ? new Date(a.reviewedAt).getTime() : new Date(a.submittedAt).getTime()
+        const bT = b.reviewedAt ? new Date(b.reviewedAt).getTime() : new Date(b.submittedAt).getTime()
+        return bT - aT
+      })
+      return { items, myRole: approved.myRole, myUserId: approved.myUserId }
+    },
+    enabled: !!clubId && tab === "reviewed",
+    refetchInterval: usePollingFallback(15_000),
+    staleTime: 10_000,
   })
 
   const membersQuery = useQuery<MembersResponse>({
@@ -139,21 +178,24 @@ export function ApprovalsView() {
 
   // Presence — report we're viewing approvals, and track how many OTHER execs
   // are doing the same so we don't double-review the same entry.
-  const myUserId = approvalsQuery.data?.myUserId
-  useViewingIndicator(clubId ?? null, approvalsQuery.data?.myRole === "executive" ? "approvals" : null)
+  const myRole = approvalsQuery.data?.myRole ?? reviewedQuery.data?.myRole
+  const myUserId = approvalsQuery.data?.myUserId ?? reviewedQuery.data?.myUserId
+  useViewingIndicator(clubId ?? null, myRole === "executive" ? "approvals" : null)
   const otherViewers = useViewingCount(clubId ?? null, "approvals", myUserId)
 
-  const items = (approvalsQuery.data?.items ?? []).filter((it) => {
-    // date range filter (by dateOfService)
-    if (fromDate) {
-      if (fmtDateInput(it.dateOfService) < fromDate) return false
-    }
-    if (toDate) {
-      if (fmtDateInput(it.dateOfService) > toDate) return false
-    }
+  // Apply the date-range filter (by dateOfService) to whichever tab is active.
+  const pendingItems = (approvalsQuery.data?.items ?? []).filter((it) => {
+    if (fromDate && fmtDateInput(it.dateOfService) < fromDate) return false
+    if (toDate && fmtDateInput(it.dateOfService) > toDate) return false
+    return true
+  })
+  const reviewedItems = (reviewedQuery.data?.items ?? []).filter((it) => {
+    if (fromDate && fmtDateInput(it.dateOfService) < fromDate) return false
+    if (toDate && fmtDateInput(it.dateOfService) > toDate) return false
     return true
   })
 
+  const items = tab === "pending" ? pendingItems : reviewedItems
   const visibleIds = new Set(items.map((i) => i.id))
   const selectedInScope = new Set([...selected].filter((id) => visibleIds.has(id)))
 
@@ -197,6 +239,7 @@ export function ApprovalsView() {
         return next
       })
       qc.invalidateQueries({ queryKey: ["approvals", clubId] })
+      qc.invalidateQueries({ queryKey: ["reviewed-hours", clubId] })
       qc.invalidateQueries({ queryKey: ["hours", clubId] })
     },
     onError: (e: Error) => toast.error(e.message),
@@ -213,6 +256,19 @@ export function ApprovalsView() {
       toast.success(`${n} entr${n === 1 ? "y" : "ies"} ${vars.status}`)
       clearSelected()
       qc.invalidateQueries({ queryKey: ["approvals", clubId] })
+      qc.invalidateQueries({ queryKey: ["reviewed-hours", clubId] })
+      qc.invalidateQueries({ queryKey: ["hours", clubId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Delete — used by the Reviewed tab. The DELETE route already supports exec
+  // deletion of any entry (including approved/rejected).
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api(`/api/clubs/${clubId}/hours/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Entry deleted")
+      qc.invalidateQueries({ queryKey: ["reviewed-hours", clubId] })
       qc.invalidateQueries({ queryKey: ["hours", clubId] })
     },
     onError: (e: Error) => toast.error(e.message),
@@ -226,8 +282,10 @@ export function ApprovalsView() {
     return <div className="p-8 text-muted-foreground">Loading…</div>
   }
 
-  // Gate: executive-only
-  if (approvalsQuery.data && approvalsQuery.data.myRole !== "executive") {
+  // Gate: executive-only. Either query carries the role info; if neither has
+  // loaded yet we fall through and render the page (the queue area will show a
+  // loading skeleton).
+  if (myRole && myRole !== "executive") {
     return (
       <div className="space-y-6">
         <PageHeader title="Approvals" description="Review pending service hour submissions." />
@@ -241,7 +299,8 @@ export function ApprovalsView() {
   }
 
   const allSelected = items.length > 0 && items.every((it) => selectedInScope.has(it.id))
-  const pendingCount = items.length
+  const pendingCount = pendingItems.length
+  const reviewedCount = reviewedItems.length
 
   return (
     <div className="space-y-6">
@@ -259,15 +318,41 @@ export function ApprovalsView() {
                 {otherViewers === 1 ? "1 other viewing" : `${otherViewers} others viewing`}
               </span>
             )}
-            <span className="inline-flex items-center gap-1.5">
-              <Inbox className="h-4 w-4" />
-              <span className="tabular-nums">{pendingCount}</span> pending
-            </span>
+            {tab === "pending" ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Inbox className="h-4 w-4" />
+                <span className="tabular-nums">{pendingCount}</span> pending
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <History className="h-4 w-4" />
+                <span className="tabular-nums">{reviewedCount}</span> reviewed
+              </span>
+            )}
           </div>
         }
       />
 
-      {/* Filters */}
+      {/* Tab toggle */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "pending" | "reviewed")}>
+        <TabsList>
+          <TabsTrigger value="pending">
+            <Inbox className="h-4 w-4" />
+            Pending
+            {pendingCount > 0 && (
+              <span className="ml-1 rounded-md bg-club-muted px-1.5 py-0.5 text-caption-medium text-club tabular-nums">
+                {pendingCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="reviewed">
+            <History className="h-4 w-4" />
+            Reviewed
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Shared filters — Member + From/To date range apply to both tabs */}
       <div className="card-quiet p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
             <div className="space-y-2 sm:min-w-[14rem]">
@@ -281,7 +366,7 @@ export function ApprovalsView() {
                   {(membersQuery.data?.members ?? []).map((m) => (
                     <SelectItem key={m.user.id} value={m.user.id}>
                       {m.user.name}
-                      {m.user.id === approvalsQuery.data?.myUserId ? " (you)" : ""}
+                      {m.user.id === myUserId ? " (you)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -321,84 +406,115 @@ export function ApprovalsView() {
           </div>
       </div>
 
-      {/* Bulk actions — sticky on mobile so the bulk bar is always reachable */}
-      {selectedInScope.size > 0 && (
-        <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 shadow-md max-w-full">
-          <span className="text-caption-medium text-muted-foreground px-2">
-            {selectedInScope.size} selected
-          </span>
-          <Button
-            size="sm"
-            variant="club"
-            disabled={bulkMutation.isPending}
-            onClick={() => {
-              bulkMutation.mutate({ ids: [...selectedInScope], status: "approved" })
-            }}
-          >
-            <CheckCircle2 className="h-4 w-4" /> Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
-            disabled={bulkMutation.isPending}
-            onClick={() => setRejectBulk(true)}
-          >
-            <XCircle className="h-4 w-4" /> Reject
-          </Button>
-          <Button variant="ghost" size="sm" onClick={clearSelected}>
-            Clear
-          </Button>
-        </div>
-      )}
-
-      {/* Queue */}
-      {approvalsQuery.isLoading ? (
-        <TableSkeleton rows={5} />
-      ) : approvalsQuery.error ? (
-        <EmptyState
-          icon={<XCircle className="h-8 w-8" />}
-          title="Couldn't load approvals"
-          description={approvalsQuery.error.message}
-          action={
-            <Button variant="outline" size="sm" onClick={() => approvalsQuery.refetch()}>
-              Retry
-            </Button>
-          }
-        />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={<CheckCircle2 className="h-8 w-8" />}
-          title="Inbox zero"
-          description="There are no pending service hour submissions to review right now. New submissions will appear here automatically."
-        />
-      ) : (
+      {tab === "pending" ? (
         <>
-          {/* Desktop: table */}
-          <div className="card-quiet p-0 overflow-hidden hidden md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={allSelected}
-                      onCheckedChange={toggleAll}
-                      aria-label="Select all"
-                    />
-                  </TableHead>
-                  <TableHead className="min-w-[10rem]">Member</TableHead>
-                  <TableHead className="min-w-[7rem]">Date</TableHead>
-                  <TableHead className="min-w-[3rem]">Hours</TableHead>
-                  <TableHead className="min-w-[16rem]">Reason</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Proof</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead className="text-right">Review</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((it) => (
-                  <ApprovalRow
+          {/* Bulk actions — sticky on mobile so the bulk bar is always reachable.
+              Only shown on the Pending tab (you can't bulk-review already-reviewed entries). */}
+          {selectedInScope.size > 0 && (
+            <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 shadow-md max-w-full">
+              <span className="text-caption-medium text-muted-foreground px-2">
+                {selectedInScope.size} selected
+              </span>
+              <Button
+                size="sm"
+                variant="club"
+                disabled={bulkMutation.isPending}
+                onClick={() => {
+                  bulkMutation.mutate({ ids: [...selectedInScope], status: "approved" })
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4" /> Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
+                disabled={bulkMutation.isPending}
+                onClick={() => setRejectBulk(true)}
+              >
+                <XCircle className="h-4 w-4" /> Reject
+              </Button>
+              <Button variant="ghost" size="sm" onClick={clearSelected}>
+                Clear
+              </Button>
+            </div>
+          )}
+
+          {/* Pending queue */}
+          {approvalsQuery.isLoading ? (
+            <TableSkeleton rows={5} />
+          ) : approvalsQuery.error ? (
+            <EmptyState
+              icon={<XCircle className="h-8 w-8" />}
+              title="Couldn't load approvals"
+              description={approvalsQuery.error.message}
+              action={
+                <Button variant="outline" size="sm" onClick={() => approvalsQuery.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
+          ) : pendingItems.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 className="h-8 w-8" />}
+              title="Inbox zero"
+              description="There are no pending service hour submissions to review right now. New submissions will appear here automatically."
+            />
+          ) : (
+            <>
+              {/* Desktop: table */}
+              <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allSelected}
+                          onCheckedChange={toggleAll}
+                          aria-label="Select all"
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[10rem]">Member</TableHead>
+                      <TableHead className="min-w-[7rem]">Date</TableHead>
+                      <TableHead className="min-w-[3rem]">Hours</TableHead>
+                      <TableHead className="min-w-[16rem]">Reason</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Proof</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead className="text-right">Review</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingItems.map((it) => (
+                      <ApprovalRow
+                        key={it.id}
+                        item={it}
+                        checked={selectedInScope.has(it.id)}
+                        onToggle={() => toggle(it.id)}
+                        onApprove={() => handleApprove(it.id)}
+                        onReject={() => setRejectTarget(it)}
+                        reviewing={
+                          (reviewMutation.isPending && reviewMutation.variables?.id === it.id) ||
+                          (bulkMutation.isPending && selectedInScope.has(it.id))
+                        }
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: cards */}
+              <div className="md:hidden space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" id="select-all-mobile" />
+                    <Label htmlFor="select-all-mobile" className="text-sm text-muted-foreground">
+                      Select all ({pendingItems.length})
+                    </Label>
+                  </div>
+                </div>
+                {pendingItems.map((it) => (
+                  <ApprovalCard
                     key={it.id}
                     item={it}
                     checked={selectedInScope.has(it.id)}
@@ -411,39 +527,83 @@ export function ApprovalsView() {
                     }
                   />
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Mobile: cards */}
-          <div className="md:hidden space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" id="select-all-mobile" />
-                <Label htmlFor="select-all-mobile" className="text-sm text-muted-foreground">
-                  Select all ({items.length})
-                </Label>
               </div>
-            </div>
-            {items.map((it) => (
-              <ApprovalCard
-                key={it.id}
-                item={it}
-                checked={selectedInScope.has(it.id)}
-                onToggle={() => toggle(it.id)}
-                onApprove={() => handleApprove(it.id)}
-                onReject={() => setRejectTarget(it)}
-                reviewing={
-                  (reviewMutation.isPending && reviewMutation.variables?.id === it.id) ||
-                  (bulkMutation.isPending && selectedInScope.has(it.id))
-                }
-              />
-            ))}
-          </div>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          {/* Reviewed history — approved + rejected with reviewer info */}
+          {reviewedQuery.isLoading ? (
+            <TableSkeleton rows={5} />
+          ) : reviewedQuery.error ? (
+            <EmptyState
+              icon={<XCircle className="h-8 w-8" />}
+              title="Couldn't load reviewed hours"
+              description={reviewedQuery.error.message}
+              action={
+                <Button variant="outline" size="sm" onClick={() => reviewedQuery.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
+          ) : reviewedItems.length === 0 ? (
+            <EmptyState
+              icon={<History className="h-8 w-8" />}
+              title="No reviewed entries"
+              description={
+                memberFilter !== "all" || fromDate || toDate
+                  ? "No approved or rejected entries match the current filters."
+                  : "No service hours have been approved or rejected yet. Once you review pending submissions, they'll show up here."
+              }
+            />
+          ) : (
+            <>
+              {/* Desktop: table */}
+              <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[10rem]">Member</TableHead>
+                      <TableHead className="min-w-[7rem]">Service date</TableHead>
+                      <TableHead className="min-w-[3rem]">Hours</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="min-w-[10rem]">Reviewed by</TableHead>
+                      <TableHead className="min-w-[9rem]">Reviewed on</TableHead>
+                      <TableHead className="min-w-[16rem]">Comment</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reviewedItems.map((it) => (
+                      <ReviewedRow
+                        key={it.id}
+                        item={it}
+                        onDelete={() => deleteMutation.mutate(it.id)}
+                        deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile: cards */}
+              <div className="md:hidden space-y-3">
+                {reviewedItems.map((it) => (
+                  <ReviewedCard
+                    key={it.id}
+                    item={it}
+                    onDelete={() => deleteMutation.mutate(it.id)}
+                    deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
-      {/* Reject dialog (single + bulk) */}
+      {/* Reject dialog (single + bulk) — only triggered from Pending tab */}
       <RejectDialog
         open={rejectTarget !== null || rejectBulk}
         onClose={() => { setRejectTarget(null); setRejectBulk(false) }}
@@ -586,6 +746,115 @@ function ApprovalCard({
             Reject
           </Button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Reviewed-tab row + card ---------- */
+
+function ReviewedRow({
+  item,
+  onDelete,
+  deleting,
+}: {
+  item: HoursItem
+  onDelete: () => void
+  deleting: boolean
+}) {
+  const status = item.status as "approved" | "rejected"
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
+      <TableCell>{fmtDate(item.dateOfService)}</TableCell>
+      <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
+      <TableCell>
+        <StatusBadge status={status} />
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {item.reviewer?.name ?? <span className="text-muted-foreground/60">—</span>}
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {item.reviewedAt ? (
+          <span title={fmtDate(item.reviewedAt)}>{relativeTime(item.reviewedAt)}</span>
+        ) : (
+          <span className="text-muted-foreground/60">—</span>
+        )}
+      </TableCell>
+      <TableCell className="max-w-xs">
+        {item.reviewComment ? (
+          <div className="line-clamp-2 text-sm">{item.reviewComment}</div>
+        ) : (
+          <span className="text-sm text-muted-foreground/60">—</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label="Delete entry"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </Button>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function ReviewedCard({
+  item,
+  onDelete,
+  deleting,
+}: {
+  item: HoursItem
+  onDelete: () => void
+  deleting: boolean
+}) {
+  const status = item.status as "approved" | "rejected"
+  return (
+    <div className="card-quiet p-4 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
+          <div className="text-caption">
+            <span className="font-mono tabular-nums text-foreground">{item.hours}</span>
+            {item.hours === 1 ? " hour" : " hours"} · {fmtDate(item.dateOfService)}
+            {item.category && <span> · {item.category.name}</span>}
+          </div>
+        </div>
+        <StatusBadge status={status} />
+      </div>
+      <div className="text-body">{item.reasonText}</div>
+      <div className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 text-caption">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+          <span className="font-medium text-foreground">
+            Reviewed by {item.reviewer?.name ?? "an executive"}
+          </span>
+          {item.reviewedAt && (
+            <>
+              <span aria-hidden>·</span>
+              <span title={fmtDate(item.reviewedAt)}>{relativeTime(item.reviewedAt)}</span>
+            </>
+          )}
+        </div>
+        {item.reviewComment && (
+          <div className="mt-1 text-foreground/80 line-clamp-3">&ldquo;{item.reviewComment}&rdquo;</div>
+        )}
+      </div>
+      <div className="flex items-center justify-end pt-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label="Delete entry"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </Button>
       </div>
     </div>
   )

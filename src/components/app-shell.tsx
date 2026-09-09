@@ -118,7 +118,7 @@ const NAV_TIERS: NavTier[] = [
       { view: "teams", label: "Teams", icon: Users },
       { view: "members", label: "Members", icon: UserCog },
       { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
-      { view: "activity", label: "Activity Log", icon: ScrollText },
+      { view: "activity", label: "Activity Log", icon: ScrollText, execOnly: true },
     ],
   },
 ]

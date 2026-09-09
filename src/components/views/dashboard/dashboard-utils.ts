@@ -3,11 +3,14 @@
  * utilities used across multiple dashboard sub-components.
  */
 
-/** Format an hours value: 0 → "0", 2 → "2", 1.5 → "1.5". */
+/** Format an hours value: 0 → "0", 2 → "2", 1.5 → "1.5", 0.25 → "0.25".
+ *  Shows the EXACT value — no rounding. */
 export function fmtHours(h: number): string {
   if (h === 0) return "0"
   if (Number.isInteger(h)) return String(h)
-  return h.toFixed(1)
+  // Show up to 2 decimal places, stripped of trailing zeros.
+  // e.g. 0.25 → "0.25", 0.5 → "0.5", 1.250 → "1.25"
+  return parseFloat(h.toFixed(2)).toString()
 }
 
 /** Format an approval turnaround (in hours) into a human-readable duration. */
