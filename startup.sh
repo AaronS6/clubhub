@@ -1,38 +1,15 @@
 #!/bin/sh
 # Startup script for the Render web service.
 #
-# STRATEGY: Start the Next.js server FIRST (so Render's port scanner detects
-# port 3000 immediately and the deploy succeeds), then run the database
-# migration in the background with retries. The migration connects to
-# Supabase (which can take 30-60s to cold-start) — if we blocked on it,
-# Render's 60s port-scan timeout would kill the deploy.
+# The database tables are created manually via the Supabase SQL Editor (see
+# supabase_schema.sql) — NOT via `prisma db push`, because Supabase's
+# PgBouncer pooler doesn't support the prepared statements that Prisma's
+# schema engine uses. So the startup script just starts the server.
 #
-# The server returns 500s for DB queries until the migration finishes (~15-30s
-# after startup). This is acceptable — the alternative is a failed deploy.
+# If you ever need to change the schema (add a column, etc.):
+# 1. Update prisma/schema.prisma
+# 2. Regenerate the SQL: `bunx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > supabase_schema.sql`
+# 3. Run the new SQL in Supabase's SQL Editor (drop the old tables first if needed)
 
-echo "[startup] starting Next.js server (port binding)..."
-node server.js &
-SERVER_PID=$!
-
-# Give the server 2 seconds to bind the port.
-sleep 2
-
-# Run the migration in the background with retries.
-(
-  echo "[startup] running database migration (background)..."
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    echo "[startup] migration attempt $i/10..."
-    if node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma 2>&1; then
-      echo "[startup] migration succeeded on attempt $i"
-      exit 0
-    fi
-    echo "[startup] attempt $i failed, waiting 5s before retry..."
-    sleep 5
-  done
-  echo "[startup] WARNING: migration failed after 10 attempts. Database queries will fail until migrated manually."
-) &
-MIGRATION_PID=$!
-
-# Wait for the server process (keep the container alive).
-# If the server exits, the container exits.
-wait $SERVER_PID
+echo "[startup] starting Next.js server..."
+exec node server.js
