@@ -128,12 +128,20 @@ export function useRemoteChange(type: RemoteChangeType, id: string | undefined):
 
 /**
  * Returns the connection-aware polling interval for `useQuery.refetchInterval`.
- * Pass the desired fallback interval; returns `false` (no polling) when the
- * socket is connected, and the interval (ms) when disconnected.
+ *
+ * IMPORTANT: We ALWAYS poll (even when the socket appears "connected") because
+ * the realtime service may not be deployed (single-service setup). The intervals
+ * are kept reasonable to avoid hitting Supabase connection limits:
+ * - When the socket is confirmed "connected" (realtime service is running):
+ *   poll at 2x the interval (redundant safety net, since realtime push is primary)
+ * - When "disconnected" or "connecting" (realtime not available): poll at the
+ *   full interval (this is the primary update mechanism)
  *
  *   refetchInterval: usePollingFallback(5000)
  */
 export function usePollingFallback(intervalMs: number): number | false {
   const state = useRealtimeStore((s) => s.connectionState)
-  return state === "disconnected" ? intervalMs : false
+  // Always poll — when connected, poll at 2x interval (backup); when not
+  // connected, poll at the full interval (primary).
+  return state === "connected" ? intervalMs * 2 : intervalMs
 }

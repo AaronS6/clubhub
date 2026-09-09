@@ -64,18 +64,10 @@ import {
   AlertTriangle,
 } from "lucide-react"
 
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
+
 // Reaction feature data — fixed set of emojis for the picker.
 const REACTION_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83C\uDF89", "\uD83D\uDC4F", "\uD83D\uDE02"]
-
-/**
- * DialogContent className that makes a Dialog full-screen on mobile (slides
- * up to fill the viewport) and a normal centered modal on sm+ screens.
- * Pair with a flex-col layout inside: sticky header / scrollable body /
- * sticky footer so the action buttons stay reachable above the soft keyboard.
- */
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g
 const MENTION_REGEX = /@([A-Za-z0-9._-]+[A-Za-z0-9])/g
@@ -215,7 +207,7 @@ export function AnnouncementsView() {
     // (was previously always-on 10s polling — now degrades to polling only
     // when the realtime connection is lost). Bumped to 30s — announcements
     // change infrequently so 10s was over-eager for a fallback.
-    refetchInterval: usePollingFallback(30_000),
+    refetchInterval: usePollingFallback(10_000),
   })
 
   const items: AnnouncementItem[] = query.data?.pages.flatMap((p) => p.items) ?? []
@@ -942,7 +934,7 @@ function ComposeAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>New announcement</DialogTitle>
           <DialogDescription>
@@ -998,7 +990,7 @@ function ComposeAnnouncementDialog({
               </Label>
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
@@ -1066,7 +1058,7 @@ function EditAnnouncementDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit announcement</DialogTitle>
           <DialogDescription>Update the title, body, or pin status.</DialogDescription>
@@ -1119,7 +1111,7 @@ function EditAnnouncementDialog({
               </div>
             )}
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

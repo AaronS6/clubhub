@@ -33,7 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   LayoutDashboard, Megaphone, Clock, CheckSquare, CalendarDays, Users,
-  ScrollText, Settings, Bell, LogOut, Menu, Plus, ChevronDown,
+  ScrollText, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, Keyboard, RefreshCw,
   Upload, Trash2,
@@ -262,7 +262,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       clubs={clubs}
       currentClub={currentClub ?? null}
       onSelect={(id) => { selectClub(id); setMobileNavOpen(false) }}
-      onCreate={() => setCreateOpen(true)}
     />
   )
 
@@ -584,13 +583,14 @@ function UrgentBanner() {
 }
 
 function ClubSwitcher({
-  clubs, currentClub, onSelect, onCreate,
+  clubs, currentClub, onSelect,
 }: {
   clubs: MeResponse["memberships"]
   currentClub: MeResponse["memberships"][number] | null
   onSelect: (id: string) => void
-  onCreate: () => void
 }) {
+  const [showJoin, setShowJoin] = useState(false)
+  const setClubs = useAppStore((s) => s.setClubs)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -613,7 +613,7 @@ function ClubSwitcher({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel className="text-caption-medium uppercase tracking-wide">Your clubs</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-caption-medium uppercase tracking-wide">Clubs</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {clubs.map((c) => (
           <DropdownMenuItem key={c.clubId} onClick={() => onSelect(c.clubId)} className="cursor-pointer gap-2.5 py-2">
@@ -631,10 +631,11 @@ function ClubSwitcher({
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onCreate} className="cursor-pointer text-club">
-          <Plus className="mr-2 h-4 w-4" /> Create new club
+        <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer text-club">
+          <LogIn className="mr-2 h-4 w-4" /> Join a club
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
     </DropdownMenu>
   )
 }
@@ -644,6 +645,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security">("profile")
   const [showJoin, setShowJoin] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const user = session?.user
 
@@ -721,10 +723,13 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4" /> Join a club
+            <LogIn className="mr-2 h-4 w-4" /> Join a club
           </DropdownMenuItem>
           <DropdownMenuItem onClick={openSettingsFromMenu} className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" /> Account settings
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer">
+            <Plus className="mr-2 h-4 w-4" /> Create a club
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-red-600 focus:text-red-600">
             <LogOut className="mr-2 h-4 w-4" /> Sign out
@@ -732,6 +737,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
         </DropdownMenuContent>
       </DropdownMenu>
       <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
+      <CreateClubDialog open={showCreate} onOpenChange={setShowCreate} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <SettingsDialog
         open={showSettings}
         onOpenChange={setShowSettings}

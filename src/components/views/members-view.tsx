@@ -94,16 +94,7 @@ import {
   Trash2,
   ImagePlus,
 } from "lucide-react"
-
-// ---------------------------------------------------------------------------
-// Mobile full-screen dialog className — makes a Dialog fill the viewport on
-// phones (sticky header / scrollable body / sticky footer so action buttons
-// stay reachable above the soft keyboard) and centers as a normal modal on
-// sm+ screens.
-// ---------------------------------------------------------------------------
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1342,7 +1333,7 @@ function ImportCsvDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-4 w-4" /> Import members from CSV
@@ -1423,7 +1414,7 @@ function ImportCsvDialog({
               )}
             </div>
 
-            <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+            <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={uploading}>
                 Cancel
               </Button>

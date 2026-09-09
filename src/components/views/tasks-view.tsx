@@ -54,6 +54,7 @@ import {
   initials,
   relativeTime,
 } from "@/components/shared/page-header"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -1180,7 +1181,7 @@ function NewTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col">
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>New task</DialogTitle>

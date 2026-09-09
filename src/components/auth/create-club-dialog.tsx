@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { api } from "@/lib/api/client"
 import { Loader2, ShieldCheck, X } from "lucide-react"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 const ACCENT_PRESETS = [
   { color: "#16a34a", name: "Green" },
@@ -20,14 +21,6 @@ const ACCENT_PRESETS = [
   { color: "#eab308", name: "Yellow" },
   { color: "#ec4899", name: "Pink" },
 ]
-
-/**
- * DialogContent className that makes a Dialog full-screen on mobile (fills
- * the viewport) and a normal centered modal on sm+ screens.
- */
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4"
 
 export function CreateClubDialog({
   open,
@@ -91,7 +84,7 @@ export function CreateClubDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         {/* Header — sticky at top on mobile */}
         <DialogHeader className="px-5 pt-5 pb-4 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0 flex flex-row items-start justify-between gap-3">
           <div className="min-w-0">

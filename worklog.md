@@ -1355,3 +1355,36 @@ Stage Summary:
 - Files created: `src/app/api/me/avatar/route.ts`, `src/app/api/clubs/[clubId]/logo/route.ts`
 - Files modified: `src/components/app-shell.tsx`, `src/components/views/members-view.tsx`
 - Work record: `agent-ctx/R11-IMAGES-full-stack-developer.md`
+
+---
+Task ID: R12-UI
+Agent: full-stack-developer (dialog UI fix)
+Task: Fix all dialog UIs + club switcher + move create club to profile
+
+Work Log:
+- `src/components/views/announcements-view.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const + its doc comment. Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"`. Replaced both `<DialogContent className={MOBILE_FULLSCREEN_DIALOG} ...>` (create + edit announcement dialogs) with `className={DIALOG_CLASS}`. Now uses wider `sm:max-w-xl` (576px) instead of old `sm:max-w-lg` (512px).
+- `src/components/views/members-view.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const block (mobile full-screen comment + const declaration). Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"` after the lucide-react import. Replaced the CSV import dialog's `className={MOBILE_FULLSCREEN_DIALOG}` with `className={DIALOG_CLASS}`. (The password-change dialog at the top of the file already used a separate `"sm:max-w-md"` class — left unchanged.)
+- `src/components/views/teams-view.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const + doc comment. Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"`. Replaced 3 usages: create-team dialog, edit-team dialog (`className={DIALOG_CLASS}`), and add-members dialog (`className={cn(DIALOG_CLASS, "sm:max-w-md")}` — preserves the narrower width override for that picker). Caught and fixed a duplicate const declaration that appeared during the multi-edit.
+- `src/components/views/meetings-view.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const block. Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"` after the page-header import. Replaced all 3 usages (create meeting, edit meeting, meeting detail) with `className={DIALOG_CLASS}`. The Start/End time inputs already wrap in `grid grid-cols-1 gap-3 sm:grid-cols-2` so they stack on mobile and sit side-by-side on desktop; the wider `sm:max-w-xl` dialog now gives the datetime-local pickers enough horizontal room so they no longer overflow/get clipped.
+- `src/components/views/hours-view.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const + doc comment. Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"` after the lucide-react import (placed with the other imports, not mid-file). Replaced the submit-hours dialog's `className={MOBILE_FULLSCREEN_DIALOG}` with `className={DIALOG_CLASS}`.
+- `src/components/auth/create-club-dialog.tsx`: Removed local `MOBILE_FULLSCREEN_DIALOG` const + doc comment. Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"` after the lucide-react import. Replaced `className={MOBILE_FULLSCREEN_DIALOG}` with `className={DIALOG_CLASS}`.
+- `src/components/views/tasks-view.tsx`: Added `import { DIALOG_CLASS } from "@/components/shared/dialog-class"` after the page-header import. Replaced the new-task dialog's inline `className="h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col"` with `className={DIALOG_CLASS} showCloseButton={false}` — now uses the shared full-screen-on-mobile / `sm:max-w-xl`-on-desktop pattern consistent with every other dialog. (No local `MOBILE_FULLSCREEN_DIALOG` const existed in this file.)
+- `src/components/app-shell.tsx` (ClubSwitcher): Added `LogIn` to the lucide-react import list. Removed the `onCreate` prop from the component signature. Added internal `showJoin` state + `setClubs` from the store. Changed the dropdown label from "Your clubs" to "Clubs". Removed the "Create new club" menu item. Added a new "Join a club" menu item (with `LogIn` icon, `text-club` accent) that opens the existing `JoinClubDialog` (rendered inside the component, mirroring the UserMenu pattern). Updated the call site (in AppShell) to drop the now-removed `onCreate` prop.
+- `src/components/app-shell.tsx` (UserMenu): Added `showCreate` state. Added a new "Create a club" menu item (with `Plus` icon) between "Account settings" and "Sign out", visible to all users (creating a club makes you an executive — no role gate needed). Renders the existing `CreateClubDialog` inside UserMenu (alongside `JoinClubDialog` and `SettingsDialog`). Switched the existing "Join a club" item's icon from `Plus` to `LogIn` so Plus is reserved for "Create a club" (clearer semantic).
+- `src/components/shared/dialog-class.ts`: Already existed with the `DIALOG_CLASS` constant (`sm:max-w-xl` = 576px, wider than old `sm:max-w-lg` = 512px). Not modified.
+- Verified date/time inputs in meetings-view create + edit dialogs: both already use `<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">` for Start/End. `Input` component (`src/components/ui/input.tsx`) is `w-full` by default. With the wider `sm:max-w-xl` dialog, the datetime-local pickers now have enough horizontal room — no overflow/cutoff.
+- No API routes, prisma schema, or auth files touched. No business logic changed — only UI/layout (dialog className consolidation, dropdown menu item swaps, dialog state plumbing).
+- `bun run lint` → 0 errors. `bun run build` → succeeded (Compiled successfully in 19.7s, 15 static pages generated, standalone output). Dev server still healthy (Ready in 1.4s, no compile errors).
+
+Stage Summary:
+- Files modified (8):
+  1. `src/components/views/announcements-view.tsx` — local const removed, DIALOG_CLASS import + 2 usages
+  2. `src/components/views/members-view.tsx` — local const removed, DIALOG_CLASS import + 1 usage (CSV import dialog)
+  3. `src/components/views/teams-view.tsx` — local const removed, DIALOG_CLASS import + 3 usages (one with `cn(..., "sm:max-w-md")` override preserved)
+  4. `src/components/views/meetings-view.tsx` — local const removed, DIALOG_CLASS import + 3 usages (create, edit, detail)
+  5. `src/components/views/hours-view.tsx` — local const removed, DIALOG_CLASS import + 1 usage
+  6. `src/components/auth/create-club-dialog.tsx` — local const removed, DIALOG_CLASS import + 1 usage
+  7. `src/components/views/tasks-view.tsx` — DIALOG_CLASS import + replaced inline `h-[100dvh] ... sm:max-w-[480px]` class with `className={DIALOG_CLASS}`
+  8. `src/components/app-shell.tsx` — added `LogIn` to imports; ClubSwitcher: dropped `onCreate` prop, internal `showJoin` state, label "Your clubs"→"Clubs", removed "Create new club" item, added "Join a club" item (LogIn icon) + JoinClubDialog render; UserMenu: added `showCreate` state, added "Create a club" menu item (Plus icon) between "Account settings" and "Sign out" + CreateClubDialog render, switched existing "Join a club" icon Plus→LogIn
+- No off-limits files touched (prisma schema, all API routes, auth.ts, authOptions.ts, server-auth.ts, next.config.ts all unchanged). The dev server was not restarted.
+- All `MOBILE_FULLSCREEN_DIALOG` references in `src/` are gone. All 7 dialog-bearing view/component files now use the shared `DIALOG_CLASS` constant. Lint clean. Build successful.
