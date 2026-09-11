@@ -45,6 +45,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Push the schema on startup (using the PINNED prisma 6.x from node_modules,
-# not npx which fetches 7.x), then start the server.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma && node server.js"]
+# Start the server immediately. Tables are created manually via Supabase SQL
+# Editor (the pooler doesn't support prisma db push's prepared statements).
+CMD ["node", "server.js"]
