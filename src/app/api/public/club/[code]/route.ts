@@ -21,61 +21,55 @@ import { db } from "@/lib/db"
  * membership.
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ code: string }> }) {
-  try {
-    const { code } = await ctx.params
-    const normalized = (code ?? "").trim().toUpperCase()
-    if (!normalized) {
-      return NextResponse.json({ error: "Missing club code" }, { status: 400 })
-    }
-
-    const club = await db.club.findUnique({
-      where: { clubCode: normalized },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        accentColor: true,
-        logoUrl: true,
-        clubCode: true,
-        createdAt: true,
-        _count: { select: { members: { where: { status: "active" } } } },
-      },
-    })
-    if (!club) {
-      return NextResponse.json({ error: "Club not found" }, { status: 404 })
-    }
-
-    // Aggregate approved hours + upcoming meetings in parallel.
-    const [hoursAgg, upcomingMeetings] = await Promise.all([
-      db.serviceHour.aggregate({
-        where: { clubId: club.id, status: "approved" },
-        _sum: { hours: true },
-      }),
-      db.meeting.count({
-        where: {
-          clubId: club.id,
-          cancelledAt: null,
-          startTime: { gt: new Date() },
-        },
-      }),
-    ])
-
-    return NextResponse.json({
-      club: {
-        name: club.name,
-        description: club.description,
-        accentColor: club.accentColor,
-        logoUrl: club.logoUrl,
-        clubCode: club.clubCode,
-        createdAt: club.createdAt,
-        memberCount: club._count.members,
-        totalHoursLogged: hoursAgg._sum.hours ?? 0,
-        upcomingMeetingCount: upcomingMeetings,
-      },
-    })
-
-  } catch (err: any) {
-    console.error("[public/club GET] error:", err?.message, err?.code, err?.meta)
-    return NextResponse.json({ error: "Failed to load club: " + (err?.message || "Unknown error") }, { status: 500 })
+  const { code } = await ctx.params
+  const normalized = (code ?? "").trim().toUpperCase()
+  if (!normalized) {
+    return NextResponse.json({ error: "Missing club code" }, { status: 400 })
   }
+
+  const club = await db.club.findUnique({
+    where: { clubCode: normalized },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      accentColor: true,
+      logoUrl: true,
+      clubCode: true,
+      createdAt: true,
+      _count: { select: { members: { where: { status: "active" } } } },
+    },
+  })
+  if (!club) {
+    return NextResponse.json({ error: "Club not found" }, { status: 404 })
+  }
+
+  // Aggregate approved hours + upcoming meetings in parallel.
+  const [hoursAgg, upcomingMeetings] = await Promise.all([
+    db.serviceHour.aggregate({
+      where: { clubId: club.id, status: "approved" },
+      _sum: { hours: true },
+    }),
+    db.meeting.count({
+      where: {
+        clubId: club.id,
+        cancelledAt: null,
+        startTime: { gt: new Date() },
+      },
+    }),
+  ])
+
+  return NextResponse.json({
+    club: {
+      name: club.name,
+      description: club.description,
+      accentColor: club.accentColor,
+      logoUrl: club.logoUrl,
+      clubCode: club.clubCode,
+      createdAt: club.createdAt,
+      memberCount: club._count.members,
+      totalHoursLogged: hoursAgg._sum.hours ?? 0,
+      upcomingMeetingCount: upcomingMeetings,
+    },
+  })
 }

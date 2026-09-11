@@ -41,14 +41,10 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/prisma ./prisma
 
 EXPOSE 3000
+# Render sets the PORT env var; the standalone server respects it.
+ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Copy the startup script
-COPY startup.sh ./startup.sh
-RUN chmod +x startup.sh
-
-# The startup script runs the database migration SYNCHRONOUSLY (with retries
-# for Supabase cold starts) BEFORE starting the Next.js server. This ensures
-# all tables exist before the server accepts requests. The migration takes
-# 5-15s typically — well within Render's 60s port-scan timeout.
-CMD ["./startup.sh"]
+# Push the schema on startup (using the PINNED prisma 6.x from node_modules,
+# not npx which fetches 7.x), then start the server.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js db push --accept-data-loss --schema=./prisma/schema.prisma && node server.js"]

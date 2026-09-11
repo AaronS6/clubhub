@@ -5,30 +5,24 @@ import { hashPassword, generateClubCode } from "@/lib/auth"
 import { logActivity } from "@/lib/activity"
 
 export async function POST(_req: Request, ctx: { params: Promise<{ clubId: string }> }) {
-  try {
-    const { clubId } = await ctx.params
-    const c = await getClubContext(clubId)
-    if (!c) return error("Not a member of this club", 403)
-    if (c.membership.role !== "executive") return error("Only executives can regenerate codes", 403)
-    let code = generateClubCode()
-    let tries = 0
-    while (await db.club.findUnique({ where: { clubCode: code } }) && tries < 10) {
-      code = generateClubCode()
-      tries++
-    }
-    await db.club.update({ where: { id: clubId }, data: { clubCode: code } })
-    await logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "regenerate_code",
-      targetType: "club",
-      targetId: clubId,
-      description: `${c.user.name} regenerated the club code`,
-    })
-    return json({ clubCode: code })
-
-  } catch (err: any) {
-    console.error("[clubs/regenerate POST] error:", err?.message, err?.code, err?.meta)
-    return NextResponse.json({ error: "Failed to regenerate club code: " + (err?.message || "Unknown error") }, { status: 500 })
+  const { clubId } = await ctx.params
+  const c = await getClubContext(clubId)
+  if (!c) return error("Not a member of this club", 403)
+  if (c.membership.role !== "executive") return error("Only executives can regenerate codes", 403)
+  let code = generateClubCode()
+  let tries = 0
+  while (await db.club.findUnique({ where: { clubCode: code } }) && tries < 10) {
+    code = generateClubCode()
+    tries++
   }
+  await db.club.update({ where: { id: clubId }, data: { clubCode: code } })
+  await logActivity({
+    clubId,
+    actorUserId: c.user.id,
+    actionType: "regenerate_code",
+    targetType: "club",
+    targetId: clubId,
+    description: `${c.user.name} regenerated the club code`,
+  })
+  return json({ clubCode: code })
 }

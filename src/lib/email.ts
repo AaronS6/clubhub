@@ -54,7 +54,15 @@ export interface SendEmailInput {
 export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; id?: string; reason?: string }> {
   const client = getClient()
   if (!client) {
-    console.error("[email] RESEND_API_KEY is not set — email NOT sent to:", input.to)
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[email] RESEND_API_KEY is not set — skipping email send to",
+        input.to,
+        "(subject:",
+        input.subject,
+        ")",
+      )
+    }
     return { ok: false, reason: "RESEND_API_KEY not configured" }
   }
   try {
@@ -65,13 +73,12 @@ export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; i
       html: input.html,
     })
     if (error) {
-      console.error("[email] Resend API error:", JSON.stringify(error))
-      return { ok: false, reason: String(error.message ?? error.name ?? JSON.stringify(error)) }
+      console.error("[email] Resend returned error:", error)
+      return { ok: false, reason: String(error.message ?? error.name ?? error) }
     }
-    console.log("[email] Sent successfully to:", input.to, "ID:", data?.id)
     return { ok: true, id: data?.id }
   } catch (e) {
-    console.error("[email] sendEmail exception:", e instanceof Error ? e.message : String(e))
+    console.error("[email] sendEmail failed:", e)
     return { ok: false, reason: e instanceof Error ? e.message : String(e) }
   }
 }

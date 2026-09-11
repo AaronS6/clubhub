@@ -84,7 +84,16 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PageHeader, EmptyState, initials } from "@/components/shared/page-header"
-import { DIALOG_CLASS } from "@/components/shared/dialog-class"
+
+// ---------------------------------------------------------------------------
+// Mobile full-screen dialog className — makes a Dialog fill the viewport on
+// phones (sticky header / scrollable body / sticky footer so the action
+// buttons stay reachable above the soft keyboard) and centers as a normal
+// modal on sm+ screens.
+// ---------------------------------------------------------------------------
+const MOBILE_FULLSCREEN_DIALOG =
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,8 +186,7 @@ export function MeetingsView() {
     queryFn: () => api<MeetingsResponse>(`/api/clubs/${currentClubId}/meetings`),
     enabled: !!currentClubId,
     // Realtime is primary; poll only as a fallback while the socket is down.
-    // Bumped to 30s — meetings change infrequently so 8s was over-eager.
-    refetchInterval: usePollingFallback(15_000),
+    refetchInterval: usePollingFallback(8000),
   })
 
   // Split into upcoming vs past using the server-provided "now".
@@ -808,7 +816,7 @@ function CreateMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && onOpenChange(v)}>
-      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Schedule a meeting</DialogTitle>
           <DialogDescription>
@@ -924,7 +932,7 @@ function CreateMeetingDialog({
             </div>
           </div>
 
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={pending}>
                 Cancel
@@ -1015,7 +1023,7 @@ function EditMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !pending && onOpenChange(v)}>
-      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit meeting</DialogTitle>
           <DialogDescription>
@@ -1097,7 +1105,7 @@ function EditMeetingDialog({
               </Select>
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={pending}>
                 Cancel
@@ -1167,7 +1175,7 @@ function MeetingDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !attendeesLoading && onOpenChange(v)}>
-      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
+      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
             <span className="truncate">{meeting.title}</span>
@@ -1258,7 +1266,7 @@ function MeetingDetailDialog({
           )}
         </div>
 
-        <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
+        <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
           {isExec && !isPast && (
             <Button
               variant="outline"

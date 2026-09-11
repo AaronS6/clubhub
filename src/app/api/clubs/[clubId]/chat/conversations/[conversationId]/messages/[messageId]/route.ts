@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
 import { emitClubEvent } from "@/lib/realtime-server"
@@ -7,90 +6,84 @@ import { logActivity } from "@/lib/activity"
 // PATCH /api/clubs/[clubId]/chat/conversations/[conversationId]/messages/[messageId]
 // Author only. Body: { body }. Sets editedAt=now.
 export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: string; conversationId: string; messageId: string }> }) {
-  try {
-    const { clubId, conversationId, messageId } = await ctx.params
-    const c = await getClubContext(clubId)
-    if (!c) return error("Not a member of this club", 403)
+  const { clubId, conversationId, messageId } = await ctx.params
+  const c = await getClubContext(clubId)
+  if (!c) return error("Not a member of this club", 403)
 
-    // conv + membership + message are 3 independent existence checks — fan them out.
-    const [conv, membership, message] = await Promise.all([
-      db.conversation.findUnique({ where: { id: conversationId } }),
-      db.conversationMember.findUnique({
-        where: { conversationId_userId: { conversationId, userId: c.user.id } },
-      }),
-      db.message.findUnique({ where: { id: messageId } }),
-    ])
-    if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-    if (!membership) return error("Not a member of this conversation", 403)
-    if (!message || message.conversationId !== conversationId) {
-      return error("Message not found", 404)
-    }
-    if (message.deletedAt) return error("Cannot edit a deleted message", 400)
-    if (message.authorId !== c.user.id) return error("Only the author can edit", 403)
+  // conv + membership + message are 3 independent existence checks — fan them out.
+  const [conv, membership, message] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+    db.message.findUnique({ where: { id: messageId } }),
+  ])
+  if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
+  if (!membership) return error("Not a member of this conversation", 403)
+  if (!message || message.conversationId !== conversationId) {
+    return error("Message not found", 404)
+  }
+  if (message.deletedAt) return error("Cannot edit a deleted message", 400)
+  if (message.authorId !== c.user.id) return error("Only the author can edit", 403)
 
-    const body = await req.json().catch(() => null)
-    if (!body || typeof body !== "object") return error("Invalid input", 400)
-    const text = typeof body.body === "string" ? body.body.trim() : ""
-    if (!text) return error("Message body cannot be empty", 400)
-    if (text.length > 8000) return error("Message must be 8000 characters or fewer", 400)
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== "object") return error("Invalid input", 400)
+  const text = typeof body.body === "string" ? body.body.trim() : ""
+  if (!text) return error("Message body cannot be empty", 400)
+  if (text.length > 8000) return error("Message must be 8000 characters or fewer", 400)
 
-    // message.update + conversation.update (touch updatedAt) write to different
-    // rows/tables and are independent — fan them out in parallel.
-    const [updated] = await Promise.all([
-      db.message.update({
-        where: { id: messageId },
-        data: { body: text, editedAt: new Date() },
-        include: {
-          author: { select: { id: true, name: true, avatarUrl: true } },
-          reactions: {
-            select: {
-              emoji: true,
-              userId: true,
-              user: { select: { id: true, name: true, avatarUrl: true } },
-            },
+  // message.update + conversation.update (touch updatedAt) write to different
+  // rows/tables and are independent — fan them out in parallel.
+  const [updated] = await Promise.all([
+    db.message.update({
+      where: { id: messageId },
+      data: { body: text, editedAt: new Date() },
+      include: {
+        author: { select: { id: true, name: true, avatarUrl: true } },
+        reactions: {
+          select: {
+            emoji: true,
+            userId: true,
+            user: { select: { id: true, name: true, avatarUrl: true } },
           },
         },
-      }),
-      db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
-    ])
-
-    // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
-    await Promise.all([
-      logActivity({
-        clubId,
-        actorUserId: c.user.id,
-        actionType: "chat_message_edited",
-        targetType: "message",
-        targetId: messageId,
-        description: `${c.user.name} edited a chat message`,
-      }),
-      emitClubEvent(clubId, "chat_message", { conversationId }),
-    ])
-
-    return json({
-      message: {
-        id: updated.id,
-        body: updated.body,
-        createdAt: updated.createdAt,
-        editedAt: updated.editedAt,
-        deletedAt: updated.deletedAt,
-        pinnedAt: updated.pinnedAt,
-        authorId: updated.authorId,
-        author: {
-          id: updated.author.id,
-          name: updated.author.name,
-          avatarUrl: updated.author.avatarUrl ?? null,
-        },
-        reactions: groupReactions(updated.reactions, c.user.id).reactions,
-        myReaction: groupReactions(updated.reactions, c.user.id).myReaction,
-        isMine: true,
       },
-    })
+    }),
+    db.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } }),
+  ])
 
-  } catch (err: any) {
-    console.error("[clubs/chat/conversations/messages PATCH] error:", err?.message, err?.code, err?.meta)
-    return NextResponse.json({ error: "Failed to update message: " + (err?.message || "Unknown error") }, { status: 500 })
-  }
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "chat_message_edited",
+      targetType: "message",
+      targetId: messageId,
+      description: `${c.user.name} edited a chat message`,
+    }),
+    emitClubEvent(clubId, "chat_message", { conversationId }),
+  ])
+
+  return json({
+    message: {
+      id: updated.id,
+      body: updated.body,
+      createdAt: updated.createdAt,
+      editedAt: updated.editedAt,
+      deletedAt: updated.deletedAt,
+      pinnedAt: updated.pinnedAt,
+      authorId: updated.authorId,
+      author: {
+        id: updated.author.id,
+        name: updated.author.name,
+        avatarUrl: updated.author.avatarUrl ?? null,
+      },
+      reactions: groupReactions(updated.reactions, c.user.id).reactions,
+      myReaction: groupReactions(updated.reactions, c.user.id).myReaction,
+      isMine: true,
+    },
+  })
 }
 
 function groupReactions(
@@ -116,51 +109,45 @@ function groupReactions(
 // DELETE /api/clubs/[clubId]/chat/conversations/[conversationId]/messages/[messageId]
 // Author OR conversation owner OR executive. Soft-deletes (deletedAt=now).
 export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: string; conversationId: string; messageId: string }> }) {
-  try {
-    const { clubId, conversationId, messageId } = await ctx.params
-    const c = await getClubContext(clubId)
-    if (!c) return error("Not a member of this club", 403)
+  const { clubId, conversationId, messageId } = await ctx.params
+  const c = await getClubContext(clubId)
+  if (!c) return error("Not a member of this club", 403)
 
-    // conv + membership + message are 3 independent existence checks — fan them out.
-    const [conv, membership, message] = await Promise.all([
-      db.conversation.findUnique({ where: { id: conversationId } }),
-      db.conversationMember.findUnique({
-        where: { conversationId_userId: { conversationId, userId: c.user.id } },
-      }),
-      db.message.findUnique({ where: { id: messageId } }),
-    ])
-    if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
-    if (!membership) return error("Not a member of this conversation", 403)
-    if (!message || message.conversationId !== conversationId) {
-      return error("Message not found", 404)
-    }
-    if (message.deletedAt) return json({ ok: true })
-
-    const isAuthor = message.authorId === c.user.id
-    const isOwner = membership.role === "owner"
-    const isExec = c.membership.role === "executive"
-    if (!isAuthor && !isOwner && !isExec) {
-      return error("Only the author, conversation owner, or an executive can delete", 403)
-    }
-
-    await db.message.update({ where: { id: messageId }, data: { deletedAt: new Date() } })
-
-    // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
-    await Promise.all([
-      logActivity({
-        clubId,
-        actorUserId: c.user.id,
-        actionType: "chat_message_deleted",
-        targetType: "message",
-        targetId: messageId,
-        description: `${c.user.name} deleted a chat message`,
-      }),
-      emitClubEvent(clubId, "chat_message", { conversationId }),
-    ])
-    return json({ ok: true })
-
-  } catch (err: any) {
-    console.error("[clubs/chat/conversations/messages DELETE] error:", err?.message, err?.code, err?.meta)
-    return NextResponse.json({ error: "Failed to delete message: " + (err?.message || "Unknown error") }, { status: 500 })
+  // conv + membership + message are 3 independent existence checks — fan them out.
+  const [conv, membership, message] = await Promise.all([
+    db.conversation.findUnique({ where: { id: conversationId } }),
+    db.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: c.user.id } },
+    }),
+    db.message.findUnique({ where: { id: messageId } }),
+  ])
+  if (!conv || conv.clubId !== clubId) return error("Conversation not found", 404)
+  if (!membership) return error("Not a member of this conversation", 403)
+  if (!message || message.conversationId !== conversationId) {
+    return error("Message not found", 404)
   }
+  if (message.deletedAt) return json({ ok: true })
+
+  const isAuthor = message.authorId === c.user.id
+  const isOwner = membership.role === "owner"
+  const isExec = c.membership.role === "executive"
+  if (!isAuthor && !isOwner && !isExec) {
+    return error("Only the author, conversation owner, or an executive can delete", 403)
+  }
+
+  await db.message.update({ where: { id: messageId }, data: { deletedAt: new Date() } })
+
+  // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
+  await Promise.all([
+    logActivity({
+      clubId,
+      actorUserId: c.user.id,
+      actionType: "chat_message_deleted",
+      targetType: "message",
+      targetId: messageId,
+      description: `${c.user.name} deleted a chat message`,
+    }),
+    emitClubEvent(clubId, "chat_message", { conversationId }),
+  ])
+  return json({ ok: true })
 }

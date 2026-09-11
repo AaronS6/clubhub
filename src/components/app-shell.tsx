@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { useAppStore, View } from "@/lib/store"
-import { api, apiUpload } from "@/lib/api/client"
+import { api } from "@/lib/api/client"
 import { useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { toast } from "sonner"
@@ -33,10 +33,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   LayoutDashboard, Megaphone, Clock, CheckSquare, CalendarDays, Users,
-  ScrollText, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
+  ScrollText, Settings, Bell, LogOut, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, Keyboard, RefreshCw,
-  Upload, Trash2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -44,7 +43,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
-import { BrandMark } from "@/components/brand-mark"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { useRealtimeSync } from "@/lib/use-realtime-sync"
 import { openGlobalSearch } from "@/components/global-search"
@@ -118,7 +116,7 @@ const NAV_TIERS: NavTier[] = [
       { view: "teams", label: "Teams", icon: Users },
       { view: "members", label: "Members", icon: UserCog },
       { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
-      { view: "activity", label: "Activity Log", icon: ScrollText, execOnly: true },
+      { view: "activity", label: "Activity Log", icon: ScrollText },
     ],
   },
 ]
@@ -236,7 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/40 p-6">
           <div className="w-full max-w-md text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-club text-club-foreground shadow-sm">
-              <BrandMark size={36} />
+              <Sparkles className="h-7 w-7" />
             </div>
             <h1 className="text-page-title">Welcome to ClubHub</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
@@ -250,6 +248,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
+        <Footer />
         <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       </div>
     )
@@ -262,6 +261,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       clubs={clubs}
       currentClub={currentClub ?? null}
       onSelect={(id) => { selectClub(id); setMobileNavOpen(false) }}
+      onCreate={() => setCreateOpen(true)}
     />
   )
 
@@ -324,17 +324,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Persistent top bar — desktop + mobile.
   //   LEFT:   profile avatar menu (UserMenu)
-  //   LEFT:   (mobile hamburger)
   //   CENTER: global search trigger
-  //   RIGHT:  connection dot, keyboard help, notification bell, profile avatar
-  // The theme toggle lives in the LEFT SIDEBAR (not the top bar).
+  //   RIGHT:  connection dot, keyboard help, theme toggle, notification bell
+  // The club switcher has moved to the BOTTOM of the sidebar.
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
-      {/* App brand mark — desktop only (hidden on mobile to save space) */}
-      <div className="hidden md:flex items-center gap-2 shrink-0">
-        <BrandMark size={28} />
-        <span className="text-sm font-semibold tracking-tight">ClubHub</span>
-      </div>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 sticky top-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Mobile hamburger */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetTrigger asChild>
@@ -343,20 +337,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0 flex flex-col">
-          {/* Club switcher at the TOP of the mobile drawer — primary navigation action */}
-          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Theme toggle at the bottom of the mobile drawer */}
-          <div className="border-t p-2 shrink-0 flex items-center">
-            <Button variant="ghost" size="sm" className="w-full justify-start" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-              {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </Button>
-          </div>
+          {/* Club switcher pinned to the bottom of the mobile drawer */}
+          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
         </SheetContent>
       </Sheet>
 
-      {/* Search (center, desktop) */}
+      {/* Profile avatar menu — TOP LEFT of the top bar (desktop + mobile) */}
+      <div className="shrink-0">
+        <UserMenu compact />
+      </div>
+
+      {/* Search (center, desktop) — bordered trigger styled to match a real
+          input. The previous outline/ring mismatched the dimensions; this
+          uses a single border + matching py-1.5 so the focus ring sits
+          flush on the box instead of offset. */}
       <button
         type="button"
         onClick={() => openGlobalSearch()}
@@ -376,7 +371,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {currentClub?.clubName}
       </div>
 
-      {/* Right side: search icon (mobile), connection, bell, profile */}
+      {/* Right side: search icon (mobile), connection, keyboard, theme, bell */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
@@ -389,32 +384,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SearchIcon className="h-4 w-4" />
         </Button>
         <ConnectionIndicator />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (press ?)"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("open-keyboard-shortcuts"))
+          }
+        >
+          <Keyboard className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <NotificationBell />
-        {/* Profile avatar menu — RIGHT side of the top bar */}
-        <UserMenu compact />
       </div>
     </header>
   )
 
   return (
-    <div className="h-dvh flex flex-col bg-background overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-background">
       <UrgentBanner />
       {topBar}
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">
-          {/* Club switcher at the TOP of the sidebar — primary navigation action.
-              Switching clubs is frequent; it belongs above the nav, not at the
-              bottom with Profile/Settings/logout. */}
-          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Theme toggle at the bottom of the sidebar */}
-          <div className="border-t p-2 shrink-0">
-            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-              {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
-              {theme === "dark" ? "Light mode" : "Dark mode"}
-            </Button>
-          </div>
+          {/* Club switcher pinned to the BOTTOM of the sidebar (moved here
+              from the top bar per the user's request). */}
+          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col">
@@ -423,16 +422,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {children}
             </div>
           </div>
+          <Footer />
         </main>
       </div>
 
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <GlobalSearch />
+      <KeyboardShortcutsHelp />
     </div>
   )
 }
 
-// Footer removed per user request (was showing "ClubHub · Multi-club management platform" + keyboard shortcuts link)
+function Footer() {
+  return (
+    <footer className="border-t bg-background px-4 md:px-6 py-3 text-center text-xs text-muted-foreground shrink-0" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="flex items-center justify-center gap-3 flex-wrap">
+        <span>ClubHub · Multi-club management platform</span>
+        <span aria-hidden className="text-muted-foreground/40">·</span>
+        <button
+          type="button"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("open-keyboard-shortcuts"))
+          }
+          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground hover:underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          aria-label="Keyboard shortcuts help"
+        >
+          <Keyboard className="h-3 w-3" />
+          <span>Shortcuts</span>
+          <kbd className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded border bg-muted text-[10px] font-mono">
+            ?
+          </kbd>
+        </button>
+      </div>
+    </footer>
+  )
+}
 
 /**
  * Dismissible banner shown at the very top of the app whenever the current
@@ -583,14 +607,13 @@ function UrgentBanner() {
 }
 
 function ClubSwitcher({
-  clubs, currentClub, onSelect,
+  clubs, currentClub, onSelect, onCreate,
 }: {
   clubs: MeResponse["memberships"]
   currentClub: MeResponse["memberships"][number] | null
   onSelect: (id: string) => void
+  onCreate: () => void
 }) {
-  const [showJoin, setShowJoin] = useState(false)
-  const setClubs = useAppStore((s) => s.setClubs)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -613,7 +636,7 @@ function ClubSwitcher({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel className="text-caption-medium uppercase tracking-wide">Clubs</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-caption-medium uppercase tracking-wide">Your clubs</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {clubs.map((c) => (
           <DropdownMenuItem key={c.clubId} onClick={() => onSelect(c.clubId)} className="cursor-pointer gap-2.5 py-2">
@@ -631,11 +654,10 @@ function ClubSwitcher({
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer text-club">
-          <LogIn className="mr-2 h-4 w-4" /> Join a club
+        <DropdownMenuItem onClick={onCreate} className="cursor-pointer text-club">
+          <Plus className="mr-2 h-4 w-4" /> Create new club
         </DropdownMenuItem>
       </DropdownMenuContent>
-      <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
     </DropdownMenu>
   )
 }
@@ -645,7 +667,6 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
   const [showSettings, setShowSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security">("profile")
   const [showJoin, setShowJoin] = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const user = session?.user
 
@@ -723,13 +744,10 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer">
-            <LogIn className="mr-2 h-4 w-4" /> Join a club
+            <Plus className="mr-2 h-4 w-4" /> Join a club
           </DropdownMenuItem>
           <DropdownMenuItem onClick={openSettingsFromMenu} className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" /> Account settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4" /> Create a club
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-red-600 focus:text-red-600">
             <LogOut className="mr-2 h-4 w-4" /> Sign out
@@ -737,7 +755,6 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
         </DropdownMenuContent>
       </DropdownMenu>
       <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
-      <CreateClubDialog open={showCreate} onOpenChange={setShowCreate} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <SettingsDialog
         open={showSettings}
         onOpenChange={setShowSettings}
@@ -843,13 +860,11 @@ function SettingsDialog({
   tab: "profile" | "notifications" | "security"
   onTabChange: (v: "profile" | "notifications" | "security") => void
 }) {
-  const { data: session, update: updateSession } = useSession()
+  const { data: session } = useSession()
   const [name, setName] = useState(session?.user?.name ?? "")
   const [bio, setBio] = useState("")
   const [avatarUrl, setAvatarUrl] = useState(session?.user?.image ?? "")
   const [loading, setLoading] = useState(false)
-  const [avatarUploading, setAvatarUploading] = useState(false)
-  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const setClubs = useAppStore((s) => s.setClubs)
@@ -865,46 +880,6 @@ function SettingsDialog({
       toast.error(err.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function onAvatarFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    // Reset the input so the same file can be re-selected later.
-    e.target.value = ""
-    if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image is too large (5MB max)")
-      return
-    }
-    setAvatarUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append("file", file)
-      const res = await apiUpload<{ avatarUrl: string }>("/api/me/avatar", fd)
-      setAvatarUrl(res.avatarUrl)
-      // Refresh the session so the top-bar / sidebar avatar updates too —
-      // the session callback in authOptions re-reads avatarUrl from the DB.
-      await updateSession()
-      toast.success("Profile picture updated")
-    } catch (err: any) {
-      toast.error(err.message || "Couldn't upload image")
-    } finally {
-      setAvatarUploading(false)
-    }
-  }
-
-  async function removeAvatar() {
-    setAvatarUploading(true)
-    try {
-      await api("/api/me/avatar", { method: "DELETE" })
-      setAvatarUrl("")
-      await updateSession()
-      toast.success("Profile picture removed")
-    } catch (err: any) {
-      toast.error(err.message || "Couldn't remove image")
-    } finally {
-      setAvatarUploading(false)
     }
   }
   async function changePassword() {
@@ -937,57 +912,13 @@ function SettingsDialog({
 
           <TabsContent value="profile" className="mt-4">
             <div className="space-y-4">
-              {/* Profile picture upload */}
-              <div className="flex items-center gap-4">
-                <Avatar className="h-16 w-16 shrink-0">
-                  <AvatarImage src={avatarUrl || undefined} alt={name} />
-                  <AvatarFallback className="text-lg">
-                    {initials(name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={onAvatarFileChosen}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => avatarInputRef.current?.click()}
-                    disabled={avatarUploading}
-                  >
-                    {avatarUploading ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Upload className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    {avatarUploading ? "Uploading…" : "Upload"}
-                  </Button>
-                  {avatarUrl && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={removeAvatar}
-                      disabled={avatarUploading}
-                    >
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      Remove
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <p className="text-caption text-muted-foreground -mt-1">
-                PNG, JPG, or GIF. Resized to 256×256. 5MB max.
-              </p>
-
               <div className="space-y-2">
                 <Label>Display name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Avatar URL</Label>
+                <Input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." />
               </div>
               <div className="space-y-2">
                 <Label>Bio</Label>
@@ -1553,4 +1484,105 @@ function NotifRow({
     </div>
   )
 }
-// KeyboardShortcutsHelp + SHORTCUTS removed per user request
+
+/**
+ * Keyboard shortcuts help dialog.
+ *
+ * Listens globally for `?` (Shift+/) and opens a small Dialog listing every
+ * keyboard shortcut available in the app. The listener is intentionally
+ * suppressed when the user is typing in an input/textarea/contentEditable
+ * element, or when a meta key (Cmd/Ctrl/Alt) is held — those combinations
+ * belong to the OS or browser, not us.
+ *
+ * Other UI surfaces (the footer "Shortcuts" button, the top-bar `?` button)
+ * dispatch an `open-keyboard-shortcuts` CustomEvent to trigger the same dialog
+ * — same pattern the SettingsDialog uses for its `open-settings` event.
+ */
+function KeyboardShortcutsHelp() {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Ignore when a meta/ctrl/alt key is held — those are browser/OS
+      // shortcuts, not ours.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      // Ignore when the user is typing in an input, textarea, or any
+      // contentEditable element. (Selects are included too — typing `?`
+      // inside a select wouldn't make sense anyway.)
+      const t = e.target as HTMLElement | null
+      if (t) {
+        const tag = t.tagName
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          t.isContentEditable
+        ) {
+          return
+        }
+      }
+      if (e.key === "?") {
+        e.preventDefault()
+        setOpen(true)
+      }
+    }
+    function onOpenEvent(e: Event) {
+      setOpen(true)
+    }
+    window.addEventListener("keydown", onKey)
+    window.addEventListener("open-keyboard-shortcuts", onOpenEvent as EventListener)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      window.removeEventListener("open-keyboard-shortcuts", onOpenEvent as EventListener)
+    }
+  }, [])
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Keyboard className="h-4 w-4 text-club" />
+            Keyboard shortcuts
+          </DialogTitle>
+          <DialogDescription>
+            Press these keys anywhere in the app to navigate faster.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-2 mt-2">
+          {SHORTCUTS.map((s) => (
+            <li
+              key={s.label}
+              className="flex items-center justify-between gap-3 rounded-md border bg-card/40 px-3 py-2"
+            >
+              <span className="text-body-medium">{s.label}</span>
+              <span className="flex items-center gap-1 shrink-0">
+                {s.keys.map((k, i) => (
+                  <kbd
+                    key={i}
+                    className="inline-flex items-center justify-center min-w-6 h-5 px-1.5 rounded border bg-muted text-[11px] font-mono text-foreground"
+                  >
+                    {k}
+                  </kbd>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-caption text-muted-foreground mt-3">
+          Tip: shortcuts are ignored while you&apos;re typing in a text field.
+        </p>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Keyboard shortcuts surfaced in the help dialog. */
+const SHORTCUTS: { label: string; keys: string[] }[] = [
+  { label: "Open search", keys: ["⌘/Ctrl", "K"] },
+  { label: "Open search (alt)", keys: ["/"] },
+  { label: "Open this help", keys: ["?"] },
+  { label: "Send chat message", keys: ["Enter"] },
+  { label: "New line in chat", keys: ["Shift", "Enter"] },
+  { label: "Close dialog or menu", keys: ["Esc"] },
+]
