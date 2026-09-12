@@ -48,3 +48,45 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
   const updated = await db.club.update({ where: { id: clubId }, data, select: { id: true, name: true, description: true, accentColor: true, logoUrl: true, hoursGoal: true } })
   return json({ club: updated })
 }
+
+/**
+ * DELETE /api/clubs/[clubId]
+ * Executive-only. Permanently deletes the club and ALL its data (members,
+ * hours, tasks, meetings, announcements, chat, etc.) via cascading deletes.
+ *
+ * Safety: requires `confirmPassword` in the body to match the club's join
+ * password, preventing accidental deletion.
+ */
+export async function DELETE(req: Request, ctx: { params: Promise<{ clubId: string }> }) {
+  try {
+    const { clubId } = await ctx.params
+    const c = await getClubContext(clubId)
+    if (!c) return error("Not a member of this club", 403)
+    if (c.membership.role !== "executive") return error("Only executives can delete a club", 403)
+
+    // Require confirmation: the request body must contain `confirmPassword`
+    // matching the club's join password. This prevents accidental deletion.
+    const body = await req.json().catch(() => null)
+    const confirmPassword = body?.confirmPassword
+    if (!confirmPassword || typeof confirmPassword !== "string") {
+      return error("Confirmation required: send { confirmPassword: '<club password>' }", 400)
+    }
+
+    const club = await db.club.findUnique({ where: { id: clubId }, select: { name: true, clubPasswordEnc: true } })
+    if (!club) return error("Club not found", 404)
+
+    // Verify the club password
+    const { verifyClubPassword } = await import("@/lib/club-crypto")
+    if (!verifyClubPassword(confirmPassword, club.clubPasswordEnc)) {
+      return error("Incorrect club password. Enter the club's join password to confirm deletion.", 403)
+    }
+
+    // Delete the club — cascading deletes handle all related data
+    await db.club.delete({ where: { id: clubId } })
+
+    return json({ ok: true, deleted: club.name })
+  } catch (err: any) {
+    console.error("[clubs DELETE] error:", err?.message, err?.code, err?.meta)
+    return NextResponse.json({ error: "Failed to delete club: " + (err?.message || "Unknown error") }, { status: 500 })
+  }
+}

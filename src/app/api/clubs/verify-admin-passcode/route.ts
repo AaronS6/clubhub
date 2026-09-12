@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { getSessionUser } from "@/lib/server-auth"
-import { ADMIN_PASSCODE } from "@/lib/admin-passcode"
+import { requireAdminPasscode } from "@/lib/admin-passcode"
 
 /**
  * POST /api/clubs/verify-admin-passcode
@@ -25,5 +25,5 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ valid: false }, { status: 400 })
   }
-  return NextResponse.json({ valid: parsed.data.adminPasscode === ADMIN_PASSCODE })
+  return NextResponse.json({ valid: parsed.data.adminPasscode === requireAdminPasscode() })
 }

@@ -2,6 +2,37 @@ import { db } from "@/lib/db"
 import { getSessionUser, json, error } from "@/lib/server-auth"
 
 /**
+ * DELETE /api/notifications
+ *
+ * Permanently deletes ALL of the current user's notifications (both read
+ * and unread). Used by the bell dropdown's "Clear all" button — distinct
+ * from POST /api/notifications/read-all which only flips `isRead` to true.
+ *
+ * Returns `{ ok: true, deleted: <count> }` where `deleted` is the number of
+ * rows actually removed (handy for toasts / analytics).
+ *
+ * Auth: requires a valid session (`getSessionUser`). A user can only ever
+ * clear their own notifications — the `where` clause is always scoped to
+ * their `userId`, so even a malformed request body cannot affect others.
+ */
+export async function DELETE() {
+  try {
+    const user = await getSessionUser()
+    if (!user) return error("Unauthorized", 401)
+
+    const result = await db.notification.deleteMany({
+      where: { userId: user.id },
+    })
+
+    return json({ ok: true, deleted: result.count })
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to clear notifications"
+    return error(message, 500)
+  }
+}
+
+/**
  * GET /api/notifications
  *
  * Returns the current user's notifications, newest first.

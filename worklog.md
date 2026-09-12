@@ -1438,3 +1438,36 @@ Stage Summary:
 - Hours view: time-period select (this/last month, this/last year, all time) with month grouping for years and a collapsible "Older entries" section for all_time.
 - Approvals: Pending/Reviewed tabs; reviewed tab shows reviewer, review date, comment, and a delete button.
 - Activity log: "Clear all" button (exec-only) with confirmation dialog.
+
+---
+Task ID: R14-FIXES
+Agent: full-stack-developer (Z.ai Code)
+Task: Add "Clear all" button to the notification bell dropdown + remove the white background from `public/club-logo.png`.
+
+Work Log:
+- **DELETE /api/notifications** (`src/app/api/notifications/route.ts`):
+  - Added a `DELETE` handler above the existing `GET`. Uses `getSessionUser()` (401 if no session) then `db.notification.deleteMany({ where: { userId: user.id } })` — deletes ALL of the user's notifications (read + unread). The `where` clause is always scoped to the session user, so no request-body-driven scope is possible.
+  - Returns `{ ok: true, deleted: <count> }` (200). Wrapped in try/catch with a human-readable 500 message on failure (`err instanceof Error ? err.message : "Failed to clear notifications"`).
+  - Did NOT touch the existing `GET`, the `/read-all` route, or `prisma/schema.prisma`. Did NOT touch `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
+- **NotificationBell + BellBody "Clear all" button** (`src/components/app-shell.tsx`):
+  - `NotificationBell`: added `clearingAll` state + `clearAll()` — optimistic (empties `items`, zeroes `unread`, snapshots `prevItems` for rollback), `DELETE /api/notifications`, `toast.success("All notifications cleared")` on success, rolls back + `toast.error(...)` on failure. Threaded `clearingAll` + `onClearAll={clearAll}` into `<BellBody>`.
+  - `BellBody`: extended props with `clearingAll: boolean` + `onClearAll: () => void`. Added a small ghost-styled button between "Mark all read" and "View all": only renders when `items.length > 0`; `Trash2` icon (swapped for a spinning `Loader2` while `clearingAll`); `aria-label="Clear all notifications"`; `text-muted-foreground hover:text-destructive hover:underline min-h-9` so it's visually subordinate to "Mark all read" (`text-club`) and destructive on hover. `min-h-9` matches the other header actions for touch targets.
+  - "Mark all read" is unchanged and still only flips `isRead` (POST `/api/notifications/read-all`). The two buttons are clearly distinct in semantics, label, icon, and hover color.
+  - `Trash2` + `Loader2` were already imported from `lucide-react` — no new imports.
+- **Club logo background removal** (`scripts/remove-logo-bg.ts` + `public/club-logo.png`):
+  - Wrote `scripts/remove-logo-bg.ts`: loads `public/club-logo.png` with `sharp`, `.ensureAlpha().raw()` → flat 4-channel RGBA8 buffer (1024×1024). Walks every pixel; if `r > 230 && g > 230 && b > 230` → set alpha byte to `0` (transparent), else set alpha to `255` (opaque, preserving original RGB). Re-wraps the mutated buffer with `sharp(data, { raw: { width, height, channels: 4 } })` and writes back as PNG (`compressionLevel: 9`). Logs dimensions + transparent-pixel count + percentage. Exits 0/1 with clear errors.
+  - `ensureAlpha` is critical because the source file was actually a baseline JPEG renamed to `.png` (verified via `file`) — sharp sniffs the real codec from the buffer, not the extension.
+  - The 230 threshold (just-below pure white) catches slightly-off-white JPEG artifacts around the logo edge for a halo-free cutout. Anything darker than 230 is preserved as-is, so the logo's original colors are untouched.
+  - Ran `bun run scripts/remove-logo-bg.ts`:
+    - Before: 63,174 bytes, "JPEG image data", no alpha channel.
+    - After: 485,339 bytes, "PNG image data, 1024 x 1024, 8-bit/color RGBA", true alpha channel.
+    - 289,354 / 1,048,576 px (27.6%) made transparent (the white background). 72.4% kept at full opacity with original colors.
+
+Verification:
+- `bun run lint` → **EXIT 0**, zero errors / zero warnings.
+- Did NOT restart the dev server. Did NOT touch `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
+- `dev.log` was not present at the project root at the time of the work, so no log inspection was possible. Lint passing + the API/frontend changes being syntactically minimal and self-contained is the verification signal.
+
+Stage Summary:
+- Notification bell has a "Clear all" button (ghost, trash icon, destructive hover) next to "Mark all read" — actually deletes all notifications (distinct from mark-as-read) and shows a success toast.
+- `public/club-logo.png` is now a true PNG with alpha; the white background is transparent while the logo art is preserved.

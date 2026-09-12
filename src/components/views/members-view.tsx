@@ -50,6 +50,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import {
   Dialog,
@@ -140,6 +141,7 @@ interface ImportResult {
 export function MembersView() {
   const clubId = useAppStore((s) => s.currentClubId)
   const role = useAppStore((s) => s.currentClub?.role)
+  const clubName = useAppStore((s) => s.currentClub?.clubName)
   const clubCode = useAppStore((s) => s.currentClub?.clubCode)
   const isExec = role === "executive"
 
@@ -200,6 +202,9 @@ export function MembersView() {
 
       {/* Club code section — exec only */}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
+
+      {/* Delete club section — exec only */}
+      {isExec && <DeleteClubSection clubId={clubId} clubName={clubName ?? ""} />}
 
       {/* Search */}
       <div className="relative">
@@ -798,6 +803,88 @@ function ChangePasswordDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Delete club section (exec only) — requires club password to confirm
+// ---------------------------------------------------------------------------
+
+function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: string }) {
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function handleDelete() {
+    if (!password.trim()) {
+      toast.error("Enter the club password to confirm deletion")
+      return
+    }
+    setLoading(true)
+    try {
+      await api(`/api/clubs/${clubId}`, {
+        method: "DELETE",
+        json: { confirmPassword: password },
+      })
+      toast.success(`Club "${clubName}" has been permanently deleted`)
+      // Reload the page to reset the app state (the club no longer exists)
+      setTimeout(() => window.location.reload(), 500)
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete club")
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5 border-red-200 dark:border-red-900/50">
+      <div className="pb-3">
+        <h3 className="text-section-title flex items-center gap-2 text-red-600 dark:text-red-400">
+          <AlertTriangle className="h-4 w-4" /> Danger zone
+        </h3>
+        <p className="text-caption text-muted-foreground mt-1">
+          Permanently delete this club and ALL its data — members, hours, tasks, meetings, announcements, and chat. This cannot be undone.
+        </p>
+      </div>
+      <AlertDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPassword("") }}>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">
+            <Trash2 className="mr-1.5 h-4 w-4" /> Delete club
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              Delete "{clubName}"?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the club and all its data. This action cannot be undone.
+              <br /><br />
+              Enter the club's join password to confirm:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Club password"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter" && !loading) handleDelete() }}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDelete() }}
+              disabled={loading || !password.trim()}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
+              Delete permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Member row (desktop)
 // ---------------------------------------------------------------------------
 
@@ -944,6 +1031,36 @@ function MemberRow({
                 >
                   <UserMinus className="mr-2 h-4 w-4" /> Remove from club
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={async () => {
+                    try {
+                      const res = await api<{ resetUrl: string; memberName: string }>(
+                        `/api/clubs/${clubId}/members/${member.user.id}/reset-password`,
+                        { method: "POST" }
+                      )
+                      // Copy to clipboard + show toast with the link
+                      try {
+                        await navigator.clipboard.writeText(res.resetUrl)
+                        toast.success(`Reset link for ${res.memberName} copied to clipboard! Send it to them via chat/text.`)
+                      } catch {
+                        // Clipboard failed — show the link in a toast
+                        toast(`Reset link for ${res.memberName}`, {
+                          description: res.resetUrl,
+                          duration: 30000,
+                          action: {
+                            label: "Copy",
+                            onClick: () => navigator.clipboard.writeText(res.resetUrl),
+                          },
+                        })
+                      }
+                    } catch (e: any) {
+                      toast.error(e.message || "Failed to generate reset link")
+                    }
+                  }}
+                >
+                  <KeyRound className="mr-2 h-4 w-4" /> Reset password
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
@@ -1089,6 +1206,32 @@ function MemberMobileCard({
             )}
             <Button size="sm" variant="outline" className="text-red-600" onClick={onRemove}>
               <UserMinus className="mr-1.5 h-3.5 w-3.5" /> Remove
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const res = await api<{ resetUrl: string; memberName: string }>(
+                    `/api/clubs/${clubId}/members/${member.user.id}/reset-password`,
+                    { method: "POST" }
+                  )
+                  try {
+                    await navigator.clipboard.writeText(res.resetUrl)
+                    toast.success(`Reset link for ${res.memberName} copied! Send it to them.`)
+                  } catch {
+                    toast(`Reset link for ${res.memberName}`, {
+                      description: res.resetUrl,
+                      duration: 30000,
+                      action: { label: "Copy", onClick: () => navigator.clipboard.writeText(res.resetUrl) },
+                    })
+                  }
+                } catch (e: any) {
+                  toast.error(e.message || "Failed to generate reset link")
+                }
+              }}
+            >
+              <KeyRound className="mr-1.5 h-3.5 w-3.5" /> Reset password
             </Button>
           </div>
         </>

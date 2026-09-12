@@ -20,6 +20,6 @@ services:
       - key: NEXTAUTH_URL
         value: https://clubhub-web.onrender.com
       - key: ADMIN_CLUB_PASSCODE
-        value: buildtogether12$
+        sync: false # set manually in Render dashboard — do NOT hardcode secrets in YAML
       - key: NODE_ENV
         value: production

@@ -755,6 +755,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
         onOpenChange={setShowSettings}
         tab={settingsTab}
         onTabChange={(t) => setSettingsTab(t as "profile" | "notifications" | "security")}
+        isExec={useAppStore.getState().currentClub?.role === "executive"}
       />
     </>
   )
@@ -848,12 +849,13 @@ function JoinClubDialog({
 }
 
 function SettingsDialog({
-  open, onOpenChange, tab, onTabChange,
+  open, onOpenChange, tab, onTabChange, isExec,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
   tab: "profile" | "notifications" | "security"
   onTabChange: (v: "profile" | "notifications" | "security") => void
+  isExec: boolean
 }) {
   const { data: session, update } = useSession()
   const [name, setName] = useState(session?.user?.name ?? "")
@@ -942,10 +944,10 @@ function SettingsDialog({
           <DialogDescription>Update your profile, notification preferences, and password.</DialogDescription>
         </DialogHeader>
         <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "notifications" | "security")} className="w-full">
-          <TabsList className="grid grid-cols-3 w-full">
+          <TabsList className={cn("w-full", isExec ? "grid grid-cols-3" : "grid grid-cols-2")}>
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
+            {isExec && <TabsTrigger value="security">Security</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="profile" className="mt-4">
@@ -1025,16 +1027,18 @@ function SettingsDialog({
             <NotificationsTab userEmail={session?.user?.email ?? ""} />
           </TabsContent>
 
-          <TabsContent value="security" className="mt-4">
-            <div className="space-y-2">
-              <Label>Change password</Label>
-              <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
-              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
-              <Button variant="club" onClick={changePassword} disabled={loading}>
-                {loading ? "Saving..." : "Change password"}
-              </Button>
-            </div>
-          </TabsContent>
+          {isExec && (
+            <TabsContent value="security" className="mt-4">
+              <div className="space-y-2">
+                <Label>Change password</Label>
+                <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
+                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
+                <Button variant="club" onClick={changePassword} disabled={loading}>
+                  {loading ? "Saving..." : "Change password"}
+                </Button>
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -1221,6 +1225,7 @@ function NotificationBell() {
   const [unread, setUnread] = useState(0)
   const [open, setOpen] = useState(false)
   const [markingAll, setMarkingAll] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
   const setView = useAppStore((s) => s.setView)
 
   const refresh = useCallback(async () => {
@@ -1259,6 +1264,28 @@ function NotificationBell() {
       refresh()
     } finally {
       setMarkingAll(false)
+    }
+  }
+
+  async function clearAll() {
+    if (clearingAll) return
+    setClearingAll(true)
+    // Optimistic — empty the list + reset the unread badge immediately.
+    const prevItems = items
+    setItems([])
+    setUnread(0)
+    try {
+      await api("/api/notifications", { method: "DELETE" })
+      toast.success("All notifications cleared")
+    } catch (err) {
+      // Roll back on failure so we don't lie about state.
+      setItems(prevItems)
+      refresh()
+      toast.error(
+        err instanceof Error ? err.message : "Failed to clear notifications"
+      )
+    } finally {
+      setClearingAll(false)
     }
   }
 
@@ -1320,7 +1347,9 @@ function NotificationBell() {
       earlierItems={earlierItems}
       unread={unread}
       markingAll={markingAll}
+      clearingAll={clearingAll}
       onMarkAllRead={markAllRead}
+      onClearAll={clearAll}
       onMarkRead={markRead}
       onNotifClick={handleNotifClick}
       onViewAll={viewAll}
@@ -1374,7 +1403,9 @@ function BellBody({
   earlierItems,
   unread,
   markingAll,
+  clearingAll,
   onMarkAllRead,
+  onClearAll,
   onMarkRead,
   onNotifClick,
   onViewAll,
@@ -1385,7 +1416,9 @@ function BellBody({
   earlierItems: NotifItem[]
   unread: number
   markingAll: boolean
+  clearingAll: boolean
   onMarkAllRead: () => void
+  onClearAll: () => void
   onMarkRead: (id: string) => void
   onNotifClick: (n: NotifItem) => void
   onViewAll: () => void
@@ -1413,6 +1446,22 @@ function BellBody({
             >
               <CheckCheck className="h-3.5 w-3.5" />
               Mark all read
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearAll}
+              disabled={clearingAll}
+              aria-label="Clear all notifications"
+              className="inline-flex items-center gap-1 text-caption-medium text-muted-foreground hover:text-destructive hover:underline disabled:opacity-50 min-h-9"
+            >
+              {clearingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Clear all
             </button>
           )}
           <button

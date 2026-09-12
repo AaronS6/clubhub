@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/server-auth"
 import { hashPassword, generateClubCode } from "@/lib/auth"
 import { encryptClubPassword } from "@/lib/club-crypto"
 import { logActivity, notify } from "@/lib/activity"
-import { ADMIN_PASSCODE } from "@/lib/admin-passcode"
+import { requireAdminPasscode } from "@/lib/admin-passcode"
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const { name, description, accentColor, clubPassword, adminPasscode } = parsed.data
   // Server-side gate: the admin passcode is required to create a club.
   // Client-side validation is just UX; this is the source of truth.
-  if (adminPasscode !== ADMIN_PASSCODE) {
+  if (adminPasscode !== requireAdminPasscode()) {
     return NextResponse.json(
       { error: "Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club." },
       { status: 403 },
