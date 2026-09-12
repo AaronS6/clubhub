@@ -1031,7 +1031,9 @@ function SettingsDialog({
             <TabsContent value="security" className="mt-4">
               <div className="space-y-2">
                 <Label>Change password</Label>
-                <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
+                {!isExec && (
+                  <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
+                )}
                 <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
                 <Button variant="club" onClick={changePassword} disabled={loading}>
                   {loading ? "Saving..." : "Change password"}

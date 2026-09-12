@@ -203,9 +203,6 @@ export function MembersView() {
       {/* Club code section — exec only */}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
 
-      {/* Delete club section — exec only */}
-      {isExec && <DeleteClubSection clubId={clubId} clubName={clubName ?? ""} />}
-
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -350,6 +347,9 @@ export function MembersView() {
         online={online}
         onOpenChange={(o) => !o && setDetailMember(null)}
       />
+
+      {/* Delete club — at the very bottom, subtle, exec only */}
+      {isExec && <DeleteClubSection clubId={clubId} clubName={clubName ?? ""} />}
     </div>
   )
 }
@@ -823,7 +823,6 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
         json: { confirmPassword: password },
       })
       toast.success(`Club "${clubName}" has been permanently deleted`)
-      // Reload the page to reset the app state (the club no longer exists)
       setTimeout(() => window.location.reload(), 500)
     } catch (e: any) {
       toast.error(e.message || "Failed to delete club")
@@ -832,20 +831,15 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
   }
 
   return (
-    <div className="card-quiet p-5 border-red-200 dark:border-red-900/50">
-      <div className="pb-3">
-        <h3 className="text-section-title flex items-center gap-2 text-red-600 dark:text-red-400">
-          <AlertTriangle className="h-4 w-4" /> Danger zone
-        </h3>
-        <p className="text-caption text-muted-foreground mt-1">
-          Permanently delete this club and ALL its data — members, hours, tasks, meetings, announcements, and chat. This cannot be undone.
-        </p>
-      </div>
+    <div className="pt-8 pb-4 flex justify-center">
       <AlertDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setPassword("") }}>
         <AlertDialogTrigger asChild>
-          <Button variant="outline" className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">
-            <Trash2 className="mr-1.5 h-4 w-4" /> Delete club
-          </Button>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground/50 hover:text-red-500 transition-colors underline-offset-2 hover:underline"
+          >
+            Delete this club
+          </button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -854,7 +848,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
               Delete "{clubName}"?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the club and all its data. This action cannot be undone.
+              This permanently deletes the club and all its data — members, hours, tasks, meetings, announcements, and chat. This cannot be undone.
               <br /><br />
               Enter the club's join password to confirm:
             </AlertDialogDescription>

@@ -46,27 +46,48 @@ export async function PATCH(req: Request) {
 }
 
 const pwSchema = z.object({
-  currentPassword: z.string(),
+  currentPassword: z.string().optional(),
   newPassword: z.string().min(8),
 })
 
 export async function PUT(req: Request) {
-  const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const body = await req.json().catch(() => null)
-  const parsed = pwSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input" }, { status: 400 })
+  try {
+    const user = await getSessionUser()
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const body = await req.json().catch(() => null)
+    const parsed = pwSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid input" }, { status: 400 })
+    }
+    const { currentPassword, newPassword } = parsed.data
+
+    // Check if the user is an executive in ANY club — execs can change their
+    // password without entering the current one.
+    const execMembership = await db.clubMember.findFirst({
+      where: { userId: user.id, role: "executive", status: "active" },
+      select: { id: true },
+    })
+    const isExec = !!execMembership
+
+    // Non-executives must provide the correct current password.
+    if (!isExec) {
+      if (!currentPassword) {
+        return NextResponse.json({ error: "Current password is required" }, { status: 400 })
+      }
+      const dbUser = await db.user.findUnique({ where: { id: user.id } })
+      if (!dbUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      const ok = await verifyPassword(currentPassword, dbUser.passwordHash)
+      if (!ok) return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 })
+    }
+
+    if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) {
+      return NextResponse.json({ error: "Password must contain a letter and a number" }, { status: 400 })
+    }
+    const hash = await hashPassword(newPassword)
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: hash } })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    console.error("[me PUT] error:", err?.message)
+    return NextResponse.json({ error: "Failed to change password: " + (err?.message || "Unknown error") }, { status: 500 })
   }
-  const { currentPassword, newPassword } = parsed.data
-  const dbUser = await db.user.findUnique({ where: { id: user.id } })
-  if (!dbUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const ok = await verifyPassword(currentPassword, dbUser.passwordHash)
-  if (!ok) return NextResponse.json({ error: "Current password is incorrect" }, { status: 400 })
-  if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) {
-    return NextResponse.json({ error: "Password must contain a letter and a number" }, { status: 400 })
-  }
-  const hash = await hashPassword(newPassword)
-  await db.user.update({ where: { id: user.id }, data: { passwordHash: hash } })
-  return NextResponse.json({ ok: true })
 }
