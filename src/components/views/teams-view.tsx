@@ -57,6 +57,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import {
   Users,
   Plus,
@@ -141,16 +142,6 @@ interface MembersResponse {
   myUserId: string
   myRole: "member" | "executive"
 }
-
-/**
- * DialogContent className that makes a Dialog full-screen on mobile (fills
- * the viewport) and a normal centered modal on sm+ screens. Pair with a
- * flex-col layout inside: sticky header / scrollable body / sticky footer
- * so action buttons stay reachable above the soft keyboard.
- */
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
 
 // ---------------------------------------------------------------------------
 // Main view
@@ -730,7 +721,7 @@ function CreateTeamDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Create a team</DialogTitle>
           <DialogDescription>
@@ -762,7 +753,7 @@ function CreateTeamDialog({
               />
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
@@ -819,7 +810,7 @@ function EditTeamDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit team</DialogTitle>
           <DialogDescription>Update the name and description for this team.</DialogDescription>
@@ -847,7 +838,7 @@ function EditTeamDialog({
               />
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
@@ -999,7 +990,7 @@ function AddMembersDialog({
         onOpenChange(o)
       }}
     >
-      <DialogContent className={cn(MOBILE_FULLSCREEN_DIALOG, "sm:max-w-md")} showCloseButton={false}>
+      <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-md")} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="truncate">Add members to {team.name}</DialogTitle>
           <DialogDescription>
@@ -1062,7 +1053,7 @@ function AddMembersDialog({
               </ul>
             )}
           </div>
-          <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <span className="text-xs text-muted-foreground">{selected.size} selected</span>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>

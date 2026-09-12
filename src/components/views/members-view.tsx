@@ -40,6 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,17 +92,9 @@ import {
   EyeOff,
   Lock,
   Pencil,
+  Trash2,
+  Image as ImageIcon,
 } from "lucide-react"
-
-// ---------------------------------------------------------------------------
-// Mobile full-screen dialog className — makes a Dialog fill the viewport on
-// phones (sticky header / scrollable body / sticky footer so action buttons
-// stay reachable above the soft keyboard) and centers as a normal modal on
-// sm+ screens.
-// ---------------------------------------------------------------------------
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -201,6 +194,9 @@ export function MembersView() {
           </div>
         }
       />
+
+      {/* Club logo section — exec only */}
+      {isExec && <ClubLogoSection clubId={clubId} />}
 
       {/* Club code section — exec only */}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
@@ -349,6 +345,120 @@ export function MembersView() {
         online={online}
         onOpenChange={(o) => !o && setDetailMember(null)}
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Club logo section (exec only) — upload / remove the club's logo
+// ---------------------------------------------------------------------------
+
+function ClubLogoSection({ clubId }: { clubId: string }) {
+  const logoUrl = useAppStore((s) => s.currentClub?.logoUrl ?? null)
+  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "")
+  const patchCurrentClub = useAppStore((s) => s.patchCurrentClub)
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!f.type.startsWith("image/")) {
+      toast.error("Please choose an image file")
+      return
+    }
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", f)
+      const res = await apiUpload<{ logoUrl: string }>(`/api/clubs/${clubId}/logo`, fd)
+      patchCurrentClub({ logoUrl: res.logoUrl })
+      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      toast.success("Club logo updated")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't upload logo")
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ""
+    }
+  }
+
+  async function handleRemove() {
+    setUploading(true)
+    try {
+      await api(`/api/clubs/${clubId}/logo`, { method: "DELETE" })
+      patchCurrentClub({ logoUrl: null })
+      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      toast.success("Club logo removed")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't remove logo")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <div className="pb-3">
+        <h3 className="text-section-title flex items-center gap-2">
+          <ImageIcon className="h-4 w-4" /> Club logo
+        </h3>
+      </div>
+      <div className="flex items-center gap-4">
+        <Avatar className="h-16 w-16 shrink-0 rounded-lg border bg-club-muted">
+          {logoUrl ? (
+            <AvatarImage src={logoUrl} alt={`${clubName} logo`} className="object-cover" />
+          ) : null}
+          <AvatarFallback className="rounded-lg text-lg font-semibold bg-club text-club-foreground">
+            {uploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              initials(clubName || "?")
+            )}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            onChange={handleUpload}
+            className="hidden"
+            aria-hidden
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            <span>{uploading ? "Uploading…" : "Upload logo"}</span>
+          </Button>
+          {logoUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={handleRemove}
+              disabled={uploading}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Remove</span>
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-caption text-muted-foreground mt-3">
+        Shown on the dashboard, sidebar, and public club profile. PNG, JPG, or WebP — we&apos;ll resize it to 256×256.
+      </p>
     </div>
   )
 }
@@ -1213,7 +1323,7 @@ function ImportCsvDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-4 w-4" /> Import members from CSV
@@ -1294,7 +1404,7 @@ function ImportCsvDialog({
               )}
             </div>
 
-            <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+            <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={uploading}>
                 Cancel
               </Button>

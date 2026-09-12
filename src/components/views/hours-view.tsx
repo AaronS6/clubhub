@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
 import { api, apiUpload } from "@/lib/api/client"
@@ -19,6 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -49,7 +54,10 @@ import {
   XCircle,
   Link as LinkIcon,
   History,
+  ChevronDown,
+  Calendar,
 } from "lucide-react"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 interface HoursItem {
   id: string
@@ -93,16 +101,6 @@ function fmtDate(d: string) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
 }
 
-/**
- * DialogContent className that makes a Dialog full-screen on mobile (fills
- * the viewport) and a normal centered modal on sm+ screens. Pair with a
- * flex-col layout inside: sticky header / scrollable body / sticky footer
- * so action buttons stay reachable above the soft keyboard.
- */
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
-
 function todayISO() {
   const d = new Date()
   const y = d.getFullYear()
@@ -113,8 +111,10 @@ function todayISO() {
 
 export function HoursView() {
   const clubId = useAppStore((s) => s.currentClubId)
+  const isExec = useAppStore((s) => s.currentClub?.role) === "executive"
   const qc = useQueryClient()
   const [submitOpen, setSubmitOpen] = useState(false)
+  const [period, setPeriod] = useState<string>("this_month")
 
   const hoursQuery = useQuery<HoursResponse>({
     queryKey: ["hours", clubId],
@@ -140,6 +140,97 @@ export function HoursView() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // ---- Time-period filtering + grouping ----------------------------------
+  // The API returns all items; we filter + group client-side based on the
+  // selected period. For "this_year"/"last_year" we group by month; for
+  // "all_time" we group by year and stash pre-current-year groups in an
+  // "older" bucket so they can be collapsed behind an "Older entries" trigger.
+  // NOTE: this useMemo is placed BEFORE the `if (!clubId)` early return so
+  // React's rules-of-hooks are satisfied (hooks must run unconditionally).
+  type Group = { key: string; label: string; items: HoursItem[] }
+  const { currentGroups, olderGroups } = useMemo<{ currentGroups: Group[]; olderGroups: Group[] }>(() => {
+    const data = hoursQuery.data
+    if (!data) return { currentGroups: [], olderGroups: [] }
+    const now = new Date()
+    const thisYear = now.getFullYear()
+    const thisMonth = now.getMonth()
+
+    // --- Filter by period ---
+    let filtered = data.items
+    if (period === "this_month") {
+      filtered = data.items.filter((it) => {
+        const d = new Date(it.dateOfService)
+        return d.getFullYear() === thisYear && d.getMonth() === thisMonth
+      })
+    } else if (period === "last_month") {
+      const lm = new Date(thisYear, thisMonth - 1, 1)
+      filtered = data.items.filter((it) => {
+        const d = new Date(it.dateOfService)
+        return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth()
+      })
+    } else if (period === "this_year") {
+      filtered = data.items.filter((it) => new Date(it.dateOfService).getFullYear() === thisYear)
+    } else if (period === "last_year") {
+      filtered = data.items.filter((it) => new Date(it.dateOfService).getFullYear() === thisYear - 1)
+    }
+    // "all_time" — no filter
+
+    // --- Group ---
+    // Sort filtered items by dateOfService descending (most recent first).
+    const sorted = [...filtered].sort(
+      (a, b) => new Date(b.dateOfService).getTime() - new Date(a.dateOfService).getTime(),
+    )
+
+    if (period === "this_year" || period === "last_year") {
+      // Group by month, most recent first.
+      const map = new Map<string, Group>()
+      for (const it of sorted) {
+        const d = new Date(it.dateOfService)
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`
+        const label = d.toLocaleDateString(undefined, { year: "numeric", month: "long" })
+        const existing = map.get(key)
+        if (existing) {
+          existing.items.push(it)
+        } else {
+          map.set(key, { key, label, items: [it] })
+        }
+      }
+      return { currentGroups: [...map.values()], olderGroups: [] }
+    }
+
+    if (period === "all_time") {
+      // Group by year. Current year → currentGroups (shown directly); older
+      // years → olderGroups (collapsed behind "Older entries").
+      const currentMap = new Map<string, Group>()
+      const olderMap = new Map<string, Group>()
+      for (const it of sorted) {
+        const d = new Date(it.dateOfService)
+        const y = d.getFullYear()
+        const key = String(y)
+        const label = String(y)
+        const target = y === thisYear ? currentMap : olderMap
+        const existing = target.get(key)
+        if (existing) {
+          existing.items.push(it)
+        } else {
+          target.set(key, { key, label, items: [it] })
+        }
+      }
+      return {
+        currentGroups: [...currentMap.values()],
+        olderGroups: [...olderMap.values()],
+      }
+    }
+
+    // this_month / last_month — single flat group (no header).
+    return {
+      currentGroups: [{ key: "flat", label: "", items: sorted }],
+      olderGroups: [],
+    }
+  }, [hoursQuery.data, period])
+
+  const filteredCount = currentGroups.reduce((n, g) => n + g.items.length, 0) + olderGroups.reduce((n, g) => n + g.items.length, 0)
 
   function handleExport() {
     if (!clubId) return
@@ -202,9 +293,30 @@ export function HoursView() {
 
       {/* History */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <History className="h-4 w-4" />
-          <span>History</span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <History className="h-4 w-4" />
+            <span>History</span>
+            {data && filteredCount > 0 && (
+              <span className="text-caption text-muted-foreground/70">
+                · {filteredCount} {filteredCount === 1 ? "entry" : "entries"}
+              </span>
+            )}
+          </div>
+          {/* Time period filter — client-side filtering/grouping. */}
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-[150px] sm:w-[180px] h-9" aria-label="Filter by time period">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="this_month">This month</SelectItem>
+              <SelectItem value="last_month">Last month</SelectItem>
+              <SelectItem value="this_year">This year</SelectItem>
+              <SelectItem value="last_year">Last year</SelectItem>
+              <SelectItem value="all_time">All time</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {hoursQuery.isLoading ? (
@@ -231,49 +343,136 @@ export function HoursView() {
               </Button>
             }
           />
+        ) : filteredCount === 0 ? (
+          <EmptyState
+            icon={<Calendar className="h-8 w-8" />}
+            title="No entries in this period"
+            description="Try a different time period — or switch to “All time” to see everything."
+          />
         ) : (
           <>
-            {/* Desktop: table */}
-            <div className="card-quiet p-0 overflow-hidden hidden md:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[7rem]">Date</TableHead>
-                    <TableHead className="min-w-[3rem]">Hours</TableHead>
-                    <TableHead className="min-w-[12rem]">Reason</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Proof</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Submitted</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.items.map((it) => (
-                    <HoursRow
+            {/* Current groups (this month / this year months / current year) */}
+            {currentGroups.map((g) => (
+              <div key={g.key} className="space-y-2">
+                {g.label && (
+                  <div className="flex items-center gap-2 px-1">
+                    <h3 className="text-card-title">{g.label}</h3>
+                    <span className="text-caption text-muted-foreground">
+                      {g.items.length} {g.items.length === 1 ? "entry" : "entries"}
+                    </span>
+                  </div>
+                )}
+                {/* Desktop: table */}
+                <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[7rem]">Date</TableHead>
+                        <TableHead className="min-w-[3rem]">Hours</TableHead>
+                        <TableHead className="min-w-[12rem]">Reason</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Proof</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Submitted</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {g.items.map((it) => (
+                        <HoursRow
+                          key={it.id}
+                          item={it}
+                          canDelete={isExec || it.status === "pending"}
+                          onDelete={() => deleteMutation.mutate(it.id)}
+                          deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {/* Mobile: stacked cards */}
+                <div className="md:hidden space-y-3">
+                  {g.items.map((it) => (
+                    <HoursCard
                       key={it.id}
                       item={it}
-                      canDelete={it.status === "pending"}
+                      canDelete={isExec || it.status === "pending"}
                       onDelete={() => deleteMutation.mutate(it.id)}
                       deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
                     />
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+              </div>
+            ))}
 
-            {/* Mobile: stacked cards */}
-            <div className="md:hidden space-y-3">
-              {data.items.map((it) => (
-                <HoursCard
-                  key={it.id}
-                  item={it}
-                  canDelete={it.status === "pending"}
-                  onDelete={() => deleteMutation.mutate(it.id)}
-                  deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
-                />
-              ))}
-            </div>
+            {/* Older entries (all_time only) — collapsed by default. */}
+            {olderGroups.length > 0 && (
+              <Collapsible className="space-y-2">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg border bg-card/50 px-3 py-2.5 text-left text-sm hover:bg-accent/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronDown className="h-4 w-4 text-muted-foreground [[data-state=open]_&]:rotate-180 transition-transform" />
+                    <span className="font-medium">Older entries</span>
+                    <span className="text-caption text-muted-foreground">
+                      {olderGroups.reduce((n, g) => n + g.items.length, 0)} entries ·{" "}
+                      {olderGroups.map((g) => g.label).join(", ")}
+                    </span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-4">
+                  {olderGroups.map((g) => (
+                    <div key={g.key} className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <h3 className="text-card-title">{g.label}</h3>
+                        <span className="text-caption text-muted-foreground">
+                          {g.items.length} {g.items.length === 1 ? "entry" : "entries"}
+                        </span>
+                      </div>
+                      <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="min-w-[7rem]">Date</TableHead>
+                              <TableHead className="min-w-[3rem]">Hours</TableHead>
+                              <TableHead className="min-w-[12rem]">Reason</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead>Proof</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Submitted</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {g.items.map((it) => (
+                              <HoursRow
+                                key={it.id}
+                                item={it}
+                                canDelete={isExec || it.status === "pending"}
+                                onDelete={() => deleteMutation.mutate(it.id)}
+                                deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                              />
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <div className="md:hidden space-y-3">
+                        {g.items.map((it) => (
+                          <HoursCard
+                            key={it.id}
+                            item={it}
+                            canDelete={isExec || it.status === "pending"}
+                            onDelete={() => deleteMutation.mutate(it.id)}
+                            deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </>
         )}
       </div>
@@ -513,7 +712,7 @@ function SubmitHoursDialog({
         onOpenChange(v)
       }}
     >
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Submit service hours</DialogTitle>
           <DialogDescription>
@@ -540,10 +739,10 @@ function SubmitHoursDialog({
                   id="hours-num"
                   type="number"
                   inputMode="decimal"
-                  step="0.25"
-                  min="0.25"
+                  step="any"
+                  min="0.1"
                   max="1000"
-                  placeholder="e.g. 3.5"
+                  placeholder="e.g. 3.5 or 0.25"
                   value={hours}
                   onChange={(e) => setHours(e.target.value)}
                   required
@@ -619,7 +818,7 @@ function SubmitHoursDialog({
             </div>
           </div>
 
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               Cancel
             </Button>

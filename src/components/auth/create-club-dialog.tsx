@@ -9,18 +9,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { api } from "@/lib/api/client"
 import { Loader2, ShieldCheck } from "lucide-react"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 const ACCENT_PRESETS = ["#16a34a", "#0ea5e9", "#f97316", "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#ec4899"]
-
-/**
- * DialogContent className that makes a Dialog full-screen on mobile (fills
- * the viewport) and a normal centered modal on sm+ screens. Pair with a
- * flex-col layout inside: sticky header / scrollable body / sticky footer
- * so action buttons stay reachable above the soft keyboard.
- */
-const MOBILE_FULLSCREEN_DIALOG =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
-  "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-auto sm:max-w-lg sm:rounded-lg sm:p-6 sm:gap-4 sm:grid"
 
 export function CreateClubDialog({
   open,
@@ -77,7 +68,7 @@ export function CreateClubDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={MOBILE_FULLSCREEN_DIALOG} showCloseButton={false}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Create a new club</DialogTitle>
           <DialogDescription>
@@ -140,7 +131,7 @@ export function CreateClubDialog({
               </p>
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0 sticky bottom-0 bg-background">
+          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>

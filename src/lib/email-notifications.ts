@@ -27,16 +27,12 @@ import {
  * Set of notification types we know how to email about. Callers can ask
  * `shouldTryEmail(type)` to short-circuit fan-out (e.g. `notifyClub` for a
  * `new_announcement` should skip email entirely without doing N DB lookups).
+ *
+ * Only `hours_approved` is emailable — that's the only notification where
+ * members reliably want an out-of-band signal. All other notification types
+ * are in-app only (the dashboard / bell icon).
  */
-export const EMAIL_TYPES: Set<NotifType> = new Set<NotifType>([
-  "hours_approved",
-  "hours_rejected",
-  "task_assigned",
-  "new_comment",
-  "new_reaction",
-  "meeting_reminder",
-  "chat_message",
-])
+export const EMAIL_TYPES: Set<NotifType> = new Set<NotifType>(["hours_approved"])
 
 export function shouldTryEmail(type: string): boolean {
   return EMAIL_TYPES.has(type as NotifType)

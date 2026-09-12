@@ -12,6 +12,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
   PageHeader, EmptyState, initials, relativeTime,
 } from "@/components/shared/page-header"
 import { toast } from "sonner"
@@ -20,7 +31,9 @@ import {
   ScrollText, Loader2, History, Filter, UserPlus, UserMinus,
   ArrowUpCircle, ArrowDownCircle, Megaphone, CheckCircle2, XCircle,
   Clock, CalendarDays, ListChecks, Users, UserCog, KeyRound, Crown,
+  Trash2,
 } from "lucide-react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 // --------------------------------------------------------------------------
 // Types
@@ -83,9 +96,22 @@ function metaFor(actionType: string): ActionMeta {
 // --------------------------------------------------------------------------
 export function ActivityView() {
   const clubId = useAppStore((s) => s.currentClubId)
+  const isExec = useAppStore((s) => s.currentClub?.role) === "executive"
+  const qc = useQueryClient()
   const [actionType, setActionType] = useState<string>("all")
 
   const queryKey = useMemo(() => ["activity", clubId, actionType] as const, [clubId, actionType])
+
+  // Clear all activity entries (exec-only). Calls DELETE /api/clubs/:id/activity,
+  // then invalidates the query so the list refreshes.
+  const clearAllMutation = useMutation({
+    mutationFn: () => api<{ ok: boolean; deleted: number }>(`/api/clubs/${clubId}/activity`, { method: "DELETE" }),
+    onSuccess: (data) => {
+      toast.success(`Cleared ${data.deleted} ${data.deleted === 1 ? "entry" : "entries"}`)
+      qc.invalidateQueries({ queryKey: ["activity", clubId] })
+    },
+    onError: (e: Error) => toast.error(e.message || "Couldn't clear activity log"),
+  })
 
   const {
     data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch,
@@ -130,22 +156,69 @@ export function ActivityView() {
         title="Activity log"
         description={`Audit trail of everything happening in this club · ${total} ${total === 1 ? "entry" : "entries"}`}
         actions={
-          <Select value={actionType} onValueChange={setActionType}>
-            <SelectTrigger className="w-[150px] sm:w-[220px]" aria-label="Filter by action type">
-              <span className="inline-flex items-center gap-2 text-muted-foreground">
-                <Filter className="h-3.5 w-3.5" />
-                <SelectValue placeholder="All actions" />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All actions</SelectItem>
-              {actionTypeOptions.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {metaFor(key).label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select value={actionType} onValueChange={setActionType}>
+              <SelectTrigger className="w-[150px] sm:w-[220px]" aria-label="Filter by action type">
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <Filter className="h-3.5 w-3.5" />
+                  <SelectValue placeholder="All actions" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All actions</SelectItem>
+                {actionTypeOptions.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {metaFor(key).label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isExec && total > 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive hover:border-destructive/40 shrink-0"
+                    disabled={clearAllMutation.isPending}
+                  >
+                    {clearAllMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline">Clear all</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Clear all activity?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently deletes every activity entry for this club. The action cannot be undone. New activity will continue to be logged going forward.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={clearAllMutation.isPending}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => {
+                        e.preventDefault()
+                        clearAllMutation.mutate()
+                      }}
+                      disabled={clearAllMutation.isPending}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {clearAllMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 mr-1" />
+                      )}
+                      Clear all
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         }
       />
 

@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from "react"
 import { signIn } from "next-auth/react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Users,
   Clock,
@@ -14,6 +23,10 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
+  Mail,
+  CheckCircle2,
+  AlertTriangle,
+  KeyRound,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -53,9 +66,25 @@ const VALUE_PROPS = [
 ]
 
 export function AuthScreen() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const resetToken = searchParams.get("reset")
+
+  // Reset-password mode takes over the whole screen when ?reset=TOKEN is in
+  // the URL. We render a dedicated "Set a new password" form and on success
+  // we strip the query param and return to the login form.
+  if (resetToken) {
+    return <ResetPasswordScreen token={resetToken} onDone={() => router.replace("/")} />
+  }
+
+  return <AuthScreenInner />
+}
+
+function AuthScreenInner() {
   const authView = useAppStore((s) => s.authView)
   const setAuthView = useAppStore((s) => s.setAuthView)
   const [loading, setLoading] = useState(false)
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
@@ -225,7 +254,16 @@ export function AuthScreen() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-body-medium">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-body-medium">Password</Label>
+                  <button
+                    type="button"
+                    className="text-caption text-muted-foreground hover:text-club hover:underline"
+                    onClick={() => setForgotOpen(true)}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -316,6 +354,266 @@ export function AuthScreen() {
           By continuing you agree to use ClubHub responsibly.
         </p>
       </main>
+
+      <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
+    </div>
+  )
+}
+
+/**
+ * Forgot-password dialog. Asks for an email and POSTs to
+ * /api/auth/forgot-password. The endpoint is anti-enumeration — it always
+ * returns { ok: true } — but if email delivery fails it also returns an
+ * `error` field and a `resetUrl` (so devs / no-email-provider installs can
+ * still recover). We surface both in the UI.
+ */
+function ForgotPasswordDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const [email, setEmail] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [resetUrl, setResetUrl] = useState<string | null>(null)
+
+  function handleClose(v: boolean) {
+    if (!v) {
+      // Reset state when closing so the next open is fresh.
+      setEmail("")
+      setError(null)
+      setResetUrl(null)
+      // Keep `done` so the success state persists for a beat after close —
+      // but actually reset it too so reopening doesn't show stale success.
+      setDone(false)
+    }
+    onOpenChange(v)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setResetUrl(null)
+    try {
+      const res = await api<{ ok: boolean; error?: string; resetUrl?: string }>(
+        "/api/auth/forgot-password",
+        { method: "POST", json: { email } },
+      )
+      setDone(true)
+      // Anti-enumeration: the endpoint returns ok:true even if the email
+      // doesn't match an account. But if it also returned an `error` (e.g.
+      // email provider not configured), surface that + the resetUrl fallback.
+      if (res.error) setError(res.error)
+      if (res.resetUrl) setResetUrl(res.resetUrl)
+    } catch (err: any) {
+      // Network / 500 — show the message.
+      setError(err.message || "Couldn't send the reset link. Try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-club" />
+            Reset your password
+          </DialogTitle>
+          <DialogDescription>
+            Enter your account email and we&apos;ll send you a link to set a new password.
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="space-y-3 py-2">
+            <div className="flex items-start gap-2 rounded-lg border border-club/30 bg-club-muted/40 px-3 py-2.5 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-club mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium">If an account exists for <span className="font-mono">{email || "that email"}</span>, a reset link is on its way.</p>
+                <p className="text-caption text-muted-foreground mt-1">Check your inbox (and spam folder). The link expires in 1 hour.</p>
+              </div>
+            </div>
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">Email couldn&apos;t be sent</p>
+                  <p className="text-caption mt-0.5 break-words">{error}</p>
+                  {resetUrl && (
+                    <p className="text-caption mt-1.5 break-all">
+                      Recovery link:{" "}
+                      <a href={resetUrl} className="font-mono text-club underline break-all">
+                        {resetUrl}
+                      </a>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="club" onClick={() => handleClose(false)} className="w-full">
+                Done
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="forgot-email" className="text-body-medium">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="h-10 pl-9"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="club" disabled={loading || !email}>
+                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                Send reset link
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Reset-password screen — shown when the URL contains ?reset=TOKEN. Renders
+ * a simple "Set a new password" form. On success, calls onDone() which
+ * strips the query param and returns to the normal login screen.
+ */
+function ResetPasswordScreen({
+  token,
+  onDone,
+}: {
+  token: string
+  onDone: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.")
+      return
+    }
+    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      setError("Password must contain a letter and a number.")
+      return
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.")
+      return
+    }
+    setLoading(true)
+    try {
+      await api("/api/auth/reset-password", {
+        method: "POST",
+        json: { token, password },
+      })
+      toast.success("Password updated — sign in with your new password.")
+      onDone()
+    } catch (err: any) {
+      setError(err.message || "Couldn't reset password. The link may have expired.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-5 py-10 bg-background">
+      <div className="w-full max-w-sm">
+        <div className="md:hidden flex items-center justify-center gap-2 mb-8">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
+            <Users className="h-5 w-5" />
+          </div>
+          <span className="text-xl font-semibold tracking-tight">ClubHub</span>
+        </div>
+
+        <div className="mb-6">
+          <h1 className="text-page-title">Set a new password</h1>
+          <p className="text-body text-muted-foreground mt-1.5">
+            Choose a new password for your ClubHub account.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-password" className="text-body-medium">New password</Label>
+            <Input
+              id="reset-password"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 chars, 1 letter & 1 number"
+              className="h-10"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-confirm" className="text-body-medium">Confirm new password</Label>
+            <Input
+              id="reset-confirm"
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Re-enter the new password"
+              className="h-10"
+            />
+          </div>
+          <p className="text-caption text-muted-foreground">
+            Minimum 8 characters with a letter and a number.
+          </p>
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
+            {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+            Update password
+          </Button>
+        </form>
+
+        <p className="text-caption text-center mt-6 text-muted-foreground">
+          <button
+            type="button"
+            className="text-club hover:underline font-medium"
+            onClick={onDone}
+          >
+            Back to sign in
+          </button>
+        </p>
+      </div>
     </div>
   )
 }

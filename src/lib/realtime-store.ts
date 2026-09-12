@@ -135,5 +135,5 @@ export function useRemoteChange(type: RemoteChangeType, id: string | undefined):
  */
 export function usePollingFallback(intervalMs: number): number | false {
   const state = useRealtimeStore((s) => s.connectionState)
-  return state === "disconnected" ? intervalMs : false
+  return state === "connected" ? intervalMs * 2 : intervalMs
 }

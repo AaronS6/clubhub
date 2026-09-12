@@ -22,6 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -47,6 +52,8 @@ import {
   Inbox,
   Filter,
   Eye,
+  Trash2,
+  History,
 } from "lucide-react"
 
 interface HoursItem {
@@ -59,6 +66,8 @@ interface HoursItem {
   proofFileUrl: string | null
   status: "pending" | "approved" | "rejected"
   submittedAt: string
+  reviewedAt: string | null
+  reviewComment: string | null
   category: { id: string; name: string } | null
   user: { id: string; name: string; avatarUrl?: string | null }
   reviewer?: { id: string; name: string } | null
@@ -105,6 +114,7 @@ function fmtDateInput(d: string) {
 export function ApprovalsView() {
   const clubId = useAppStore((s) => s.currentClubId)
   const qc = useQueryClient()
+  const [tab, setTab] = useState<"pending" | "reviewed">("pending")
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [memberFilter, setMemberFilter] = useState<string>("all")
   const [fromDate, setFromDate] = useState<string>("")
@@ -112,13 +122,19 @@ export function ApprovalsView() {
   const [rejectTarget, setRejectTarget] = useState<HoursItem | null>(null)
   const [rejectBulk, setRejectBulk] = useState(false)
 
+  // Build query params. For the "pending" tab we filter status=pending; for
+  // the "reviewed" tab we fetch scope=all (no status filter) and filter
+  // client-side to approved+rejected — the API only accepts a single status
+  // value, so we pull everything and pare it down.
   const queryParams = new URLSearchParams()
   queryParams.set("scope", "all")
-  queryParams.set("status", "pending")
+  if (tab === "pending") {
+    queryParams.set("status", "pending")
+  }
   if (memberFilter !== "all") queryParams.set("userId", memberFilter)
 
   const approvalsQuery = useQuery<ApprovalsResponse>({
-    queryKey: ["approvals", clubId, memberFilter, fromDate, toDate],
+    queryKey: ["approvals", clubId, memberFilter, fromDate, toDate, tab],
     queryFn: () => api<ApprovalsResponse>(`/api/clubs/${clubId}/hours?${queryParams.toString()}`),
     enabled: !!clubId,
     // Realtime is primary; poll only as a fallback while the socket is down
@@ -143,6 +159,11 @@ export function ApprovalsView() {
   const otherViewers = useViewingCount(clubId ?? null, "approvals", myUserId)
 
   const items = (approvalsQuery.data?.items ?? []).filter((it) => {
+    // For the "reviewed" tab, the API returns all statuses (scope=all, no
+    // status filter); pare to approved + rejected so pending entries don't
+    // leak in.
+    if (tab === "reviewed" && it.status === "pending") return false
+    if (tab === "pending" && it.status !== "pending") return false
     // date range filter (by dateOfService)
     if (fromDate) {
       if (fmtDateInput(it.dateOfService) < fromDate) return false
@@ -221,6 +242,17 @@ export function ApprovalsView() {
     reviewMutation.mutate({ id, status: "approved" })
   }
 
+  // Delete a reviewed entry (exec-only on the "Reviewed" tab).
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api(`/api/clubs/${clubId}/hours/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Entry deleted")
+      qc.invalidateQueries({ queryKey: ["approvals", clubId] })
+      qc.invalidateQueries({ queryKey: ["hours", clubId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   if (!clubId) {
     return <div className="p-8 text-muted-foreground">Loading…</div>
   }
@@ -240,13 +272,15 @@ export function ApprovalsView() {
   }
 
   const allSelected = items.length > 0 && items.every((it) => selectedInScope.has(it.id))
-  const pendingCount = items.length
+  const queueCount = items.length
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Approvals"
-        description="Review pending service hour submissions from club members."
+        description={tab === "pending"
+          ? "Review pending service hour submissions from club members."
+          : "Reviewed service hour submissions — approved and rejected entries."}
         actions={
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {otherViewers > 0 && (
@@ -259,12 +293,24 @@ export function ApprovalsView() {
               </span>
             )}
             <span className="inline-flex items-center gap-1.5">
-              <Inbox className="h-4 w-4" />
-              <span className="tabular-nums">{pendingCount}</span> pending
+              {tab === "pending" ? <Inbox className="h-4 w-4" /> : <History className="h-4 w-4" />}
+              <span className="tabular-nums">{queueCount}</span> {tab === "pending" ? "pending" : "reviewed"}
             </span>
           </div>
         }
       />
+
+      {/* Pending / Reviewed tab toggle */}
+      <Tabs value={tab} onValueChange={(v) => { setTab(v as "pending" | "reviewed"); clearSelected() }}>
+        <TabsList>
+          <TabsTrigger value="pending">
+            <Inbox className="h-3.5 w-3.5 mr-1" /> Pending
+          </TabsTrigger>
+          <TabsTrigger value="reviewed">
+            <History className="h-3.5 w-3.5 mr-1" /> Reviewed
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Filters */}
       <div className="card-quiet p-5">
@@ -320,8 +366,10 @@ export function ApprovalsView() {
           </div>
       </div>
 
-      {/* Bulk actions — sticky on mobile so the bulk bar is always reachable */}
-      {selectedInScope.size > 0 && (
+      {/* Bulk actions — sticky on mobile so the bulk bar is always reachable.
+          Only shown on the Pending tab (bulk-approving reviewed entries doesn't
+          make sense). */}
+      {tab === "pending" && selectedInScope.size > 0 && (
         <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 shadow-md max-w-full">
           <span className="text-caption-medium text-muted-foreground px-2">
             {selectedInScope.size} selected
@@ -367,11 +415,13 @@ export function ApprovalsView() {
         />
       ) : items.length === 0 ? (
         <EmptyState
-          icon={<CheckCircle2 className="h-8 w-8" />}
-          title="Inbox zero"
-          description="There are no pending service hour submissions to review right now. New submissions will appear here automatically."
+          icon={tab === "pending" ? <CheckCircle2 className="h-8 w-8" /> : <History className="h-8 w-8" />}
+          title={tab === "pending" ? "Inbox zero" : "No reviewed entries"}
+          description={tab === "pending"
+            ? "There are no pending service hour submissions to review right now. New submissions will appear here automatically."
+            : "Approved and rejected entries will appear here once you start reviewing submissions."}
         />
-      ) : (
+      ) : tab === "pending" ? (
         <>
           {/* Desktop: table */}
           <div className="card-quiet p-0 overflow-hidden hidden md:block">
@@ -436,6 +486,50 @@ export function ApprovalsView() {
                   (reviewMutation.isPending && reviewMutation.variables?.id === it.id) ||
                   (bulkMutation.isPending && selectedInScope.has(it.id))
                 }
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Reviewed tab — desktop table */}
+          <div className="card-quiet p-0 overflow-hidden hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[10rem]">Member</TableHead>
+                  <TableHead className="min-w-[7rem]">Date</TableHead>
+                  <TableHead className="min-w-[3rem]">Hours</TableHead>
+                  <TableHead className="min-w-[14rem]">Reason</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="min-w-[8rem]">Status</TableHead>
+                  <TableHead className="min-w-[10rem]">Reviewed by</TableHead>
+                  <TableHead className="min-w-[8rem]">Reviewed</TableHead>
+                  <TableHead className="min-w-[14rem]">Comment</TableHead>
+                  <TableHead className="text-right w-[60px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((it) => (
+                  <ReviewedRow
+                    key={it.id}
+                    item={it}
+                    onDelete={() => deleteMutation.mutate(it.id)}
+                    deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Reviewed tab — mobile cards */}
+          <div className="md:hidden space-y-3">
+            {items.map((it) => (
+              <ReviewedCard
+                key={it.id}
+                item={it}
+                onDelete={() => deleteMutation.mutate(it.id)}
+                deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
               />
             ))}
           </div>
@@ -585,6 +679,117 @@ function ApprovalCard({
             Reject
           </Button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * ReviewedRow — desktop table row for the "Reviewed" tab. Shows the entry's
+ * status, reviewer name, review date, and comment (if any). Execs can delete
+ * reviewed entries via the trash button.
+ */
+function ReviewedRow({
+  item,
+  onDelete,
+  deleting,
+}: {
+  item: HoursItem
+  onDelete: () => void
+  deleting: boolean
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
+      <TableCell>{fmtDate(item.dateOfService)}</TableCell>
+      <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
+      <TableCell className="max-w-xs">
+        <div className="line-clamp-2 text-sm">{item.reasonText}</div>
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {item.category?.name ?? <span className="text-muted-foreground/60">—</span>}
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={item.status} />
+      </TableCell>
+      <TableCell className="text-sm">
+        {item.reviewer?.name ?? <span className="text-muted-foreground/60">—</span>}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {item.reviewedAt ? relativeTime(item.reviewedAt) : "—"}
+      </TableCell>
+      <TableCell className="max-w-[14rem]">
+        {item.reviewComment ? (
+          <div className="line-clamp-2 text-sm text-muted-foreground" title={item.reviewComment}>
+            “{item.reviewComment}”
+          </div>
+        ) : (
+          <span className="text-muted-foreground/60">—</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label="Delete entry"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </Button>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+/**
+ * ReviewedCard — mobile card for the "Reviewed" tab.
+ */
+function ReviewedCard({
+  item,
+  onDelete,
+  deleting,
+}: {
+  item: HoursItem
+  onDelete: () => void
+  deleting: boolean
+}) {
+  return (
+    <div className="card-quiet p-4 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
+          <div className="text-caption">
+            <span className="font-mono tabular-nums text-foreground">{item.hours}</span>
+            {item.hours === 1 ? " hour" : " hours"} · {fmtDate(item.dateOfService)}
+            {item.category && <span> · {item.category.name}</span>}
+          </div>
+        </div>
+        <StatusBadge status={item.status} />
+      </div>
+      <div className="text-body">{item.reasonText}</div>
+      <div className="text-caption text-muted-foreground">
+        Reviewed {item.reviewedAt ? relativeTime(item.reviewedAt) : "—"}
+        {item.reviewer?.name && <> by {item.reviewer.name}</>}
+      </div>
+      {item.reviewComment && (
+        <div className="text-caption text-muted-foreground border-l-2 border-border pl-2">
+          “{item.reviewComment}”
+        </div>
+      )}
+      <div className="flex items-center justify-end pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          onClick={onDelete}
+          disabled={deleting}
+          aria-label="Delete entry"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          Delete
+        </Button>
       </div>
     </div>
   )

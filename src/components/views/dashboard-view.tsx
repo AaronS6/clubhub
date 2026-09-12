@@ -162,7 +162,9 @@ export function DashboardView() {
   const isExec = data.myRole === "executive"
   const hasActivity =
     data.recentAnnouncements.length > 0 || data.clubStats.teamsCount > 0
-  const showOnboarding = !onboardingDismissed && !hasActivity
+  // Onboarding banner is EXEC-only — members joining an existing club don't
+  // need to "set up" anything; they just want to see their snapshot.
+  const showOnboarding = isExec && !onboardingDismissed && !hasActivity
 
   const dismissOnboarding = () => {
     try {
@@ -301,6 +303,388 @@ export function DashboardView() {
       ? Math.min(100, (data.myStats.approvedHours / data.club.hoursGoal) * 100)
       : 0
 
+  // ---- Section bodies -----------------------------------------------------
+  // Each card's inner JSX is extracted here so the member and exec layouts
+  // can arrange them differently (different grid order / col-spans) without
+  // duplicating the content.
+  const chartBody = (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-club" />
+          <h2 className="text-card-title">Approved hours · last 30 days</h2>
+        </div>
+        <Badge variant="secondary" className="text-xs tabular-nums">
+          Total {fmtHours(data.hoursTrend.reduce((s, d) => s + d.hours, 0))}h
+        </Badge>
+      </div>
+      {data.hoursTrend.every((d) => d.hours === 0) ? (
+        <EmptyState
+          icon={<BarChart3 className="h-8 w-8" />}
+          title="No hours logged yet"
+          description="Once hours are approved, you'll see a 30-day trend here."
+        />
+      ) : (
+        <div
+          className="h-56 w-full min-w-0"
+          aria-label="Approved hours trend chart"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={data.hoursTrend}
+              margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor="var(--club-accent)"
+                    stopOpacity={0.4}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--club-accent)"
+                    stopOpacity={0.02}
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.5}
+                vertical={false}
+              />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 10, fill: "currentColor" }}
+                tickFormatter={(d) => format(parseISO(d), "MMM d")}
+                interval={Math.floor(data.hoursTrend.length / 6)}
+                axisLine={false}
+                tickLine={false}
+                className="text-muted-foreground"
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: "currentColor" }}
+                allowDecimals={false}
+                width={32}
+                axisLine={false}
+                tickLine={false}
+                className="text-muted-foreground"
+              />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: 8,
+                  border: "1px solid hsl(var(--border, 220 13% 91%))",
+                  background: "hsl(var(--popover, 0 0% 100%))",
+                  color: "hsl(var(--popover-foreground, 0 0% 0%))",
+                  fontSize: 12,
+                }}
+                labelFormatter={(d) =>
+                  format(parseISO(String(d)), "MMM d, yyyy")
+                }
+                formatter={(value: number) => [
+                  `${fmtHours(value)}h`,
+                  "Approved hours",
+                ]}
+              />
+              <Area
+                type="monotone"
+                dataKey="hours"
+                stroke="var(--club-accent)"
+                strokeWidth={2}
+                fill="url(#hoursGradient)"
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </>
+  )
+
+  const leaderboardBody = (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-amber-500" />
+          <h2 className="text-card-title">Leaderboard</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setView("members")}
+        >
+          All <ChevronRight className="h-3 w-3" />
+        </Button>
+      </div>
+      {data.leaderboard.length === 0 ? (
+        <EmptyState
+          icon={<Trophy className="h-8 w-8" />}
+          title="No hours logged yet"
+          description="Approved service hours will populate the leaderboard."
+        />
+      ) : (
+        <ul className="space-y-1">
+          {data.leaderboard.map((entry, i) => (
+            <li key={entry.userId}>
+              <button
+                type="button"
+                onClick={() => setView("members")}
+                className={cn(
+                  "flex items-center gap-3 w-full text-left rounded-lg px-2.5 py-2 hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  i === 0 && "bg-club-muted/30 ring-1 ring-club/20"
+                )}
+              >
+                <RankBadge rank={i + 1} />
+                <Avatar className="h-8 w-8">
+                  <AvatarImage
+                    src={entry.avatarUrl ?? undefined}
+                    alt={entry.name}
+                  />
+                  <AvatarFallback
+                    className={cn("text-xs", avatarColor(entry.name))}
+                  >
+                    {initials(entry.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="text-body-medium truncate">{entry.name}</p>
+                  <p className="text-caption tabular-nums">
+                    {fmtHours(entry.hours)} hours
+                  </p>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+
+  const snapshotBody = (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <ListChecks className="h-4 w-4 text-club" />
+          <h2 className="text-card-title">Your snapshot</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setView("hours")}
+        >
+          Hours <ChevronRight className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {/* Approved hours + goal */}
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <span className="text-body-medium">Approved hours</span>
+          </div>
+          <span className="text-card-title tabular-nums">
+            {fmtHours(data.myStats.approvedHours)}h
+          </span>
+        </div>
+        {data.club.hoursGoal > 0 && (
+          <>
+            <Progress
+              value={hoursPct}
+              className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
+            />
+            <p className="text-caption tabular-nums">
+              {fmtHours(data.myStats.approvedHours)} of {data.club.hoursGoal}h
+              goal · {Math.round(hoursPct)}%
+            </p>
+          </>
+        )}
+      </div>
+
+      <Separator className="my-4" />
+
+      {/* Tasks */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+          <span className="text-body-medium">Tasks</span>
+        </div>
+        <span className="text-caption-medium tabular-nums">
+          <span className="text-foreground font-medium">
+            {data.myStats.tasksAssigned}
+          </span>{" "}
+          open
+          <span className="mx-1 text-muted-foreground">/</span>
+          <span className="text-foreground font-medium">
+            {data.myStats.tasksDone}
+          </span>{" "}
+          done
+        </span>
+      </div>
+
+      <Separator className="my-4" />
+
+      {/* Next meetings */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <CalendarDays className="h-4 w-4 text-muted-foreground" />
+          <span className="text-body-medium">Next meetings</span>
+        </div>
+        {data.upcomingMeetings.length === 0 ? (
+          <p className="text-caption">No upcoming meetings</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {data.upcomingMeetings.slice(0, 3).map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="text-body truncate">{m.title}</span>
+                <span className="text-caption shrink-0 tabular-nums">
+                  {format(new Date(m.startTime), "MMM d")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  )
+
+  const announcementsBody = (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Megaphone className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-card-title">Recent announcements</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setView("announcements")}
+        >
+          All <ChevronRight className="h-3 w-3" />
+        </Button>
+      </div>
+      {data.recentAnnouncements.length === 0 ? (
+        <EmptyState
+          icon={<Megaphone className="h-8 w-8" />}
+          title="No announcements yet"
+          description="Share updates with your club to keep members in the loop."
+        />
+      ) : (
+        <ul className="space-y-2">
+          {data.recentAnnouncements.slice(0, 3).map((a) => (
+            <li
+              key={a.id}
+              className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
+            >
+              <div className="flex items-start gap-2">
+                {a.isPinned && (
+                  <Pin className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-body-medium truncate">{a.title}</p>
+                  <p className="text-caption mt-0.5">
+                    {a.authorName} · {relativeTime(a.createdAt)}
+                  </p>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+
+  const meetingsBody = (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-card-title">Upcoming meetings</h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setView("meetings")}
+        >
+          All <ChevronRight className="h-3 w-3" />
+        </Button>
+      </div>
+      {data.upcomingMeetings.length === 0 ? (
+        <EmptyState
+          icon={<CalendarDays className="h-8 w-8" />}
+          title="No upcoming meetings"
+          description="Schedule a meeting to get the team together."
+        />
+      ) : (
+        <ul className="space-y-2">
+          {data.upcomingMeetings.map((m) => (
+            <li
+              key={m.id}
+              className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-body-medium truncate">{m.title}</p>
+                  <div className="mt-1 flex items-center gap-1 text-caption">
+                    <MapPin className="h-3 w-3" />
+                    <span className="truncate">{m.location}</span>
+                  </div>
+                </div>
+                {m.myRsvp && <RsvpBadge status={m.myRsvp} />}
+              </div>
+              <p className="mt-1 text-caption tabular-nums">
+                {format(new Date(m.startTime), "EEE, MMM d · h:mm a")}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+
+  const clubStatsBody = (
+    <>
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart3 className="h-4 w-4 text-muted-foreground" />
+        <h2 className="text-card-title">Club at a glance</h2>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <ClubStat
+          label="Members"
+          value={String(data.clubStats.totalMembers)}
+          icon={<Users className="h-3.5 w-3.5" />}
+          onClick={() => setView("members")}
+        />
+        <ClubStat
+          label="Total hours"
+          value={fmtHours(data.clubStats.totalApprovedHours)}
+          icon={<Clock className="h-3.5 w-3.5" />}
+          onClick={() => setView("hours")}
+        />
+        <ClubStat
+          label="Open tasks"
+          value={String(data.clubStats.openTasks)}
+          icon={<ClipboardList className="h-3.5 w-3.5" />}
+          onClick={() => setView("tasks")}
+        />
+        <ClubStat
+          label="Upcoming meetings"
+          value={String(data.clubStats.upcomingMeetingsCount)}
+          icon={<CalendarDays className="h-3.5 w-3.5" />}
+          onClick={() => setView("meetings")}
+        />
+      </div>
+    </>
+  )
+
   return (
     <div className="space-y-4 sm:space-y-5 min-w-0">
       {/* Row 1 — Slim hero bar --------------------------------------------- */}
@@ -333,398 +717,103 @@ export function DashboardView() {
         </div>
       )}
 
-      {/* Rows 3+4 — chart + leaderboard + snapshot + announcements + meetings */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 */}
-        <section
-          className="card-quiet p-5 lg:col-span-8 order-2 lg:order-1 animate-fade-in"
-          style={stagger(2)}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-club" />
-              <h2 className="text-card-title">Approved hours · last 30 days</h2>
-            </div>
-            <Badge variant="secondary" className="text-xs tabular-nums">
-              Total {fmtHours(data.hoursTrend.reduce((s, d) => s + d.hours, 0))}h
-            </Badge>
-          </div>
-          {data.hoursTrend.every((d) => d.hours === 0) ? (
-            <EmptyState
-              icon={<BarChart3 className="h-8 w-8" />}
-              title="No hours logged yet"
-              description="Once hours are approved, you'll see a 30-day trend here."
-            />
-          ) : (
-            <div
-              className="h-56 w-full min-w-0"
-              aria-label="Approved hours trend chart"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={data.hoursTrend}
-                  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop
-                        offset="0%"
-                        stopColor="var(--club-accent)"
-                        stopOpacity={0.4}
-                      />
-                      <stop
-                        offset="100%"
-                        stopColor="var(--club-accent)"
-                        stopOpacity={0.02}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--border))"
-                    strokeOpacity={0.5}
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 10, fill: "currentColor" }}
-                    tickFormatter={(d) => format(parseISO(d), "MMM d")}
-                    interval={Math.floor(data.hoursTrend.length / 6)}
-                    axisLine={false}
-                    tickLine={false}
-                    className="text-muted-foreground"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: "currentColor" }}
-                    allowDecimals={false}
-                    width={32}
-                    axisLine={false}
-                    tickLine={false}
-                    className="text-muted-foreground"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 8,
-                      border: "1px solid hsl(var(--border, 220 13% 91%))",
-                      background: "hsl(var(--popover, 0 0% 100%))",
-                      color: "hsl(var(--popover-foreground, 0 0% 0%))",
-                      fontSize: 12,
-                    }}
-                    labelFormatter={(d) =>
-                      format(parseISO(String(d)), "MMM d, yyyy")
-                    }
-                    formatter={(value: number) => [
-                      `${fmtHours(value)}h`,
-                      "Approved hours",
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="hours"
-                    stroke="var(--club-accent)"
-                    strokeWidth={2}
-                    fill="url(#hoursGradient)"
-                    dot={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </section>
-
-        {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 */}
-        <section
-          className="card-quiet p-5 lg:col-span-4 order-3 lg:order-2 animate-fade-in"
-          style={stagger(3)}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-amber-500" />
-              <h2 className="text-card-title">Leaderboard</h2>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setView("members")}
-            >
-              All <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-          {data.leaderboard.length === 0 ? (
-            <EmptyState
-              icon={<Trophy className="h-8 w-8" />}
-              title="No hours logged yet"
-              description="Approved service hours will populate the leaderboard."
-            />
-          ) : (
-            <ul className="space-y-1">
-              {data.leaderboard.map((entry, i) => (
-                <li key={entry.userId}>
-                  <button
-                    type="button"
-                    onClick={() => setView("members")}
-                    className={cn(
-                      "flex items-center gap-3 w-full text-left rounded-lg px-2.5 py-2 hover:bg-accent/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      i === 0 && "bg-club-muted/30 ring-1 ring-club/20"
-                    )}
-                  >
-                    <RankBadge rank={i + 1} />
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage
-                        src={entry.avatarUrl ?? undefined}
-                        alt={entry.name}
-                      />
-                      <AvatarFallback
-                        className={cn("text-xs", avatarColor(entry.name))}
-                      >
-                        {initials(entry.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-body-medium truncate">{entry.name}</p>
-                      <p className="text-caption tabular-nums">
-                        {fmtHours(entry.hours)} hours
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
-        <section
-          className="card-quiet p-5 lg:col-span-4 order-1 lg:order-3 animate-fade-in"
-          style={stagger(0)}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <ListChecks className="h-4 w-4 text-club" />
-              <h2 className="text-card-title">Your snapshot</h2>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setView("hours")}
-            >
-              Hours <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-
-          {/* Approved hours + goal */}
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-body-medium">Approved hours</span>
-              </div>
-              <span className="text-card-title tabular-nums">
-                {fmtHours(data.myStats.approvedHours)}h
-              </span>
-            </div>
-            {data.club.hoursGoal > 0 && (
-              <>
-                <Progress
-                  value={hoursPct}
-                  className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
-                />
-                <p className="text-caption tabular-nums">
-                  {fmtHours(data.myStats.approvedHours)} of {data.club.hoursGoal}h
-                  goal · {Math.round(hoursPct)}%
-                </p>
-              </>
-            )}
-          </div>
-
-          <Separator className="my-4" />
-
-          {/* Tasks */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              <span className="text-body-medium">Tasks</span>
-            </div>
-            <span className="text-caption-medium tabular-nums">
-              <span className="text-foreground font-medium">
-                {data.myStats.tasksAssigned}
-              </span>{" "}
-              open
-              <span className="mx-1 text-muted-foreground">/</span>
-              <span className="text-foreground font-medium">
-                {data.myStats.tasksDone}
-              </span>{" "}
-              done
-            </span>
-          </div>
-
-          <Separator className="my-4" />
-
-          {/* Next meetings */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <span className="text-body-medium">Next meetings</span>
-            </div>
-            {data.upcomingMeetings.length === 0 ? (
-              <p className="text-caption">No upcoming meetings</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {data.upcomingMeetings.slice(0, 3).map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <span className="text-body truncate">{m.title}</span>
-                    <span className="text-caption shrink-0 tabular-nums">
-                      {format(new Date(m.startTime), "MMM d")}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-
-        {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
-        <section
-          className="card-quiet p-5 lg:col-span-4 order-4 lg:order-4 animate-fade-in"
-          style={stagger(4)}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Megaphone className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-card-title">Recent announcements</h2>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setView("announcements")}
-            >
-              All <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-          {data.recentAnnouncements.length === 0 ? (
-            <EmptyState
-              icon={<Megaphone className="h-8 w-8" />}
-              title="No announcements yet"
-              description="Share updates with your club to keep members in the loop."
-            />
-          ) : (
-            <ul className="space-y-2">
-              {data.recentAnnouncements.slice(0, 3).map((a) => (
-                <li
-                  key={a.id}
-                  className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
-                >
-                  <div className="flex items-start gap-2">
-                    {a.isPinned && (
-                      <Pin className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-body-medium truncate">{a.title}</p>
-                      <p className="text-caption mt-0.5">
-                        {a.authorName} · {relativeTime(a.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
-        <section
-          className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
-          style={stagger(5)}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-card-title">Upcoming meetings</h2>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setView("meetings")}
-            >
-              All <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
-          {data.upcomingMeetings.length === 0 ? (
-            <EmptyState
-              icon={<CalendarDays className="h-8 w-8" />}
-              title="No upcoming meetings"
-              description="Schedule a meeting to get the team together."
-            />
-          ) : (
-            <ul className="space-y-2">
-              {data.upcomingMeetings.map((m) => (
-                <li
-                  key={m.id}
-                  className="rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-body-medium truncate">{m.title}</p>
-                      <div className="mt-1 flex items-center gap-1 text-caption">
-                        <MapPin className="h-3 w-3" />
-                        <span className="truncate">{m.location}</span>
-                      </div>
-                    </div>
-                    {m.myRsvp && <RsvpBadge status={m.myRsvp} />}
-                  </div>
-                  <p className="mt-1 text-caption tabular-nums">
-                    {format(new Date(m.startTime), "EEE, MMM d · h:mm a")}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      {/* Row 5 — Club-wide stats mini-strip (Tier 3) ----------------------- */}
-      <section
-        className="card-quiet p-4 animate-fade-in"
-        style={stagger(6)}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-card-title">Club at a glance</h2>
+      {/* Rows 3+4 — chart + leaderboard + snapshot + announcements + meetings
+          Role-aware: members get snapshot → announcements → meetings → chart →
+          leaderboard (their own work first, club context later). Execs keep the
+          original chart-first layout (they want the pulse of the club at a
+          glance). The `{!isExec ? … : …}` pattern keeps the two layouts as
+          explicit siblings rather than conditional class swaps. */}
+      {!isExec ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Your snapshot — first */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-1 lg:order-1 animate-fade-in"
+            style={stagger(0)}
+          >
+            {snapshotBody}
+          </section>
+          {/* Announcements — second */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-2 lg:order-2 animate-fade-in"
+            style={stagger(1)}
+          >
+            {announcementsBody}
+          </section>
+          {/* Upcoming meetings — third */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-3 lg:order-3 animate-fade-in"
+            style={stagger(2)}
+          >
+            {meetingsBody}
+          </section>
+          {/* Hours trend chart — fourth */}
+          <section
+            className="card-quiet p-5 lg:col-span-8 order-4 lg:order-4 animate-fade-in"
+            style={stagger(3)}
+          >
+            {chartBody}
+          </section>
+          {/* Leaderboard — fifth */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
+            style={stagger(4)}
+          >
+            {leaderboardBody}
+          </section>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ClubStat
-            label="Members"
-            value={String(data.clubStats.totalMembers)}
-            icon={<Users className="h-3.5 w-3.5" />}
-            onClick={() => setView("members")}
-          />
-          <ClubStat
-            label="Total hours"
-            value={fmtHours(data.clubStats.totalApprovedHours)}
-            icon={<Clock className="h-3.5 w-3.5" />}
-            onClick={() => setView("hours")}
-          />
-          <ClubStat
-            label="Open tasks"
-            value={String(data.clubStats.openTasks)}
-            icon={<ClipboardList className="h-3.5 w-3.5" />}
-            onClick={() => setView("tasks")}
-          />
-          <ClubStat
-            label="Upcoming meetings"
-            value={String(data.clubStats.upcomingMeetingsCount)}
-            icon={<CalendarDays className="h-3.5 w-3.5" />}
-            onClick={() => setView("meetings")}
-          />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 */}
+          <section
+            className="card-quiet p-5 lg:col-span-8 order-2 lg:order-1 animate-fade-in"
+            style={stagger(2)}
+          >
+            {chartBody}
+          </section>
+
+          {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-3 lg:order-2 animate-fade-in"
+            style={stagger(3)}
+          >
+            {leaderboardBody}
+          </section>
+
+          {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-1 lg:order-3 animate-fade-in"
+            style={stagger(0)}
+          >
+            {snapshotBody}
+          </section>
+
+          {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-4 lg:order-4 animate-fade-in"
+            style={stagger(4)}
+          >
+            {announcementsBody}
+          </section>
+
+          {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
+          <section
+            className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
+            style={stagger(5)}
+          >
+            {meetingsBody}
+          </section>
         </div>
-      </section>
+      )}
+
+      {/* Row 5 — Club-wide stats mini-strip (exec only) --------------------- */}
+      {isExec && (
+        <section
+          className="card-quiet p-4 animate-fade-in"
+          style={stagger(6)}
+        >
+          {clubStatsBody}
+        </section>
+      )}
 
       {/* Row 6 (execs only) — Executive insights compact strip ---------------- */}
       {isExec && data.execStats && (
@@ -1100,7 +1189,7 @@ function ExecMetric({
 function fmtHours(h: number) {
   if (h === 0) return "0"
   if (Number.isInteger(h)) return String(h)
-  return h.toFixed(1)
+  return parseFloat(h.toFixed(2)).toString()
 }
 
 function formatTurnaround(hours: number | null) {

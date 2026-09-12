@@ -44,10 +44,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
 
   const entry = await db.serviceHour.findUnique({ where: { id: hourId, clubId } })
   if (!entry) return error("Entry not found", 404)
-  if (entry.status !== "pending") return error("Entry has already been reviewed", 400)
+  // Allow re-review (approved ↔ rejected) — only skip if the entry is already
+  // in the requested state. Re-reviews preserve the proof file (already gone
+  // after the first review); only the FIRST review (pending → approved/rejected)
+  // deletes the on-disk proof file.
+  if (entry.status === status) return error(`Entry is already ${status}`, 400)
 
   // Single update covers both the review fields AND nulling out proofFileUrl —
-  // previously this was two sequential update calls on the same row.
+  // previously this was two sequential update calls on the same row. On a
+  // re-review proofFileUrl is already null, so the spread is a no-op.
   const updated = await db.serviceHour.update({
     where: { id: hourId },
     data: {
@@ -66,9 +71,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
 
   // Best-effort proof-file deletion runs in parallel with the side-effects wave
   // (logActivity + notify + emitClubEvent) — it reads from `entry.proofFileUrl`
-  // in memory and doesn't depend on the DB row.
+  // in memory and doesn't depend on the DB row. Only delete the proof file on
+  // the FIRST review (when entry was still pending); re-reviews skip it.
   await Promise.all([
-    deleteProofFile(entry.proofFileUrl),
+    entry.status === "pending" ? deleteProofFile(entry.proofFileUrl) : Promise.resolve(),
     logActivity({
       clubId,
       actorUserId: c.user.id,

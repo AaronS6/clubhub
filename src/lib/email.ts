@@ -54,15 +54,15 @@ export interface SendEmailInput {
 export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; id?: string; reason?: string }> {
   const client = getClient()
   if (!client) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        "[email] RESEND_API_KEY is not set — skipping email send to",
-        input.to,
-        "(subject:",
-        input.subject,
-        ")",
-      )
-    }
+    // Always log — in production this signals a missing RESEND_API_KEY config
+    // that needs attention; in dev it's a reminder that email is a no-op.
+    console.error(
+      "[email] RESEND_API_KEY is not set — skipping email send to",
+      input.to,
+      "(subject:",
+      input.subject,
+      ")",
+    )
     return { ok: false, reason: "RESEND_API_KEY not configured" }
   }
   try {
@@ -76,6 +76,7 @@ export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; i
       console.error("[email] Resend returned error:", error)
       return { ok: false, reason: String(error.message ?? error.name ?? error) }
     }
+    console.log("[email] Sent successfully to:", input.to, "ID:", data?.id)
     return { ok: true, id: data?.id }
   } catch (e) {
     console.error("[email] sendEmail failed:", e)

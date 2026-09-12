@@ -109,6 +109,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -834,29 +835,25 @@ function TaskCardContent({
             }
           : undefined
       }
+      {...(dragListeners ?? {})}
       className={cn(
-        "group card-quiet cursor-pointer p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet cursor-grab p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         dragging && "shadow-xl rotate-1 cursor-grabbing ring-2 ring-club/40",
         isDragging && "scale-[1.02] shadow-lg ring-2 ring-club/40 cursor-grabbing",
         flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
       )}
     >
       <div className="flex items-start gap-2">
-        {/* Drag handle — receives the dnd-kit listeners so only this area
-            starts a drag, not the action buttons. Shows a visual cue (scale +
-            shadow) when actively dragging so mobile users know the hold-delay
-            has triggered. */}
+        {/* Drag handle — visual indicator only. The whole card receives the
+            dnd-kit listeners (see the spread above) so the entire surface is
+            draggable; this grip icon just hints at affordance. */}
         {dragListeners && (
-          <button
-            type="button"
-            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/50 active:cursor-grabbing touch-none"
-            aria-label="Drag to move task"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={stop}
-            {...dragListeners}
+          <span
+            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/50 group-hover:text-muted-foreground touch-none pointer-events-none"
+            aria-hidden
           >
             <GripVertical className="size-4" />
-          </button>
+          </span>
         )}
         <div className="min-w-0 flex-1">
           <p className="text-body-medium leading-tight">{task.title}</p>
@@ -867,12 +864,14 @@ function TaskCardContent({
           )}
         </div>
         {/* Delete button — visible on hover (desktop) or always (mobile).
-            Exec OR assignee can delete. 44px tap target. */}
+            Exec OR assignee can delete. 44px tap target. onPointerDown stops
+            propagation so clicking delete doesn't start a card drag. */}
         {canDelete && clubId && (
           <button
             type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors md:opacity-0 md:group-hover:opacity-100"
             aria-label="Delete task"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               stop(e)
               deleteMutation.mutate()
@@ -1185,7 +1184,7 @@ function NewTaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col">
+      <DialogContent className={DIALOG_CLASS}>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>New task</DialogTitle>

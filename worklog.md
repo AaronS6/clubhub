@@ -1260,3 +1260,181 @@ Stage Summary:
 - All config externalized to env vars.
 - Dockerfiles + render.yaml + DEPLOY.md created.
 - Ready to deploy to Render free tier.
+
+---
+Task ID: REBUILD-API
+Agent: full-stack-developer (Z.ai Code)
+Task: Recreate lost API routes + features (activity prune/DELETE, hours re-review, exec delete approved hours, email scope, forgot/reset password, avatar + logo uploads, email.ts logging)
+
+Work Log:
+- `src/app/api/clubs/[clubId]/activity/route.ts`:
+  - Added `import { NextResponse } from "next/server"` at the top.
+  - Added exported `pruneOldActivity(clubId)` function — deletes ActivityLog rows older than 14 days (ACTIVITY_RETENTION_DAYS). Wrapped in try/catch, never throws, returns deleted count.
+  - GET now calls `void pruneOldActivity(clubId)` (best-effort, not awaited) right after the membership check, before fetching items. Wrapped the whole GET body in try/catch returning a 500 with the error message.
+  - Added DELETE endpoint (exec-only via `getClubContext` + role check) that clears ALL activity entries for the club with `db.activityLog.deleteMany({ where: { clubId } })` and returns `{ ok, deleted }`. Wrapped in try/catch.
+- `src/app/api/clubs/[clubId]/hours/[hourId]/route.ts`:
+  - PATCH: removed `if (entry.status !== "pending") return error("Entry has already been reviewed", 400)`.
+  - Replaced with `if (entry.status === status) return error(\`Entry is already ${status}\`, 400)` — re-review (approved↔rejected) now allowed.
+  - Proof file is now only deleted on FIRST review: the Promise.all branch uses `entry.status === "pending" ? deleteProofFile(entry.proofFileUrl) : Promise.resolve()`.
+- `src/components/views/hours-view.tsx`:
+  - Added `const isExec = useAppStore((s) => s.currentClub?.role) === "executive"` to HoursView.
+  - Both `canDelete={it.status === "pending"}` (desktop table row + mobile card) changed to `canDelete={isExec || it.status === "pending"}` so execs can delete approved/rejected entries too.
+- `src/lib/email-notifications.ts`:
+  - `EMAIL_TYPES` reduced to `new Set<NotifType>(["hours_approved"])` — only hours_approved is emailable; all other notification types are in-app only.
+- `src/app/api/auth/forgot-password/route.ts` (NEW):
+  - POST { email } → normalizes, looks up user. If found: generates a 32-byte hex token via `randomBytes(32).toString("hex")`, clears any prior tokens for the identifier, stores a new VerificationToken row (expires 1hr). Builds resetUrl from NEXTAUTH_URL/NEXT_PUBLIC_BASE_URL. If `isEmailConfigured()`, renders HTML via `renderEmailHtml()` and sends via `sendEmail()`; on send failure returns `{ ok: true, error, resetUrl }` so user can recover. If email not configured, returns `{ ok: true, error, resetUrl }` directly. Always returns `{ ok: true }` for anti-enumeration, even on hard failure (with error field).
+- `src/app/api/auth/reset-password/route.ts` (NEW):
+  - POST { token, password } → validates password strength via `isPasswordStrong` (8+ chars, letter+number). Looks up VerificationToken by token; rejects if missing or expired (cleans up expired/invalid tokens). Looks up user by `vt.identifier` (the email). Updates `passwordHash` via `hashPassword`, deletes the token (single-use). Wrapped in try/catch.
+- `src/app/api/me/avatar/route.ts` (NEW):
+  - POST: `getSessionUser()` auth. Reads multipart `file` field. 5MB cap (MAX_AVATAR_BYTES). Processes with `sharp`: `.rotate()` (EXIF), resize 256×256 cover, JPEG q80 mozjpeg. Stores as `data:image/jpeg;base64,...` in `User.avatarUrl`. Returns `{ avatarUrl }`. Wrapped in try/catch.
+  - DELETE: clears `avatarUrl` to null. Wrapped in try/catch.
+- `src/app/api/clubs/[clubId]/logo/route.ts` (NEW):
+  - POST: `getClubContext()` + exec role check. Multipart `file`, 5MB cap. Sharp resize 256×256 JPEG q80. Stores base64 data URL in `Club.logoUrl`. Returns `{ logoUrl }`. Wrapped in try/catch.
+  - DELETE: exec-only, clears `logoUrl` to null. Wrapped in try/catch.
+- `src/lib/email.ts`:
+  - `sendEmail()`: the `if (!client)` block now uses `console.error` (not `console.warn`) and removed the `process.env.NODE_ENV !== "production"` guard — always logs.
+  - Success path now logs `console.log("[email] Sent successfully to:", input.to, "ID:", data?.id)` before returning.
+
+Verification:
+- Ran `bun run lint` → clean (no errors, no warnings).
+- Did NOT touch `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
+- Did NOT restart the dev server.
+
+---
+Task ID: REBUILD-UI1
+Agent: full-stack-developer (Z.ai Code)
+Task: Recreate lost UI changes — footer/keyboard-shortcut removal, header fixed-sticky fix, sidebar layout (club switcher to top, theme toggle to bottom), top bar restructure (brand mark, profile avatar to right, theme toggle removed), ClubSwitcher "Clubs"/"Join a club", UserMenu "Create a club", shared DIALOG_CLASS module, all view files migrated, DialogFooter sticky-bottom stripped, BellBody notification list scrollable at 264px.
+
+Work Log:
+- **NEW FILE** `src/components/shared/dialog-class.ts` — exports `DIALOG_CLASS` constant (full-screen on mobile / centered modal on desktop, `flex flex-col` on both breakpoints; legacy `sm:grid` tail intentionally dropped).
+- `src/components/app-shell.tsx`:
+  - Imports: removed `Keyboard` and `ScrollArea` (both unused after edits); added `LogIn`.
+  - Added `toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark")` next to `useTheme()`.
+  - Root layout div: `min-h-screen flex flex-col bg-background` → `h-dvh flex flex-col bg-background overflow-hidden`.
+  - `<header>` lost `sticky top-0` (now naturally pinned by `overflow-hidden` parent).
+  - Mobile drawer (`<SheetContent side="left">`): club switcher moved from bottom to top (`p-3 shrink-0 border-b`), nav in middle (unchanged), theme toggle `<Button>` added at bottom (`border-t p-2 shrink-0`).
+  - Desktop sidebar (`<aside>`): same top/middle/bottom layout as mobile drawer.
+  - Top bar: brand mark added (`hidden md:flex`, `Sparkles` + "ClubHub"); profile avatar (`UserMenu compact`) moved from top-left to top-right (after `NotificationBell`); theme toggle button + keyboard shortcuts button removed from top bar.
+  - Removed `<Footer />` render in onboarding screen and in main `<main>`.
+  - Removed `<KeyboardShortcutsHelp />` render.
+  - `function Footer()` body replaced with `// Footer removed per user request`.
+  - `function KeyboardShortcutsHelp()` + `const SHORTCUTS` replaced with `// KeyboardShortcutsHelp + SHORTCUTS removed` comment (JSDoc preserved).
+  - `ClubSwitcher`: dropped `onCreate` prop, added `showJoin` state + `setClubs`; label `"Your clubs"` → `"Clubs"`; removed "Create new club" item; added "Join a club" item with `LogIn` icon that opens `<JoinClubDialog>` via `showJoin`.
+  - `UserMenu`: added `showCreate` state; "Join a club" icon swapped from `Plus` to `LogIn`; new "Create a club" item (with `Plus` icon) inserted between "Account settings" and "Sign out"; renders `<CreateClubDialog>` controlled by `showCreate`.
+  - `BellBody`: replaced `<ScrollArea className="max-h-[60vh] sm:max-h-[420px]">` with `<div className="max-h-[264px] overflow-y-auto">` (~4 notification rows visible, scrolls for more).
+- `src/components/views/announcements-view.tsx`: removed local `MOBILE_FULLSCREEN_DIALOG` constant + JSDoc; imported `DIALOG_CLASS`; replaced 2 `<DialogContent className={MOBILE_FULLSCREEN_DIALOG}>` usages; removed `sticky bottom-0 bg-background` from 2 `DialogFooter`s.
+- `src/components/views/members-view.tsx`: same migration — 1 usage, 1 footer.
+- `src/components/views/hours-view.tsx`: same migration — 1 usage, 1 footer.
+- `src/components/views/meetings-view.tsx`: same migration — 3 usages, 3 footers.
+- `src/components/views/teams-view.tsx`: same migration — 3 usages (one as `cn(DIALOG_CLASS, "sm:max-w-md")` to preserve narrower max-width on the Add Members dialog), 3 footers (one was a custom `flex items-center justify-between` variant — only the `sticky bottom-0 bg-background` tokens were stripped).
+- `src/components/views/tasks-view.tsx`: this file had an INLINE dialog class (`h-[100dvh] max-w-full sm:h-auto sm:max-w-[480px] rounded-none sm:rounded-lg p-0 flex flex-col`) on `<DialogContent>` rather than a named constant — replaced inline string with `className={DIALOG_CLASS}`. The single `DialogFooter` here already used `px-6 py-4 border-t shrink-0` (no sticky tokens) — unchanged.
+- `src/components/auth/create-club-dialog.tsx`: removed local `MOBILE_FULLSCREEN_DIALOG` constant + JSDoc; imported `DIALOG_CLASS`; replaced 1 usage; removed `sticky bottom-0 bg-background` from 1 footer.
+
+Verification:
+- `bun run lint` → EXIT 0, zero errors / zero warnings.
+- `rg MOBILE_FULLSCREEN_DIALOG` returns only matches in `worklog.md` (history) and the `dialog-class.ts` JSDoc comment — no live code paths remain.
+- `rg "sticky bottom-0 bg-background"` returns zero matches anywhere in the codebase.
+- `rg "Keyboard|open-keyboard-shortcuts"` in `app-shell.tsx` returns only the preserved JSDoc comments above the `// KeyboardShortcutsHelp + SHORTCUTS removed` stub — no live references.
+- Did NOT touch any API route files. Did NOT touch `prisma/schema.prisma`. Did NOT restart the dev server (PID file is stale but per task rules I left it alone).
+
+Stage Summary:
+- Footer removed (function stubbed, both renders removed).
+- Keyboard shortcuts help dialog removed (function stubbed, render removed, top-bar trigger button removed, unused `Keyboard` import dropped).
+- Header is now naturally fixed (root `h-dvh … overflow-hidden`, header no longer needs `sticky top-0`).
+- Club switcher moved to sidebar top (desktop + mobile drawer); theme toggle button added to sidebar bottom (desktop + mobile drawer).
+- Top bar: hamburger (mobile), brand mark (desktop), search (center), connection indicator, notification bell, profile avatar — in that order. Theme toggle and keyboard shortcuts buttons removed from top bar.
+- ClubSwitcher dropdown: label "Clubs", "Create new club" replaced with "Join a club" (LogIn icon, opens JoinClubDialog).
+- UserMenu: gained "Create a club" item (Plus icon) between "Account settings" and "Sign out"; opens CreateClubDialog.
+- New shared `DIALOG_CLASS` constant in `src/components/shared/dialog-class.ts`; all 7 form-style dialogs across 6 view files + create-club-dialog migrated to use it.
+- All 11 sticky-bottom DialogFooters cleaned (`sticky bottom-0 bg-background` removed, `shrink-0` preserved).
+- NotificationBell panel: list is now `max-h-[264px] overflow-y-auto` (~4 items visible, scrolls for more).
+
+---
+Task ID: REBUILD-UI2
+Agent: full-stack-developer (Z.ai Code)
+Task: Recreate remaining lost UI features — brand mark + logo, forgot password, role-aware dashboard, whole-card drag on tasks, mention picker fixes, avatar upload in settings, club logo upload, hours time-period filter, approvals reviewed tab, activity clear-all button.
+
+Work Log:
+- **Brand mark + logo**:
+  - Generated `public/club-logo.png` via z-ai image CLI (1024×1024, minimalist ClubHub icon).
+  - **NEW FILE** `src/components/brand-mark.tsx` — exports `BrandMark({ className, size=32 })` using `next/image` with `bg-club` rounded-lg wrapper + `p-[15%]` padding + `unoptimized`.
+  - `src/app/layout.tsx` — added `icons: { icon: "/club-logo.png", apple: "/club-logo.png" }` to the `metadata` export.
+  - `src/components/app-shell.tsx` — imported `BrandMark`, replaced the top-bar `Sparkles` + "ClubHub" text with `<BrandMark size={28} />` + "ClubHub" (desktop sidebar only, `hidden md:flex`).
+- **Forgot password UI** (`src/components/auth/auth-screen.tsx`):
+  - Added `useSearchParams` + `useRouter` from `next/navigation`.
+  - When `?reset=TOKEN` is in the URL, the `AuthScreen` renders a dedicated `ResetPasswordScreen` (new password + confirm fields, strength validation) instead of the normal login/signup. On success it calls `onDone()` which does `router.replace("/")` to strip the query param.
+  - Added a "Forgot password?" link next to the password label in the login form (opens `ForgotPasswordDialog`).
+  - `ForgotPasswordDialog` — email input + "Send reset link" button → POSTs to `/api/auth/forgot-password`. Surfaces the response's `error` + `resetUrl` (amber info box) when present (anti-enumeration: the endpoint always returns `ok:true`, but if email delivery fails it includes `error` + `resetUrl` for recovery). Success state shows a green confirmation box.
+  - The normal auth flow is now in `AuthScreenInner` (extracted so the reset screen can take over the whole component).
+- **Role-aware dashboard** (`src/components/views/dashboard-view.tsx`):
+  - `showOnboarding` changed from `!onboardingDismissed && !hasActivity` to `isExec && !onboardingDismissed && !hasActivity` (exec-only).
+  - Extracted each card's inner JSX into `chartBody`, `leaderboardBody`, `snapshotBody`, `announcementsBody`, `meetingsBody`, `clubStatsBody` const variables before the return.
+  - Replaced the single grid with `{!isExec ? (member grid) : (exec grid)}`:
+    - Member grid order: snapshot → announcements → meetings → chart → leaderboard (5 sections, `lg:col-span-4` each except chart at `lg:col-span-8`).
+    - Exec grid: chart (`lg:col-span-8`) → leaderboard → snapshot → announcements → meetings (original order/col-spans preserved).
+  - Club-wide stats strip ("Club at a glance") wrapped in `{isExec && (...)}` — members no longer see it.
+  - Executive insights section unchanged (already `{isExec && data.execStats && (...)}`).
+- **Whole-card drag on tasks** (`src/components/views/tasks-view.tsx`):
+  - In `TaskCardContent`, spread `{...(dragListeners ?? {})}` on the ENTIRE card `<div>` (was previously only on the grip handle button).
+  - Changed card className from `cursor-pointer` to `cursor-grab`.
+  - Grip handle converted from a `<button>` with `{...dragListeners}` to a `<span>` with `pointer-events-none` + `aria-hidden` — purely visual now.
+  - Delete button gained `onPointerDown={(e) => e.stopPropagation()}` so clicking delete doesn't start a drag.
+- **Mention picker fixes** (`src/components/ui/mentionable-textarea.tsx`):
+  - Picker container className: `w-64` → `left-0 right-0 min-w-[240px] max-w-[400px]`.
+  - Added `<div className="max-h-[132px] overflow-y-auto">` scrollable wrapper around the member list.
+  - `<span className="truncate">` → `<span className="whitespace-nowrap">`.
+  - Removed `.slice(0, 8)` from both the empty-query and filtered branches of `filteredMembers`.
+- **Avatar upload in settings** (`src/components/app-shell.tsx`):
+  - Imported `apiUpload` + `Upload`, `Trash2` icons.
+  - `SettingsDialog` now destructures `update` from `useSession()`.
+  - Added `avatarUploading` state + `avatarFileRef` (hidden `<input type="file" accept="image/*">`).
+  - `handleAvatarUpload` — validates image type, POSTs FormData to `/api/me/avatar` via `apiUpload`, updates local `avatarUrl` state, calls `update({ image })` to refresh the session.
+  - `handleAvatarRemove` — DELETEs `/api/me/avatar`, clears state, calls `update({ image: null })`.
+  - Replaced the "Avatar URL" text input with: 64px `Avatar` (image or initials fallback), "Upload" button, "Remove" button (if avatar exists), loading spinner during upload, help text "PNG, JPG, or WebP. We'll resize it to 256×256."
+- **Club logo upload** (`src/components/views/members-view.tsx`):
+  - Added `Trash2` + `Image as ImageIcon` icon imports.
+  - **NEW** `ClubLogoSection({ clubId })` component (exec-only) — reads `logoUrl`/`clubName` from store, 64px `Avatar` (logo or initials), "Upload logo" button → hidden file input → POST to `/api/clubs/[clubId]/logo` via `apiUpload` → `patchCurrentClub({ logoUrl })` + invalidate members query. "Remove" button → DELETE → `patchCurrentClub({ logoUrl: null })`.
+  - Rendered `{isExec && <ClubLogoSection clubId={clubId} />}` above the existing `ClubCodeSection`.
+- **Hours time-period filter** (`src/components/views/hours-view.tsx`):
+  - Added `period` state (`"this_month" | "last_month" | "this_year" | "last_year" | "all_time"`, default `"this_month"`).
+  - Added a `<Select>` dropdown in the History header (with `Calendar` icon).
+  - `useMemo` filters + groups items client-side: this_month/last_month → single flat group; this_year/last_year → grouped by month (e.g., "January 2025"); all_time → grouped by year, current year in `currentGroups`, previous years in `olderGroups`.
+  - Each group renders its own desktop table + mobile cards with a header (month/year label + count).
+  - `olderGroups` (all_time only) wrapped in a `<Collapsible>` with "Older entries" trigger (shows entry count + year list).
+  - Added "No entries in this period" empty state when `filteredCount === 0` but items exist.
+  - Imported `Collapsible, CollapsibleContent, CollapsibleTrigger`, `ChevronDown`, `Calendar`, `useMemo`.
+  - NOTE: moved the `useMemo` before the `if (!clubId)` early return to satisfy `react-hooks/rules-of-hooks` (hooks must run unconditionally).
+- **Approvals reviewed tab** (`src/components/views/approvals-view.tsx`):
+  - Added `tab` state (`"pending" | "reviewed"`).
+  - Added `Tabs` (Pending / Reviewed) toggle between PageHeader and Filters.
+  - Query is tab-aware: `status=pending` for pending tab; no status filter for reviewed tab (fetches scope=all, filters client-side to approved+rejected).
+  - `deleteMutation` added for execs to delete reviewed entries.
+  - **NEW** `ReviewedRow` (desktop) — shows member, date, hours, reason, category, status badge, reviewer name, review date (relative), comment (line-clamped), delete button.
+  - **NEW** `ReviewedCard` (mobile) — stacked card with same info + delete button.
+  - Bulk actions bar now `{tab === "pending" && selectedInScope.size > 0 && (...)}` (no bulk-approve on reviewed entries).
+  - Empty state + header count are tab-aware ("Inbox zero" vs "No reviewed entries").
+  - Added `reviewedAt` + `reviewComment` to the `HoursItem` interface (the API already returns them).
+  - Imported `Tabs, TabsList, TabsTrigger`, `Trash2`, `History`.
+- **Activity clear-all** (`src/components/views/activity-view.tsx`):
+  - Added `isExec` from store, `qc` from `useQueryClient`.
+  - `clearAllMutation` — DELETEs `/api/clubs/[clubId]/activity`, on success shows toast (`Cleared N entries`) + invalidates the activity query.
+  - "Clear all" button (exec-only, `total > 0`) rendered next to the filter Select, wrapped in an `AlertDialog` for confirmation. Loading spinner during deletion. Destructive styling on the confirm action.
+  - Imported `AlertDialog*` components, `Trash2`, `useMutation`, `useQueryClient`.
+
+Verification:
+- `bun run lint` → **EXIT 0**, zero errors / zero warnings (after fixing one `react-hooks/rules-of-hooks` violation in hours-view where `useMemo` was after an early return — moved it before the `if (!clubId)` guard).
+- Did NOT touch any API route files. Did NOT touch `prisma/schema.prisma`.
+- Did NOT restart the dev server (the PID file is stale; the system manages the dev server lifecycle).
+- The Prisma schema uses `postgresql` provider but `.env` has a SQLite-style URL — this is a pre-existing config mismatch from a prior agent's work (the REBUILD-API worklog notes the schema was swapped to PostgreSQL). Not in scope for this UI task.
+
+Stage Summary:
+- Brand mark component created + logo generated + wired into the app shell top bar + favicon metadata set.
+- Forgot password flow complete: "Forgot password?" link → email dialog → reset link → `?reset=TOKEN` screen → new password → back to login.
+- Dashboard is role-aware: members see snapshot/announcements/meetings/chart/leaderboard (no club stats, no exec insights, no onboarding banner); execs see the original chart-first layout + club stats + exec insights.
+- Task cards drag from anywhere on the card surface; grip icon is decorative; delete button doesn't trigger drags.
+- Mention picker: fluid width (240–400px), scrollable at 132px, no truncation, no 8-item cap.
+- Avatar upload in settings (upload/remove, session refresh).
+- Club logo upload in members view (exec-only, upload/remove, store patch).
+- Hours view: time-period select (this/last month, this/last year, all time) with month grouping for years and a collapsible "Older entries" section for all_time.
+- Approvals: Pending/Reviewed tabs; reviewed tab shows reviewer, review date, comment, and a delete button.
+- Activity log: "Clear all" button (exec-only) with confirmation dialog.
