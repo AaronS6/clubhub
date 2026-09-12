@@ -15,7 +15,6 @@ import {
   initials,
   relativeTime,
 } from "@/components/shared/page-header"
-import { BadgesDisplay } from "@/components/shared/badges-display"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Table,
   TableBody,
@@ -95,6 +95,10 @@ import {
   Pencil,
   Trash2,
   Image as ImageIcon,
+  Award,
+  Plus,
+  X as XIcon,
+  Trophy,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -132,6 +136,26 @@ interface ImportResult {
   invalid: { row: number; name?: string; email?: string; reason: string }[]
   pendingInvites: { name: string; email: string }[]
   clubCode: string
+}
+
+// ---------------------------------------------------------------------------
+// Badge shapes — matches /api/clubs/[clubId]/members/[userId]/badges
+// ---------------------------------------------------------------------------
+
+interface MemberBadgeItem {
+  id: string
+  name: string
+  description: string | null
+  emoji: string
+  createdAt: string
+  awarded: boolean
+  awardedAt: string | null
+  awardedById: string | null
+  awardedByName: string | null
+}
+interface MemberBadgesResponse {
+  badges: MemberBadgeItem[]
+  target: { userId: string; role: "member" | "executive"; joinedAt: string }
 }
 
 // ---------------------------------------------------------------------------
@@ -1335,12 +1359,7 @@ function MemberDetailSheet({
 
             <Separator />
 
-            <div>
-              <h3 className="text-section-title flex items-center gap-2 mb-3">
-                <Shield className="h-4 w-4 text-club" /> Badges
-              </h3>
-              <BadgesDisplay userId={member.user.id} clubId={clubId} />
-            </div>
+            <BadgesSection clubId={clubId} userId={member.user.id} />
           </div>
         </ScrollArea>
       </SheetContent>
@@ -1365,6 +1384,349 @@ function StatBox({
       </div>
       <div className="text-sm font-semibold truncate">{value}</div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Badges section — shown inside MemberDetailSheet. Members see awarded
+// badges only; executives additionally get an "Award badge" dropdown, a
+// "Create badge" button, and a small revoke (X) on each awarded badge.
+// ---------------------------------------------------------------------------
+
+const EMOJI_CHOICES: string[] = [
+  "🏆", "🥇", "🥈", "🥉", "🎖️", "🏅", "⭐", "🌟", "💎", "👑",
+  "🔥", "⚡", "💪", "🎯", "🚀", "🌈", "🎉", "✨", "💖", "🙌",
+  "🌱", "🌿", "🌳", "🍀", "🌻", "🦋", "🐝", "🐬", "🐾", "🦉",
+  "📚", "🎨", "🎵", "⚽", "🏀", "🎮", "🧩", "💡", "🔬", "🦾",
+]
+
+function BadgesSection({ clubId, userId }: { clubId: string; userId: string }) {
+  const isExec = useAppStore((s) => s.currentClub?.role) === "executive"
+  const qc = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const { data, isLoading } = useQuery<MemberBadgesResponse>({
+    queryKey: ["member-badges", clubId, userId],
+    queryFn: () => api(`/api/clubs/${clubId}/members/${userId}/badges`),
+    enabled: !!clubId && !!userId,
+    staleTime: 60_000,
+  })
+
+  const awardMut = useMutation({
+    mutationFn: (badgeId: string) =>
+      api(`/api/clubs/${clubId}/members/${userId}/badges`, {
+        method: "POST",
+        json: { badgeId },
+      }),
+    onSuccess: () => {
+      toast.success("Badge awarded")
+      qc.invalidateQueries({ queryKey: ["member-badges", clubId, userId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const revokeMut = useMutation({
+    mutationFn: (badgeId: string) =>
+      api(`/api/clubs/${clubId}/members/${userId}/badges`, {
+        method: "DELETE",
+        json: { badgeId },
+      }),
+    onSuccess: () => {
+      toast.success("Badge revoked")
+      qc.invalidateQueries({ queryKey: ["member-badges", clubId, userId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const badges = data?.badges ?? []
+  const awarded = badges.filter((b) => b.awarded)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h3 className="text-section-title flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-club" /> Badges
+        </h3>
+        {isExec && (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" /> Create badge
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="club"
+                  disabled={isLoading || badges.length === 0 || awardMut.isPending}
+                >
+                  {awardMut.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Award className="h-3.5 w-3.5" />
+                  )}
+                  Award badge
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-60 max-h-72 overflow-y-auto"
+              >
+                <DropdownMenuLabel>Award a badge</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {badges.length === 0 ? (
+                  <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                    No badges yet — create one first.
+                  </div>
+                ) : (
+                  badges.map((b) => (
+                    <DropdownMenuItem
+                      key={b.id}
+                      disabled={b.awarded || awardMut.isPending}
+                      onClick={() => awardMut.mutate(b.id)}
+                    >
+                      <span className="mr-2 text-base leading-none">{b.emoji}</span>
+                      <span className="flex-1 truncate">{b.name}</span>
+                      {b.awarded && (
+                        <span className="ml-2 text-[10px] uppercase font-semibold text-muted-foreground">
+                          Awarded
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-24 rounded-full" />
+          ))}
+        </div>
+      ) : awarded.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
+          No badges awarded yet.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {awarded.map((b) => {
+            const tip = b.description
+              ? `${b.description}\nAwarded by ${b.awardedByName ?? "an executive"}${
+                  b.awardedAt ? ` · ${relativeTime(b.awardedAt)}` : ""
+                }`
+              : `Awarded by ${b.awardedByName ?? "an executive"}${
+                  b.awardedAt ? ` · ${relativeTime(b.awardedAt)}` : ""
+                }`
+            return (
+              <div
+                key={b.id}
+                title={tip}
+                className="group flex items-center gap-1.5 rounded-lg bg-club-muted px-2.5 py-1.5 text-club"
+              >
+                <span aria-hidden className="text-base leading-none">
+                  {b.emoji}
+                </span>
+                <span className="text-xs font-semibold">{b.name}</span>
+                {isExec && (
+                  <button
+                    type="button"
+                    onClick={() => revokeMut.mutate(b.id)}
+                    disabled={revokeMut.isPending}
+                    aria-label={`Revoke ${b.name} badge`}
+                    className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-club/60 hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {isExec && (
+        <CreateBadgeDialog
+          clubId={clubId}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={() =>
+            qc.invalidateQueries({ queryKey: ["member-badges", clubId, userId] })
+          }
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Create badge dialog — exec-only form for defining a new club badge.
+// ---------------------------------------------------------------------------
+
+function CreateBadgeDialog({
+  clubId,
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  clubId: string
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onCreated: () => void
+}) {
+  const [name, setName] = useState("")
+  const [emoji, setEmoji] = useState("🏆")
+  const [description, setDescription] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+
+  function reset() {
+    setName("")
+    setEmoji("🏆")
+    setDescription("")
+    setSubmitting(false)
+  }
+
+  function handleOpenChange(v: boolean) {
+    if (!v) {
+      // Defer reset so the close animation doesn't jump.
+      setTimeout(reset, 200)
+    }
+    onOpenChange(v)
+  }
+
+  async function handleSubmit() {
+    if (!name.trim()) {
+      toast.error("Badge name is required")
+      return
+    }
+    setSubmitting(true)
+    try {
+      await api(`/api/clubs/${clubId}/badges`, {
+        method: "POST",
+        json: {
+          name: name.trim(),
+          emoji: emoji.trim() || "🏆",
+          description: description.trim() || undefined,
+        },
+      })
+      toast.success("Badge created")
+      onCreated()
+      handleOpenChange(false)
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create badge")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
+        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            <Award className="h-4 w-4" /> Create a new badge
+          </DialogTitle>
+          <DialogDescription>
+            Custom badges can be awarded to any member of this club. You can
+            create as many as you like.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="badge-name">Badge name</Label>
+            <Input
+              id="badge-name"
+              value={name}
+              onChange={(e) => setName(e.target.value.slice(0, 60))}
+              placeholder="e.g. Best Member, MVP, Top Volunteer"
+              maxLength={60}
+              autoFocus
+            />
+            <p className="text-[11px] text-muted-foreground">{name.length}/60</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Emoji</Label>
+            <div className="rounded-lg border p-2 max-h-36 overflow-y-auto">
+              <div className="grid grid-cols-10 gap-0.5">
+                {EMOJI_CHOICES.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setEmoji(em)}
+                    className={cn(
+                      "flex items-center justify-center rounded p-1.5 text-xl leading-none transition-colors hover:bg-accent min-h-9",
+                      emoji === em && "bg-club-muted ring-1 ring-club"
+                    )}
+                    aria-label={`Select emoji ${em}`}
+                    aria-pressed={emoji === em}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <Input
+                value={emoji}
+                onChange={(e) => setEmoji(e.target.value.slice(0, 8))}
+                placeholder="🏆"
+                className="w-24 text-center text-xl"
+                maxLength={8}
+                aria-label="Custom emoji"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Or paste your own emoji.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="badge-desc">Description (optional)</Label>
+            <Textarea
+              id="badge-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value.slice(0, 280))}
+              placeholder="What does this badge recognize?"
+              rows={3}
+              maxLength={280}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {description.length}/280
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={submitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="club"
+            onClick={handleSubmit}
+            disabled={!name.trim() || submitting}
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : (
+              <Plus className="h-4 w-4 mr-1.5" />
+            )}
+            Create badge
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

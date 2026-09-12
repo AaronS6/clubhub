@@ -432,12 +432,191 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <GlobalSearch />
+      <BadgeConfettiPopup />
     </div>
   )
 }
 
 function Footer() {
   // Footer removed per user request
+}
+
+// ---------------------------------------------------------------------------
+// Badge confetti popup
+// ---------------------------------------------------------------------------
+//
+// On app load (when AppShell mounts — which only happens after the session
+// resolves + the user has at least one club), check /api/me/badges?since=
+// <last-seen-badges> for any new badge awards. If there are any, pop a
+// celebratory confetti overlay with the most recent award's details.
+//
+// The "last-seen-badges" localStorage value is a Unix-ms timestamp. First
+// run (no value stored) initializes it to "now" and shows nothing — the
+// baseline is the moment the user first opened the app, so only badges
+// awarded AFTER that point trigger the popup.
+
+interface BadgeAwardSummary {
+  id: string
+  badge: { id: string; name: string; emoji: string; description: string | null }
+  awardedByName: string
+  awardedAt: string
+  clubName: string
+}
+
+const CONFETTI_COLORS = [
+  "#16a34a", // green
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#a855f7", // purple
+  "#ec4899", // pink
+  "#10b981", // teal
+  "#f97316", // orange
+  "#facc15", // yellow
+]
+
+function buildConfettiPieces(count: number) {
+  return Array.from({ length: count }).map(() => ({
+    left: Math.random() * 100,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    delay: Math.random() * 250,
+    duration: 1800 + Math.random() * 900,
+    x: (Math.random() - 0.5) * 220,
+    rotate: Math.random() * 360,
+  }))
+}
+
+function BadgeConfettiPopup() {
+  const [activeAward, setActiveAward] = useState<BadgeAwardSummary | null>(null)
+  // Generate the confetti piece positions ONCE per mount. Re-rolling on every
+  // render would make the pieces jump.
+  const [pieces] = useState(() => buildConfettiPieces(36))
+
+  useEffect(() => {
+    let cancelled = false
+
+    // Read the last-seen baseline. If missing, seed it to "now" and bail —
+    // we treat the first run as the baseline so we don't surprise the user
+    // with a popup for badges they were already aware of before this first
+    // load.
+    let lastSeenMs: number | null = null
+    try {
+      const raw = localStorage.getItem("last-seen-badges")
+      if (raw) {
+        const parsed = parseInt(raw, 10)
+        if (!isNaN(parsed)) lastSeenMs = parsed
+      }
+    } catch {
+      // localStorage unavailable (private browsing, etc.) — bail silently.
+      return
+    }
+
+    if (lastSeenMs === null) {
+      try {
+        localStorage.setItem("last-seen-badges", String(Date.now()))
+      } catch {
+        // ignore
+      }
+      return
+    }
+
+    const sinceIso = new Date(lastSeenMs).toISOString()
+    api<{ awards: BadgeAwardSummary[] }>(
+      `/api/me/badges?since=${encodeURIComponent(sinceIso)}`
+    )
+      .then((data) => {
+        if (cancelled) return
+        // Awards come back ordered by awardedAt desc, so the first one is
+        // the most recent. Show that one — the user already got the bell
+        // notification for all of them; this popup is the celebratory moment
+        // for the freshest award.
+        if (data.awards.length > 0) {
+          setActiveAward(data.awards[0])
+        }
+      })
+      .catch(() => {
+        // Silently ignore — the confetti popup is non-critical.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  function dismiss() {
+    // Mark every award up to "now" as seen. This includes any awarded
+    // during the current session so the next load doesn't re-pop them.
+    try {
+      localStorage.setItem("last-seen-badges", String(Date.now()))
+    } catch {
+      // ignore
+    }
+    setActiveAward(null)
+  }
+
+  // Auto-dismiss after 5 seconds.
+  useEffect(() => {
+    if (!activeAward) return
+    const timer = setTimeout(dismiss, 5000)
+    return () => clearTimeout(timer)
+  }, [activeAward])
+
+  if (!activeAward) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="You were awarded a new badge"
+    >
+      {/* Dim backdrop — click anywhere to dismiss */}
+      <button
+        type="button"
+        aria-label="Dismiss badge celebration"
+        onClick={dismiss}
+        className="absolute inset-0 w-full h-full bg-black/50 backdrop-blur-sm cursor-default"
+      />
+
+      {/* Confetti layer — pointer-events-none so it never blocks clicks */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {pieces.map((p, i) => (
+          <span
+            key={i}
+            className="badge-confetti-piece"
+            style={{
+              left: `${p.left}%`,
+              background: p.color,
+              animationDelay: `${p.delay}ms`,
+              animationDuration: `${p.duration}ms`,
+              transform: `rotate(${p.rotate}deg)`,
+              // Custom property consumed by the @keyframes in globals.css
+              // to drive horizontal drift as each piece falls.
+              ["--confetti-x" as string]: `${p.x}px`,
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
+
+      {/* Center card */}
+      <div className="relative pointer-events-auto rounded-2xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
+        <div className="text-5xl leading-none mb-2" aria-hidden>
+          {activeAward.badge.emoji}
+        </div>
+        <h2 className="text-lg font-semibold">You earned a badge! 🎉</h2>
+        <p className="text-sm text-muted-foreground mt-1.5">
+          You were awarded the{" "}
+          <span className="font-semibold text-foreground">
+            {activeAward.badge.emoji} {activeAward.badge.name}
+          </span>{" "}
+          badge by {activeAward.awardedByName}
+          {activeAward.clubName ? ` in ${activeAward.clubName}` : ""}.
+        </p>
+        <Button variant="club" className="mt-4" onClick={dismiss}>
+          Awesome!
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   ArrowDownCircle,
   UserPlus,
   Bell,
+  Award,
 } from "lucide-react"
 
 /**
@@ -46,6 +47,7 @@ export type NotifTone =
   | "demote"
   | "member"
   | "chat"
+  | "badge"
   | "neutral"
 
 export interface NotifMeta {
@@ -124,6 +126,12 @@ const META: Record<string, NotifMeta> = {
     view: "chat",
     tone: "chat",
   },
+  badge_awarded: {
+    icon: Award,
+    label: "Badge awarded",
+    view: "members",
+    tone: "badge",
+  },
 }
 
 const FALLBACK_META: NotifMeta = {
@@ -170,6 +178,8 @@ export function notifToneClasses(tone: NotifTone): string {
       return "bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300"
     case "chat":
       return "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300"
+    case "badge":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
     case "neutral":
     default:
       return "bg-muted text-muted-foreground"

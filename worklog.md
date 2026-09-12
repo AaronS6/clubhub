@@ -1471,3 +1471,63 @@ Verification:
 Stage Summary:
 - Notification bell has a "Clear all" button (ghost, trash icon, destructive hover) next to "Mark all read" — actually deletes all notifications (distinct from mark-as-read) and shows a success toast.
 - `public/club-logo.png` is now a true PNG with alpha; the white background is transparent while the logo art is preserved.
+
+---
+Task ID: R15-BADGES
+Agent: full-stack-developer (Z.ai Code)
+Task: Replace the old hardcoded BADGE_DEFS auto-achievement badge system with a manual award system — execs create custom badges and award them to members. Includes a confetti popup on app load when the user has new unseen badge awards.
+
+Work Log:
+- **NEW** `src/app/api/clubs/[clubId]/badges/route.ts`:
+  - GET (any member): returns all club badges with `id, name, description, emoji, createdAt, createdBy, creatorName, awardCount`. Ordered by `createdAt asc`.
+  - POST (exec-only via `getClubContext` + role check): body `{ name, description?, emoji? }`. Validates name (1-60 chars), description (max 280), emoji (max 8 chars — supports ZWJ-joined multi-codepoint emoji). Defaults emoji to "🏆". Stores `createdBy` = exec's user ID. Returns the new badge with 201 status. Best-effort side effects (`logActivity` + `emitClubEvent`) via `Promise.allSettled` so logging/realtime misses never fail the create.
+- **NEW** `src/app/api/clubs/[clubId]/badges/[badgeId]/route.ts`:
+  - DELETE (exec-only): scoped by `(id, clubId)` so a stray ID from another club can't be deleted. The schema's `onDelete: Cascade` on `Badge.awards` cleans up `MemberBadge` rows automatically. Best-effort `logActivity` + `emitClubEvent` via `Promise.allSettled`.
+- **REWRITTEN** `src/app/api/clubs/[clubId]/members/[userId]/badges/route.ts`:
+  - The old BADGE_DEFS catalog + `computeEarned(stats)` auto-achievement code is GONE.
+  - GET (any member): fans out `db.badge.findMany` + `db.memberBadge.findMany` in parallel; returns each catalog badge with `awarded: boolean`, `awardedAt`, `awardedById`, `awardedByName`.
+  - POST (exec-only): body `{ badgeId }`. Validates badge belongs to this club + target user is an active member. Pre-checks the `(badgeId, userId)` uniqueness and returns 409 on duplicate (instead of crashing on the DB unique constraint). Creates the `MemberBadge` row with `awardedBy` = exec's user ID. Creates a Notification for the member: `type="badge_awarded"`, `message="You were awarded the \"🏆 Best Member\" badge by ExecName"` (exactly per spec — emoji + name in quotes, exec name appended). Logs activity (`badge_awarded`) + emits realtime club event. All side effects via `Promise.allSettled`.
+  - DELETE (exec-only): body `{ badgeId }`. Removes the `MemberBadge` row. Logs activity (`badge_revoked`) + emits realtime.
+- **NEW** `src/app/api/me/badges/route.ts`:
+  - GET: returns every badge the session user has been awarded across ALL their clubs. Supports `?since=<ISO>` query param to filter for awards with `awardedAt > since`. Used by the app-shell confetti popup. Includes `badge { id, name, emoji, description }`, `clubName`, `awardedByName`, `awardedAt`. Ordered by `awardedAt desc`.
+- **MODIFIED** `src/lib/notif-meta.ts`:
+  - Added `badge_awarded` to the META map (icon: `Award`, label: "Badge awarded", view: `members`, tone: `badge`). Imported `Award` from lucide-react.
+  - Added `"badge"` to the `NotifTone` union.
+  - Added `case "badge"` to `notifToneClasses` (amber tint, matching the announcement tone).
+  - This makes the notification bell render the badge award with a proper icon + makes `badge_awarded` filterable in the Notifications view (which derives its filter list from `ALL_NOTIF_TYPE_KEYS = Object.keys(META)`).
+- **REWRITTEN** `src/components/shared/badges-display.tsx`:
+  - Dropped the `ICON_MAP` (lucide icons) + `BadgeStats` + `BadgeDef` + 8 hardcoded `BADGE_DEFS`.
+  - New shape: fetches `/api/clubs/[clubId]/members/[userId]/badges` (same query key `["member-badges", clubId, userId]` as before so invalidation still works). Each badge renders as `emoji + name`.
+  - Compact mode (used in members table): shows up to 3 awarded badges as small `bg-club-muted text-club` pills with emoji + name. Overflow shows "+N more". Tooltip (shadcn `Tooltip`) shows description + awarder name + relative time.
+  - Full mode (used in member detail sheet): awarded badges show as `bg-club-muted text-club` rectangles with emoji + name + tooltip. Optional "Available" section (off by default with `hideUnearned=false`) shows not-awarded badges muted with grayscale emoji.
+  - Skeleton while loading (`Skeleton h-7 w-24 rounded-full × 3`).
+- **MODIFIED** `src/components/views/members-view.tsx`:
+  - Added `Textarea` to ui imports; added `Award`, `Plus`, `X as XIcon`, `Trophy` to lucide-react imports.
+  - Removed the unused `BadgesDisplay` import (replaced by the new inline `BadgesSection`).
+  - Added `MemberBadgeItem` + `MemberBadgesResponse` interfaces near the top of the file.
+  - Replaced the inline `<BadgesDisplay userId={member.user.id} clubId={clubId} />` block in `MemberDetailSheet` with `<BadgesSection clubId={clubId} userId={member.user.id} />`.
+  - **NEW** `BadgesSection` component: reads `isExec` from the store directly (so it works without threading the prop through). Uses the existing `["member-badges", clubId, userId]` query key. For execs: renders a header toolbar with a "Create badge" button + an "Award badge" `DropdownMenu` (lists all club badges; already-awarded ones disabled with "Awarded" label). Awarded badges render as `bg-club-muted text-club` pills with emoji + name + a small X revoke button (exec-only, `aria-label="Revoke <name> badge"`). Loading skeleton + empty state ("No badges awarded yet."). Award + revoke via `useMutation` with toast feedback + query invalidation.
+  - **NEW** `CreateBadgeDialog` component: exec-only form for defining a new club badge. Fields: name (Input, 60-char cap, `autoFocus`), emoji picker (40-emoji grid + custom paste Input, 8-char cap), description (Textarea, 280-char cap, optional). Uses `DIALOG_CLASS` for the mobile-fullscreen treatment. Submit via POST `/api/clubs/[clubId]/badges`. Toast on success; reset form on close (200ms deferred so the close animation doesn't jump).
+- **MODIFIED** `src/components/app-shell.tsx`:
+  - Added `<BadgeConfettiPopup />` render at the end of the main AppShell return (after `<GlobalSearch />`).
+  - **NEW** `BadgeConfettiPopup` component: on mount, reads `last-seen-badges` from localStorage (Unix-ms timestamp). First-run baseline: if missing, seeds it to `Date.now()` and shows nothing (treats first load as the baseline). Otherwise fetches `/api/me/badges?since=<ISO>`; if awards come back, shows the most recent one as a celebratory popup. Popup: dim backdrop (click to dismiss), 36-piece CSS confetti layer (`pointer-events-none`), center card with the badge emoji + "You earned a badge! 🎉" + "You were awarded the [emoji] [name] badge by [exec] in [club]." + "Awesome!" button. Auto-dismiss after 5 seconds via `useEffect` + `setTimeout`. On dismiss (button, backdrop click, or auto-dismiss), updates `last-seen-badges` to `Date.now()` so all current awards (including any awarded during this session) are marked as seen.
+  - Confetti pieces: 36 absolutely-positioned `<span>` elements, generated ONCE per mount via `useState(() => buildConfettiPieces(36))` so they don't re-roll on every render. Each piece has a random color (8-color palette: green/amber/red/purple/pink/teal/orange/yellow — deliberately avoiding indigo/blue per house style), random `left %`, random `animationDelay` (0-250ms), random `animationDuration` (1.8-2.7s), and random horizontal drift via a `--confetti-x` CSS custom property consumed by the `@keyframes` in `globals.css`.
+- **MODIFIED** `src/app/globals.css`:
+  - Added `@keyframes badge-confetti-fall` (translate3d from `-10px` to `320px` y, `rotate(0deg)` to `rotate(720deg)`, opacity fade at 80%+).
+  - Added `.badge-confetti-piece` (8×14px rounded rect, `will-change: transform, opacity`, 2.4s `ease-in forwards`).
+  - Added `@keyframes badge-pop-in` (scale 0.85 → 1.02 → 1 + opacity 0 → 1) + `.animate-badge-pop` (280ms cubic-bezier(0.22, 1, 0.36, 1)).
+  - All inside the existing `@layer components` block, consistent with the existing `animate-fade-in` pattern.
+- **NEW** `supabase_badges.sql`: Production SQL for Supabase SQL Editor. Idempotent (`DROP TABLE IF EXISTS` first, with CASCADE so FK dependencies clear). Creates `Badge` table (text PK for `cuid()` IDs, FKs to `Club` + `User` with `ON DELETE CASCADE`, `Badge_clubId_idx`) and `MemberBadge` table (text PK, FKs to `Badge` + `User` × 2 + `Club` all `ON DELETE CASCADE`, `UNIQUE ("badgeId", "userId")`, `MemberBadge_clubId_userId_idx` + `MemberBadge_userId_idx` for cross-club lookups). Column types + names + constraints match the Prisma schema exactly.
+
+Verification:
+- Verified the Prisma client (`node_modules/.prisma/client/index.d.ts`) has the new `Badge` + `MemberBadge` models — 88 references to the delegates — so `db.badge.*` and `db.memberBadge.*` are typed correctly without needing to regenerate.
+- `bun run lint` → **EXIT 0**, zero errors, zero warnings. (Initial run had one warning about an unused `eslint-disable` directive on the confetti auto-dismiss `useEffect` — removed the directive since the effect only depends on `activeAward` and `dismiss` is a stable closure.)
+- Did NOT touch `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
+- Did NOT restart the dev server. No `dev.log` was present at the project root at the time of the work, so no live server log inspection was possible — lint passing + the changes being self-contained and consistent with existing patterns is the verification signal.
+
+Stage Summary:
+- The old hardcoded BADGE_DEFS auto-achievement system is completely replaced. No code references the old `BADGE_DEFS`, `computeEarned`, `BadgeStats`, `BadgeDef`, or the `icon` field anywhere — `rg` confirms the only remaining hits are in this worklog + the agent-ctx file.
+- Executives can create custom badges (name + 40-emoji picker + custom paste + optional description), award them to any member via the member detail sheet's "Award badge" dropdown, and revoke them via the small X on each awarded badge pill.
+- Awarding a badge fires a `badge_awarded` notification (the bell rings with an Award icon), logs activity (`badge_awarded`), and emits a realtime club event so other execs viewing the member detail sheet see the new badge appear live.
+- On app load, if the user has any unseen badge awards since their `last-seen-badges` localStorage timestamp, a 36-piece CSS confetti popup celebrates the most recent one — auto-dismisses after 5 seconds; "Awesome!" button + backdrop click also dismiss. First-ever load seeds the baseline to `now()` so users don't get a popup for old badges.
+- `supabase_badges.sql` is ready to paste into the Supabase SQL Editor — creates both tables with all indexes + FKs matching the Prisma schema, idempotently.
