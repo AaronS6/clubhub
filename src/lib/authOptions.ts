@@ -14,13 +14,18 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
-        const email = credentials.email.toLowerCase().trim()
-        const user = await db.user.findUnique({ where: { email } })
-        if (!user) return null
-        const ok = await verifyPassword(credentials.password, user.passwordHash)
-        if (!ok) return null
-        return { id: user.id, name: user.name, email: user.email, image: user.avatarUrl ?? undefined }
+        try {
+          if (!credentials?.email || !credentials?.password) return null
+          const email = credentials.email.toLowerCase().trim()
+          const user = await db.user.findUnique({ where: { email } })
+          if (!user) return null
+          const ok = await verifyPassword(credentials.password, user.passwordHash)
+          if (!ok) return null
+          return { id: user.id, name: user.name, email: user.email, image: user.avatarUrl ?? undefined }
+        } catch (e) {
+          console.error("[auth] authorize error:", e)
+          return null
+        }
       },
     }),
   ],
@@ -32,18 +37,21 @@ export const authOptions: NextAuthOptions = {
       return token
     },
     async session({ session, token }) {
-      if (session.user && token.id) {
-        session.user.id = token.id as string
-        // attach fresh name/avatar
-        const dbUser = await db.user.findUnique({
-          where: { id: token.id as string },
-          select: { name: true, email: true, avatarUrl: true, bio: true },
-        })
-        if (dbUser) {
-          session.user.name = dbUser.name
-          session.user.email = dbUser.email
-          session.user.image = dbUser.avatarUrl ?? undefined
+      try {
+        if (session.user && token.id) {
+          session.user.id = token.id as string
+          const dbUser = await db.user.findUnique({
+            where: { id: token.id as string },
+            select: { name: true, email: true, avatarUrl: true, bio: true },
+          })
+          if (dbUser) {
+            session.user.name = dbUser.name
+            session.user.email = dbUser.email
+            session.user.image = dbUser.avatarUrl ?? undefined
+          }
         }
+      } catch (e) {
+        console.error("[auth] session callback error:", e)
       }
       return session
     },
