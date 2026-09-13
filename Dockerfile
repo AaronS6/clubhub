@@ -41,9 +41,15 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/prisma ./prisma
 
 EXPOSE 3000
-# Render sets the PORT env var; the standalone server respects it.
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Limit to 1 worker to stay under Render's 512MB free tier memory limit.
+# Multiple workers would each spawn their own Prisma client + connection pool,
+# quickly exhausting memory and causing 502 restarts.
+ENV WEB_CONCURRENCY=1
+# Give Node more memory headroom — the default heap can grow too large and
+# trigger OOM kills on the 512MB free tier.
+ENV NODE_OPTIONS="--max-old-space-size=384"
 
 # Start the server immediately. Tables are created manually via Supabase SQL
 # Editor (the pooler doesn't support prisma db push's prepared statements).

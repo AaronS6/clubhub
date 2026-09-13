@@ -43,7 +43,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
-import { BrandMark } from "@/components/brand-mark"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { useRealtimeSync } from "@/lib/use-realtime-sync"
 import { openGlobalSearch } from "@/components/global-search"
@@ -235,10 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex flex-col bg-background">
         <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/40 p-6">
           <div className="w-full max-w-md text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-club text-club-foreground shadow-sm">
-              <Sparkles className="h-7 w-7" />
-            </div>
-            <h1 className="text-page-title">Welcome to ClubHub</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight mb-2">ClubHub</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
               You&apos;re not in any clubs yet. Create a new club to become its first executive, or join an existing one with a club code.
             </p>
@@ -350,10 +346,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SheetContent>
       </Sheet>
 
-      {/* Brand mark — desktop only */}
-      <div className="hidden md:flex items-center gap-2 shrink-0 font-semibold">
-        <BrandMark size={28} />
-        <span>ClubHub</span>
+      {/* Brand text — desktop only */}
+      <div className="hidden md:flex items-center shrink-0">
+        <span className="text-lg font-extrabold tracking-tight">ClubHub</span>
       </div>
 
       {/* Search (center, desktop) — bordered trigger styled to match a real

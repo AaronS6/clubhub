@@ -1,19 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 import { Suspense } from "react";
 import { ClubAccentProvider } from "@/components/club-accent-provider";
 
-// Geist Sans — Vercel's typeface. Pairs naturally with Geist Mono (already in
-// use for code/mono) for a cohesive family. More character than Inter while
-// staying clean and highly legible at small sizes (tables, badges, chat
-// timestamps). Wired into --font-sans so the rest of the design system is
-// unchanged.
-const geistSans = Geist({
+// Plus Jakarta Sans — slightly more distinctive geometric warmth than Geist,
+// still very readable at small sizes (tables, badges, chat timestamps).
+// Pairs with Geist Mono for code/mono. Wired into --font-sans.
+const jakarta = Plus_Jakarta_Sans({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -54,7 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
+        className={`${jakarta.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         <Providers>
           <ClubAccentProvider>

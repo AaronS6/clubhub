@@ -173,7 +173,7 @@ function AuthScreenInner() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-semibold tracking-tight">ClubHub</span>
+          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="relative max-w-md">
@@ -223,7 +223,7 @@ function AuthScreenInner() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-semibold tracking-tight">ClubHub</span>
+          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="w-full max-w-sm mx-auto">
@@ -551,7 +551,7 @@ function ResetPasswordScreen({
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-semibold tracking-tight">ClubHub</span>
+          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="mb-6">
