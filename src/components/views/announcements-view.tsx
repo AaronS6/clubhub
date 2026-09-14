@@ -246,8 +246,8 @@ export function AnnouncementsView() {
           title="No announcements yet"
           description={
             isExec
-              ? "Post your first announcement to keep members in the loop."
-              : "Check back later for updates from club executives."
+              ? "Share an update with your club! 📢"
+              : "Check back soon — execs will post updates here. 📢"
           }
           action={
             isExec ? (
@@ -394,18 +394,26 @@ function AnnouncementCard({
   })
 
   return (
-    <div className="card-quiet p-0 gap-0 overflow-hidden animate-fade-in">
+    <div className={cn(
+      "card-quiet rounded-xl p-0 gap-0 overflow-hidden animate-fade-in hover:shadow-sm transition-all duration-150",
+      announcement.isPinned && "border-l-2 border-l-amber-400"
+    )}>
       <div className="p-4 md:p-5 space-y-3">
-        {/* Header */}
+        {/* Header — avatar + name + relative time + pills in one inline row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <Avatar className="h-10 w-10">
+            <Avatar className="h-10 w-10 shrink-0">
               <AvatarImage src={announcement.author.avatarUrl ?? undefined} alt={announcement.author.name} />
               <AvatarFallback>{initials(announcement.author.name)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-body-medium truncate">{announcement.author.name}</span>
+                <span className="text-caption text-muted-foreground">·</span>
+                <span className="text-caption text-muted-foreground">{relativeTime(announcement.createdAt)}</span>
+                {new Date(announcement.updatedAt).getTime() - new Date(announcement.createdAt).getTime() > 1000 && (
+                  <span className="text-caption text-muted-foreground italic">(edited)</span>
+                )}
                 {announcement.isUrgent && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200 px-2 py-0.5 text-[10px] font-semibold">
                     <AlertTriangle className="h-3 w-3" /> Urgent
@@ -415,12 +423,6 @@ function AnnouncementCard({
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 px-2 py-0.5 text-[10px] font-semibold">
                     <Pin className="h-3 w-3" /> Pinned
                   </span>
-                )}
-              </div>
-              <div className="text-caption">
-                {relativeTime(announcement.createdAt)}
-                {new Date(announcement.updatedAt).getTime() - new Date(announcement.createdAt).getTime() > 1000 && (
-                  <span className="ml-1 italic">(edited)</span>
                 )}
               </div>
             </div>
@@ -457,16 +459,16 @@ function AnnouncementCard({
         />
       </div>
 
-      {/* Footer: comment toggle */}
-      <div className="border-t bg-muted/20 px-4 md:px-5 py-2">
+      {/* Footer: comment toggle — inviting clickable pill */}
+      <div className="border-t bg-muted/20 px-4 md:px-5 py-2.5">
         <button
           type="button"
           onClick={() => setCommentsOpen((v) => !v)}
-          className="inline-flex items-center gap-1.5 text-caption-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs hover:bg-accent transition-colors cursor-pointer"
           aria-expanded={commentsOpen}
         >
           <MessageSquare className="h-3.5 w-3.5" />
-          {announcement.commentCount} {announcement.commentCount === 1 ? "comment" : "comments"}
+          {announcement.commentCount} {announcement.commentCount === 1 ? "reply" : "replies"}
           <ChevronDown className={cn("h-3 w-3 transition-transform", commentsOpen && "rotate-180")} />
         </button>
       </div>

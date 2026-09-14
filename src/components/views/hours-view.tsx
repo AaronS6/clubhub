@@ -266,7 +266,7 @@ export function HoursView() {
       />
 
       {/* Summary card */}
-      <div className="card-quiet p-5">
+      <div className="card-quiet rounded-xl p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-club-muted text-club">
@@ -336,7 +336,7 @@ export function HoursView() {
           <EmptyState
             icon={<Clock className="h-8 w-8" />}
             title="No service hours yet"
-            description="Submit your first service entry to start tracking your contributions."
+            description="Log your first contribution! ⏰"
             action={
               <Button size="sm" variant="club" onClick={() => setSubmitOpen(true)}>
                 <Plus className="h-4 w-4" /> Submit Hours
@@ -363,7 +363,7 @@ export function HoursView() {
                   </div>
                 )}
                 {/* Desktop: table */}
-                <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -430,7 +430,7 @@ export function HoursView() {
                           {g.items.length} {g.items.length === 1 ? "entry" : "entries"}
                         </span>
                       </div>
-                      <div className="card-quiet p-0 overflow-hidden hidden md:block">
+                      <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -503,7 +503,7 @@ function HoursRow({
   deleting: boolean
 }) {
   return (
-    <TableRow>
+    <TableRow className="hover:bg-muted/40 transition-colors">
       <TableCell className="font-medium">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
       <TableCell className="max-w-xs">
@@ -554,7 +554,7 @@ function HoursCard({
   deleting: boolean
 }) {
   return (
-    <div className="card-quiet p-4 space-y-2">
+    <div className="card-quiet rounded-xl p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-body-medium">{fmtDate(item.dateOfService)}</div>

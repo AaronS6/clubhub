@@ -52,9 +52,9 @@ const dotClass: Record<StatusKind, string> = {
   pending: "bg-amber-500",
   approved: "bg-emerald-500",
   rejected: "bg-red-500",
-  in_progress: "bg-blue-500",
+  in_progress: "bg-sky-500",
   done: "bg-emerald-500",
-  not_started: "bg-gray-400",
+  not_started: "bg-amber-500",
   neutral: "bg-gray-400",
 }
 

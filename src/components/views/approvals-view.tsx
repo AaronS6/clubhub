@@ -313,7 +313,7 @@ export function ApprovalsView() {
       </Tabs>
 
       {/* Filters */}
-      <div className="card-quiet p-5">
+      <div className="card-quiet rounded-xl p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
             <div className="space-y-2 sm:min-w-[14rem]">
               <Label className="text-xs text-muted-foreground">Member</Label>
@@ -418,13 +418,13 @@ export function ApprovalsView() {
           icon={tab === "pending" ? <CheckCircle2 className="h-8 w-8" /> : <History className="h-8 w-8" />}
           title={tab === "pending" ? "Inbox zero" : "No reviewed entries"}
           description={tab === "pending"
-            ? "There are no pending service hour submissions to review right now. New submissions will appear here automatically."
-            : "Approved and rejected entries will appear here once you start reviewing submissions."}
+            ? "No pending submissions right now — you're all caught up! ✨"
+            : "Approve or reject submissions to see them here. 📋"}
         />
       ) : tab === "pending" ? (
         <>
           {/* Desktop: table */}
-          <div className="card-quiet p-0 overflow-hidden hidden md:block">
+          <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -493,7 +493,7 @@ export function ApprovalsView() {
       ) : (
         <>
           {/* Reviewed tab — desktop table */}
-          <div className="card-quiet p-0 overflow-hidden hidden md:block">
+          <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -572,7 +572,7 @@ function ApprovalRow({
   reviewing: boolean
 }) {
   return (
-    <TableRow data-state={checked ? "selected" : undefined}>
+    <TableRow data-state={checked ? "selected" : undefined} className="hover:bg-muted/40 transition-colors">
       <TableCell>
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Select entry from ${item.user?.name ?? "member"}`} />
       </TableCell>
@@ -635,7 +635,7 @@ function ApprovalCard({
   return (
     <div
       data-state={checked ? "selected" : undefined}
-      className={cn("card-quiet p-4 space-y-3", checked && "ring-2 ring-club/50 border-club/30")}
+      className={cn("card-quiet rounded-xl p-4 space-y-3", checked && "ring-2 ring-club/50 border-club/30")}
     >
       <div className="flex items-start gap-3">
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label="Select entry" />
@@ -699,7 +699,7 @@ function ReviewedRow({
   deleting: boolean
 }) {
   return (
-    <TableRow>
+    <TableRow className="hover:bg-muted/40 transition-colors">
       <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
       <TableCell>{fmtDate(item.dateOfService)}</TableCell>
       <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
@@ -756,7 +756,7 @@ function ReviewedCard({
   deleting: boolean
 }) {
   return (
-    <div className="card-quiet p-4 space-y-2">
+    <div className="card-quiet rounded-xl p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>

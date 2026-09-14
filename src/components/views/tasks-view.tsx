@@ -182,10 +182,13 @@ const STATUSES: { id: TaskStatus; label: string; badge: "not_started" | "in_prog
   { id: "done", label: "Done", badge: "done" },
 ]
 
+// Linear-style column accents: warm amber for not-started, sky-blue for
+// in-progress, emerald for done. The opacity is kept low so the column
+// background stays calm and the status dot/badge carries the signal.
 const COLUMN_ACCENT: Record<TaskStatus, string> = {
-  not_started: "bg-muted/40",
-  in_progress: "bg-status-progress/40 dark:bg-status-progress/30",
-  done: "bg-status-approved/40 dark:bg-status-approved/30",
+  not_started: "bg-amber-500/10 dark:bg-amber-500/15",
+  in_progress: "bg-sky-500/10 dark:bg-sky-500/15",
+  done: "bg-emerald-500/10 dark:bg-emerald-500/15",
 }
 
 // ---------------------------------------------------------------------------
@@ -671,9 +674,9 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col card-quiet p-3 transition-colors",
+        "flex flex-col card-quiet rounded-xl p-3 transition-all duration-150",
         COLUMN_ACCENT[status.id],
-        isOver && "ring-2 ring-club/50"
+        isOver && "ring-2 ring-club/40 bg-club/5"
       )}
       aria-label={`${status.label} column`}
     >
@@ -837,7 +840,7 @@ function TaskCardContent({
       }
       {...(dragListeners ?? {})}
       className={cn(
-        "group card-quiet cursor-grab p-3 text-left transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet rounded-xl cursor-grab p-3 text-left transition-all duration-150 hover:shadow-sm hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         dragging && "shadow-xl rotate-1 cursor-grabbing ring-2 ring-club/40",
         isDragging && "scale-[1.02] shadow-lg ring-2 ring-club/40 cursor-grabbing",
         flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
@@ -967,9 +970,9 @@ function ListView({
   myUserId?: string
 }) {
   return (
-    <div className="card-quiet p-0 overflow-hidden">
+    <div className="card-quiet rounded-xl p-0 overflow-hidden">
       <div className="overflow-x-auto scrollbar-thin">
-        <Table>
+        <Table className="[&_tr]:h-10 [&_td]:py-1.5 [&_td]:px-3 [&_th]:h-9 [&_th]:py-1.5 [&_th]:px-3">
           <TableHeader>
             <TableRow>
               <TableHead className="min-w-[180px]">Title</TableHead>
@@ -988,7 +991,7 @@ function ListView({
               return (
                 <TableRow
                   key={t.id}
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:bg-muted/40 transition-colors duration-150"
                   onClick={() => onOpenTask(t.id)}
                 >
                   <TableCell className="font-medium">

@@ -1097,9 +1097,9 @@ function ConversationPane({
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <Hash className="h-6 w-6" />
             </div>
-            <h4 className="text-card-title">Say hello!</h4>
+            <h4 className="text-card-title">No messages yet</h4>
             <p className="text-body text-muted-foreground mt-1">
-              No messages yet. Be the first to start the conversation.
+              Say hi 👋 — be the first to start the conversation.
             </p>
           </div>
         ) : (
@@ -1510,10 +1510,10 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative rounded-lg px-3 py-2 max-w-full text-sm break-words",
+        "group relative rounded-2xl px-3.5 py-2 max-w-full text-sm break-words",
         isMine
           ? "bg-club text-club-foreground"
-          : "bg-accent text-accent-foreground dark:bg-accent/60",
+          : "bg-muted text-foreground",
         isDeleted && "italic bg-muted/50 text-muted-foreground",
       )}
     >
@@ -2442,7 +2442,7 @@ function MessagesSkeleton() {
           <Skeleton className="size-8 rounded-full" />
           <div className="space-y-1.5 max-w-[70%]">
             <Skeleton className="h-3 w-24 rounded" />
-            <Skeleton className="h-10 w-48 rounded-lg" />
+            <Skeleton className="h-10 w-48 rounded-2xl" />
           </div>
         </div>
       ))}

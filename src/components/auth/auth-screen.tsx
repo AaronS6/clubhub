@@ -173,7 +173,7 @@ function AuthScreenInner() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="relative max-w-md">
@@ -198,8 +198,8 @@ function AuthScreenInner() {
                   className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500"
                   style={{ animationDelay: `${200 + i * 80}ms` }}
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card border border-border text-club shadow-sm">
-                    <Icon className="h-[18px] w-[18px]" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-club-muted text-club">
+                    <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
                     <div className="text-card-title">{v.title}</div>
@@ -223,7 +223,7 @@ function AuthScreenInner() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="w-full max-w-sm mx-auto">
@@ -250,7 +250,7 @@ function AuthScreenInner() {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="h-10"
+                  className="h-10 rounded-lg"
                 />
               </div>
               <div className="space-y-1.5">
@@ -272,10 +272,10 @@ function AuthScreenInner() {
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-10"
+                  className="h-10 rounded-lg"
                 />
               </div>
-              <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
+              <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
                 {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Sign in
               </Button>
@@ -301,7 +301,7 @@ function AuthScreenInner() {
                   value={signupName}
                   onChange={(e) => setSignupName(e.target.value)}
                   placeholder="Jane Doe"
-                  className="h-10"
+                  className="h-10 rounded-lg"
                 />
               </div>
               <div className="space-y-1.5">
@@ -313,7 +313,7 @@ function AuthScreenInner() {
                   value={signupEmail}
                   onChange={(e) => setSignupEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="h-10"
+                  className="h-10 rounded-lg"
                 />
               </div>
               <div className="space-y-1.5">
@@ -325,13 +325,13 @@ function AuthScreenInner() {
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
                   placeholder="At least 8 chars, 1 letter & 1 number"
-                  className="h-10"
+                  className="h-10 rounded-lg"
                 />
                 <p className="text-caption mt-1">
                   Minimum 8 characters with a letter and a number.
                 </p>
               </div>
-              <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
+              <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
                 {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Create account
               </Button>
@@ -457,7 +457,7 @@ function ForgotPasswordDialog({
               </div>
             )}
             <DialogFooter>
-              <Button variant="club" onClick={() => handleClose(false)} className="w-full">
+              <Button variant="club" onClick={() => handleClose(false)} className="w-full rounded-lg">
                 Done
               </Button>
             </DialogFooter>
@@ -476,7 +476,7 @@ function ForgotPasswordDialog({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="h-10 pl-9"
+                  className="h-10 pl-9 rounded-lg"
                   autoFocus
                 />
               </div>
@@ -485,7 +485,7 @@ function ForgotPasswordDialog({
               <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="submit" variant="club" disabled={loading || !email}>
+              <Button type="submit" variant="club" className="rounded-lg" disabled={loading || !email}>
                 {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
                 Send reset link
               </Button>
@@ -551,7 +551,7 @@ function ResetPasswordScreen({
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
             <Users className="h-5 w-5" />
           </div>
-          <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
         </div>
 
         <div className="mb-6">
@@ -572,7 +572,7 @@ function ResetPasswordScreen({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 chars, 1 letter & 1 number"
-              className="h-10"
+              className="h-10 rounded-lg"
               autoFocus
             />
           </div>
@@ -586,7 +586,7 @@ function ResetPasswordScreen({
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="Re-enter the new password"
-              className="h-10"
+              className="h-10 rounded-lg"
             />
           </div>
           <p className="text-caption text-muted-foreground">
@@ -598,7 +598,7 @@ function ResetPasswordScreen({
               <span>{error}</span>
             </div>
           )}
-          <Button type="submit" variant="club" className="w-full h-10" disabled={loading}>
+          <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
             {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
             Update password
           </Button>

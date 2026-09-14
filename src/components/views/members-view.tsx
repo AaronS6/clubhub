@@ -25,14 +25,6 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -262,54 +254,20 @@ export function MembersView() {
           description={`No members match “${search}”. Try a different search.`}
         />
       ) : (
-        <>
-          {/* Desktop: table */}
-          <div className="card-quiet hidden md:block overflow-hidden p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Teams</TableHead>
-                  <TableHead className="text-right">Approved hours</TableHead>
-                  <TableHead>Joined</TableHead>
-                  {isExec && <TableHead className="w-10 text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((m) => (
-                  <MemberRow
-                    key={m.membershipId}
-                    clubId={clubId}
-                    member={m}
-                    isExec={isExec}
-                    isSelf={m.user.id === data.myUserId}
-                    online={online}
-                    onRemove={() => setRemoveTarget(m)}
-                    onOpenDetail={() => setDetailMember(m)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Mobile: stacked cards */}
-          <div className="md:hidden space-y-3">
-            {filtered.map((m) => (
-              <MemberMobileCard
-                key={m.membershipId}
-                clubId={clubId}
-                member={m}
-                isExec={isExec}
-                isSelf={m.user.id === data?.myUserId}
-                online={online}
-                onRemove={() => setRemoveTarget(m)}
-                onOpenDetail={() => setDetailMember(m)}
-              />
-            ))}
-          </div>
-        </>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((m) => (
+            <MemberCard
+              key={m.membershipId}
+              clubId={clubId}
+              member={m}
+              isExec={isExec}
+              isSelf={m.user.id === data.myUserId}
+              online={online}
+              onRemove={() => setRemoveTarget(m)}
+              onOpenDetail={() => setDetailMember(m)}
+            />
+          ))}
+        </div>
       )}
 
       {/* Remove confirm */}
@@ -903,10 +861,11 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
 }
 
 // ---------------------------------------------------------------------------
-// Member row (desktop)
+// Member card — responsive (Circle / Mighty-Networks style). One card works
+// on every breakpoint; the parent grid controls layout.
 // ---------------------------------------------------------------------------
 
-function MemberRow({
+function MemberCard({
   clubId,
   member,
   isExec,
@@ -941,82 +900,69 @@ function MemberRow({
   })
 
   return (
-    <TableRow
+    <div
+      role="button"
+      tabIndex={0}
       className={cn(
-        "cursor-pointer hover:bg-muted/40 transition-colors",
-        flash && "bg-club/5 ring-1 ring-inset ring-club/30"
+        "card-quiet rounded-xl p-5 cursor-pointer hover:shadow-sm hover:border-club/30 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in",
+        flash && "ring-1 ring-inset ring-club/30 bg-club/5"
       )}
       onClick={onOpenDetail}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onOpenDetail()
+        }
+      }}
     >
-      <TableCell>
-        <div className="flex items-center gap-3 min-w-0">
-          {/* Avatar wrapper is `relative` so the presence dot can be positioned
-              on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
-              and would clip it). */}
-          <span className="relative inline-flex shrink-0">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-              <AvatarFallback className="text-xs">{initials(member.user.name)}</AvatarFallback>
-            </Avatar>
-            {online.has(member.user.id) && (
-              <span
-                aria-label="Online"
-                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-background"
-              />
-            )}
-          </span>
-          <div className="min-w-0">
-            <div className="font-medium truncate flex items-center gap-1.5">
-              {member.user.name}
-              {isSelf && (
-                <span className="text-[10px] uppercase font-semibold text-muted-foreground">(you)</span>
-              )}
-            </div>
-            {member.user.bio && (
-              <div className="text-xs text-muted-foreground truncate max-w-xs">
-                {member.user.bio}
-              </div>
+      {/* Header: avatar + identity + actions */}
+      <div className="flex items-start gap-3">
+        {/* Avatar wrapper is `relative` so the presence dot can be positioned
+            on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
+            and would clip it). */}
+        <span className="relative inline-flex shrink-0">
+          <Avatar className="h-12 w-12">
+            <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
+            <AvatarFallback className="text-base">{initials(member.user.name)}</AvatarFallback>
+          </Avatar>
+          {online.has(member.user.id) && (
+            <span
+              aria-label="Online"
+              className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-club ring-2 ring-background"
+            />
+          )}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-medium truncate">{member.user.name}</span>
+            {isSelf && (
+              <span className="text-[10px] uppercase font-semibold text-muted-foreground shrink-0">
+                (you)
+              </span>
             )}
           </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground truncate max-w-[14rem]">
-          <Mail className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{member.user.email}</span>
-        </div>
-      </TableCell>
-      <TableCell>
-        <RoleBadge role={member.role} />
-      </TableCell>
-      <TableCell>
-        {member.teams.length === 0 ? (
-          <span className="text-xs text-muted-foreground/70">—</span>
-        ) : (
-          <div className="flex flex-wrap gap-1 max-w-[12rem]">
-            {member.teams.map((t) => (
-              <Badge key={t.id} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                {t.name}
-              </Badge>
-            ))}
+          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <Mail className="h-3 w-3 shrink-0" />
+            <span className="truncate">{member.user.email}</span>
           </div>
-        )}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {member.approvedHours.toFixed(1)}
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-        {relativeTime(member.joinedAt)}
-      </TableCell>
-      {isExec && (
-        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-          {!isSelf ? (
+          <div className="mt-1.5">
+            <RoleBadge role={member.role} />
+          </div>
+        </div>
+
+        {/* Exec actions dropdown (⋯) */}
+        {isExec && !isSelf && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="-mt-1 -mr-1 shrink-0"
+          >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   aria-label={`Actions for ${member.user.name}`}
                 >
                   <MoreVertical className="h-4 w-4" />
@@ -1081,179 +1027,32 @@ function MemberRow({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : (
-            <span className="text-xs text-muted-foreground/70">—</span>
-          )}
-        </TableCell>
-      )}
-    </TableRow>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Member card (mobile)
-// ---------------------------------------------------------------------------
-
-function MemberMobileCard({
-  clubId,
-  member,
-  isExec,
-  isSelf,
-  online,
-  onRemove,
-  onOpenDetail,
-}: {
-  clubId: string
-  member: ClubMember
-  isExec: boolean
-  isSelf: boolean
-  online: Set<string>
-  onRemove: () => void
-  onOpenDetail: () => void
-}) {
-  const qc = useQueryClient()
-  const roleMut = useMutation({
-    mutationFn: (action: "promote" | "demote") =>
-      api(`/api/clubs/${clubId}/members`, {
-        method: "PATCH",
-        json: { userId: member.user.id, action },
-      }),
-    onSuccess: (_data, action) => {
-      toast.success(action === "promote" ? "Promoted to executive" : "Demoted to member")
-      qc.invalidateQueries({ queryKey: ["members", clubId] })
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="card-quiet p-4 space-y-3 cursor-pointer hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in"
-      onClick={onOpenDetail}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault()
-          onOpenDetail()
-        }
-      }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          {/* Avatar wrapper is `relative` so the presence dot can be positioned
-              on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
-              and would clip it). */}
-          <span className="relative inline-flex shrink-0">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-              <AvatarFallback className="text-sm">{initials(member.user.name)}</AvatarFallback>
-            </Avatar>
-            {online.has(member.user.id) && (
-              <span
-                aria-label="Online"
-                className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-background"
-              />
-            )}
-          </span>
-          <div className="min-w-0">
-            <div className="text-body-medium truncate flex items-center gap-1.5">
-              {member.user.name}
-              {isSelf && (
-                <span className="text-[10px] uppercase font-semibold text-muted-foreground">
-                  (you)
-                </span>
-              )}
-            </div>
-            <div className="text-caption text-muted-foreground truncate">{member.user.email}</div>
           </div>
-        </div>
-        <RoleBadge role={member.role} />
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-caption">
-        <div className="rounded-md bg-muted/40 px-2 py-1.5">
-          <div className="text-muted-foreground">Approved hours</div>
-          <div className="text-body-medium tabular-nums">
-            {member.approvedHours.toFixed(1)}
-          </div>
-        </div>
-        <div className="rounded-md bg-muted/40 px-2 py-1.5">
-          <div className="text-muted-foreground">Joined</div>
-          <div className="text-body-medium">{relativeTime(member.joinedAt)}</div>
-        </div>
-      </div>
-
-      {member.teams.length > 0 && (
-        <div className="space-y-1">
-          <div className="text-caption text-muted-foreground">Teams</div>
-          <div className="flex flex-wrap gap-1">
+      {/* Secondary line: teams + hours + joined */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+        {member.teams.length > 0 && (
+          <div className="flex flex-wrap gap-1 items-center">
             {member.teams.map((t) => (
-              <Badge key={t.id} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+              <Badge
+                key={t.id}
+                variant="secondary"
+                className="text-[10px] px-2 py-0 font-normal rounded-full"
+              >
                 {t.name}
               </Badge>
             ))}
           </div>
-        </div>
-      )}
-
-      {isExec && !isSelf && (
-        <>
-          <Separator />
-          <div
-            className="flex flex-wrap items-center gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {member.role === "member" ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => roleMut.mutate("promote")}
-                disabled={roleMut.isPending}
-              >
-                <Shield className="mr-1.5 h-3.5 w-3.5" /> Promote
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => roleMut.mutate("demote")}
-                disabled={roleMut.isPending}
-              >
-                <ShieldOff className="mr-1.5 h-3.5 w-3.5" /> Demote
-              </Button>
-            )}
-            <Button size="sm" variant="outline" className="text-red-600" onClick={onRemove}>
-              <UserMinus className="mr-1.5 h-3.5 w-3.5" /> Remove
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const res = await api<{ resetUrl: string; memberName: string }>(
-                    `/api/clubs/${clubId}/members/${member.user.id}/reset-password`,
-                    { method: "POST" }
-                  )
-                  try {
-                    await navigator.clipboard.writeText(res.resetUrl)
-                    toast.success(`Reset link for ${res.memberName} copied! Send it to them.`)
-                  } catch {
-                    toast(`Reset link for ${res.memberName}`, {
-                      description: res.resetUrl,
-                      duration: 30000,
-                      action: { label: "Copy", onClick: () => navigator.clipboard.writeText(res.resetUrl) },
-                    })
-                  }
-                } catch (e: any) {
-                  toast.error(e.message || "Failed to generate reset link")
-                }
-              }}
-            >
-              <KeyRound className="mr-1.5 h-3.5 w-3.5" /> Reset password
-            </Button>
-          </div>
-        </>
-      )}
+        )}
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <Clock className="h-3 w-3" />
+          {member.approvedHours.toFixed(1)}h
+        </span>
+        <span aria-hidden className="text-muted-foreground/40">·</span>
+        <span>Joined {relativeTime(member.joinedAt)}</span>
+      </div>
     </div>
   )
 }
@@ -2156,61 +1955,28 @@ function LeaveClubDialog({
 
 function MembersSkeleton() {
   return (
-    <div className="space-y-3">
-      <div className="card-quiet hidden md:block p-0 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead colSpan={7}>
-                <Skeleton className="h-4 w-24" />
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <TableRow key={i}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="space-y-1">
-                      <Skeleton className="h-3 w-32" />
-                      <Skeleton className="h-2 w-20" />
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell><Skeleton className="h-3 w-40" /></TableCell>
-                <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-                <TableCell><Skeleton className="h-3 w-16" /></TableCell>
-                <TableCell><Skeleton className="h-3 w-8 ml-auto" /></TableCell>
-                <TableCell><Skeleton className="h-3 w-12" /></TableCell>
-                <TableCell><Skeleton className="h-7 w-7 ml-auto rounded" /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <div className="md:hidden space-y-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="card-quiet p-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-10 w-10 rounded-full" />
-              <div className="space-y-1 flex-1">
-                <Skeleton className="h-3 w-32" />
-                <Skeleton className="h-2 w-40" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="card-quiet rounded-xl p-5 space-y-4">
+          <div className="flex items-start gap-3">
+            <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-2.5 w-44" />
+              <Skeleton className="h-5 w-20 rounded-full" />
             </div>
           </div>
-        ))}
-      </div>
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-4 w-24 rounded-full" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-// `Clock` + `UserCog` icons imported but not used in the visible UI; keep
-// imports to avoid churn in other files.
-void Clock
+// `UserCog` icon imported but not used in the visible UI; keep the import
+// to avoid churn in other files.
 void UserCog

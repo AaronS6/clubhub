@@ -293,12 +293,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  {/* Active indicator — subtle 2px accent bar pinned to the
-                      left edge of the row. Hidden when inactive. */}
+                  {/* Active indicator — Discord/Linear-style centered accent
+                      pill pinned to the left edge of the row. A short 20px bar
+                      vertically centered, rather than a full-height line, so
+                      it reads as a selected-channel marker. Hidden when
+                      inactive. The button has `relative` so this anchors. */}
                   <span
                     aria-hidden
                     className={cn(
-                      "absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-club transition-opacity",
+                      "absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club transition-opacity",
                       active ? "opacity-100" : "opacity-0"
                     )}
                   />
@@ -333,10 +336,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 p-0 flex flex-col">
-          {/* Club switcher pinned to the TOP of the mobile drawer */}
-          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
+          {/* Nav at the top */}
           <div className="flex-1 overflow-y-auto">{navList}</div>
-          {/* Theme toggle pinned to the BOTTOM of the mobile drawer */}
+          {/* Club switcher + theme toggle at the BOTTOM of the mobile drawer */}
+          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
           <div className="border-t p-2 shrink-0">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

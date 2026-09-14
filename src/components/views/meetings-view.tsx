@@ -471,15 +471,23 @@ function MeetingCard({
   const flash = useRemoteChange("meeting", meeting.id)
   return (
     <div className={cn(
-      "card-quiet overflow-hidden p-4 sm:p-5 animate-fade-in",
+      "card-quiet rounded-xl p-4 sm:p-5 animate-fade-in transition-all duration-150 hover:shadow-sm hover:border-club/30",
       flash && "ring-2 ring-club/50 shadow-md"
     )}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <button
             onClick={onOpenDetail}
-            className="group flex w-full items-start gap-2 text-left"
+            className="group flex w-full items-start gap-3 text-left"
           >
+            {/* Calendar-page date badge — large day number + small month */}
+            <div
+              className="rounded-lg bg-club-muted text-club p-2 text-center w-14 shrink-0 transition-colors group-hover:bg-club-muted/70"
+              aria-hidden
+            >
+              <div className="text-2xl font-bold leading-none">{format(start, "d")}</div>
+              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide">{format(start, "MMM")}</div>
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-card-title group-hover:text-club transition-colors">
@@ -576,7 +584,7 @@ function RsvpButton({ meeting, status }: { meeting: MeetingItem; status: RsvpSta
   const labels: Record<RsvpStatus, string> = {
     going: "Going",
     maybe: "Maybe",
-    not_going: "Not Going",
+    not_going: "Can't go",
   }
   const icons: Record<RsvpStatus, React.ReactNode> = {
     going: <Check className="size-3.5" />,
@@ -590,11 +598,11 @@ function RsvpButton({ meeting, status }: { meeting: MeetingItem; status: RsvpSta
       variant={isCurrent ? "club" : "outline"}
       disabled={mutation.isPending}
       onClick={() => mutation.mutate()}
-      className="gap-1.5"
+      className="gap-1.5 rounded-full"
       aria-pressed={isCurrent}
     >
       {mutation.isPending && isCurrent ? <Loader2 className="size-3.5 animate-spin" /> : icons[status]}
-      <span className="hidden xs:inline sm:inline">{labels[status]}</span>
+      <span>{labels[status]}</span>
     </Button>
   )
 }
