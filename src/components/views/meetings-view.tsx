@@ -471,7 +471,7 @@ function MeetingCard({
   const flash = useRemoteChange("meeting", meeting.id)
   return (
     <div className={cn(
-      "card-quiet rounded-xl p-4 sm:p-5 animate-fade-in transition-all duration-150 hover:shadow-sm hover:border-club/30",
+      "rounded-2xl border border-border bg-card p-4 sm:p-5 animate-fade-in transition-all duration-200 hover:shadow-sm",
       flash && "ring-2 ring-club/50 shadow-md"
     )}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -482,11 +482,11 @@ function MeetingCard({
           >
             {/* Calendar-page date badge — large day number + small month */}
             <div
-              className="rounded-lg bg-club-muted text-club p-2 text-center w-14 shrink-0 transition-colors group-hover:bg-club-muted/70"
+              className="rounded-xl bg-club-muted text-club p-2 text-center w-16 shrink-0 transition-colors group-hover:bg-club-muted/70"
               aria-hidden
             >
-              <div className="text-2xl font-bold leading-none">{format(start, "d")}</div>
-              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-wide">{format(start, "MMM")}</div>
+              <div className="text-3xl font-bold leading-none">{format(start, "d")}</div>
+              <div className="mt-1 text-[10px] font-medium uppercase tracking-wide">{format(start, "MMM")}</div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -506,16 +506,18 @@ function MeetingCard({
                   </Badge>
                 )}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="size-3.5" />
-                  {formatMeetingRange(meeting.startTime, meeting.endTime)}
-                </span>
-                <span className="inline-flex items-center gap-1 min-w-0">
-                  <MapPin className="size-3.5 shrink-0" />
-                  <span className="max-w-[14rem] truncate">{meeting.location}</span>
-                </span>
+              {/* Time range — calendar/schedule feel, with Clock icon */}
+              <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Clock className="size-4 shrink-0" />
+                <span>{formatMeetingRange(meeting.startTime, meeting.endTime)}</span>
               </div>
+              {/* Location — inline and scannable, with MapPin icon */}
+              {meeting.location && (
+                <div className="mt-1 inline-flex items-center gap-1.5 text-sm text-muted-foreground min-w-0">
+                  <MapPin className="size-4 shrink-0" />
+                  <span className="max-w-[14rem] truncate">{meeting.location}</span>
+                </div>
+              )}
             </div>
           </button>
         </div>

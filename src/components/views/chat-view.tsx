@@ -594,10 +594,17 @@ function ConversationRow({
       onClick={onClick}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
+        "relative w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
         active && "bg-club-muted hover:bg-club-muted",
       )}
     >
+      {/* Active conversation: left accent bar */}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full bg-club"
+        />
+      )}
       <div className="relative shrink-0">
         {isDirect ? (
           <Avatar className="size-9">
@@ -634,7 +641,7 @@ function ConversationRow({
             {title}
           </span>
           {conversation.lastMessage && (
-            <span className="text-[10px] text-muted-foreground shrink-0">
+            <span className="text-[10px] text-muted-foreground/70 shrink-0">
               {relativeTime(conversation.lastMessage.createdAt)}
             </span>
           )}
@@ -657,8 +664,18 @@ function ConversationRow({
             )}
           </span>
           {conversation.unreadCount > 0 && (
-            <span className="shrink-0 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-club text-club-foreground text-[10px] font-semibold tabular-nums">
-              {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+            <span className="shrink-0 inline-flex items-center gap-1.5">
+              {/* Small unread dot — iMessage/Telegram-style presence indicator */}
+              <span
+                aria-label={`${conversation.unreadCount} unread`}
+                className="size-2 rounded-full bg-club"
+              />
+              {/* Numeric count for >1 unread */}
+              {conversation.unreadCount > 1 && (
+                <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-club text-club-foreground text-[10px] font-semibold tabular-nums">
+                  {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -1432,6 +1449,27 @@ function MessageList({
   }
   if (currentGroup.length > 0) grouped.push(currentGroup)
 
+  // Date-separator labels: "Today", "Yesterday", or the full date for older
+  // messages. Rendered as a centered pill before each new day's first group.
+  function dayKey(d: Date): string {
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+  }
+  function formatDateLabel(iso: string): string {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ""
+    const today = new Date()
+    const yesterday = new Date()
+    yesterday.setDate(today.getDate() - 1)
+    if (dayKey(d) === dayKey(today)) return "Today"
+    if (dayKey(d) === dayKey(yesterday)) return "Yesterday"
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
+    })
+  }
+  let prevDayKey: string | null = null
+
   return (
     <div className="space-y-3">
       {grouped.map((group, gi) => {
@@ -1439,40 +1477,54 @@ function MessageList({
         const isMine = first.authorId === myUserId
         const showAuthorHeader =
           conversationType !== "direct" && !first.isMine && !first.deletedAt
+        // Day separator — render a centered pill if this group starts a new day.
+        const thisDayKey = dayKey(new Date(first.createdAt))
+        const showDateSeparator = thisDayKey !== prevDayKey
+        prevDayKey = thisDayKey
+        const dateLabel = formatDateLabel(first.createdAt)
         return (
-          <div key={gi} className={cn("flex gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
-            {/* Avatar (only for group chats, others' messages) */}
-            <div className="w-8 shrink-0">
-              {showAuthorHeader && (
-                <Avatar className="size-8 mt-1">
-                  <AvatarImage src={first.author.avatarUrl ?? undefined} alt={first.author.name} />
-                  <AvatarFallback className={cn("text-[10px]", avatarColor(first.author.name))}>
-                    {initials(first.author.name)}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </div>
-            <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
-              {showAuthorHeader && (
-                <div className="text-[10px] text-muted-foreground px-1">
-                  {first.author.name}
+          <div key={gi}>
+            {showDateSeparator && dateLabel && (
+              <div className="flex items-center justify-center my-3">
+                <span className="text-[10px] font-medium text-muted-foreground bg-muted rounded-full px-3 py-1">
+                  {dateLabel}
+                </span>
+              </div>
+            )}
+            <div className={cn("flex gap-2", isMine ? "flex-row-reverse" : "flex-row")}>
+              {/* Avatar (only for group chats, others' messages) */}
+              <div className="w-8 shrink-0">
+                {showAuthorHeader && (
+                  <Avatar className="size-8 mt-1">
+                    <AvatarImage src={first.author.avatarUrl ?? undefined} alt={first.author.name} />
+                    <AvatarFallback className={cn("text-[10px]", avatarColor(first.author.name))}>
+                      {initials(first.author.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+              <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
+                {showAuthorHeader && (
+                  <div className="text-[10px] text-muted-foreground px-1">
+                    {first.author.name}
+                  </div>
+                )}
+                <div className={cn("flex flex-col gap-1 w-full max-w-[78%]", isMine ? "items-end" : "items-start")}>
+                  {group.map((m) => (
+                    <MessageBubble
+                      key={m.id}
+                      message={m}
+                      isMine={isMine}
+                      canDelete={m.isMine || canManage}
+                      canPin={canPin}
+                      showActions={!m.deletedAt}
+                      onEdit={(body) => onEdit(m.id, body)}
+                      onDelete={() => onDelete(m.id)}
+                      onReact={(emoji) => onReact(m.id, emoji)}
+                      onPin={(pinned) => onPin(m.id, pinned)}
+                    />
+                  ))}
                 </div>
-              )}
-              <div className={cn("flex flex-col gap-1 w-full max-w-[78%]", isMine ? "items-end" : "items-start")}>
-                {group.map((m) => (
-                  <MessageBubble
-                    key={m.id}
-                    message={m}
-                    isMine={isMine}
-                    canDelete={m.isMine || canManage}
-                    canPin={canPin}
-                    showActions={!m.deletedAt}
-                    onEdit={(body) => onEdit(m.id, body)}
-                    onDelete={() => onDelete(m.id)}
-                    onReact={(emoji) => onReact(m.id, emoji)}
-                    onPin={(pinned) => onPin(m.id, pinned)}
-                  />
-                ))}
               </div>
             </div>
           </div>
@@ -1935,44 +1987,53 @@ function MessageComposer({
 
   return (
     <div className="border-t border-border p-3 md:p-4">
-      <div className="flex items-end gap-2">
-        <MentionableTextarea
-          ref={textareaRef}
-          value={value}
-          members={members}
-          onChange={(e) => {
-            setValue(e.target.value)
-            maybeEmitTyping()
-          }}
-          placeholder="Type a message… use @ to mention someone"
-          className="flex-1 resize-none min-h-[40px] max-h-40"
-          rows={1}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          aria-label="Message input"
-          disabled={disabled}
-          listLabel="Mention a club member"
-        />
-        <Button
-          variant="club"
-          size="icon"
-          className="size-10 shrink-0"
-          onClick={submit}
-          disabled={disabled || !value.trim()}
-          aria-label="Send message"
-        >
-          {disabled ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
+      {/* Composer container — wraps textarea + send button in a substantial
+          rounded panel, iMessage/Telegram-style. */}
+      <div className="rounded-2xl border border-border bg-muted/40 p-2 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
+        <div className="flex items-end gap-2">
+          <MentionableTextarea
+            ref={textareaRef}
+            value={value}
+            members={members}
+            onChange={(e) => {
+              setValue(e.target.value)
+              maybeEmitTyping()
+            }}
+            placeholder="Type a message… use @ to mention someone"
+            className="flex-1 resize-none min-h-[40px] max-h-40 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            rows={1}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            aria-label="Message input"
+            disabled={disabled}
+            listLabel="Mention a club member"
+          />
+          <Button
+            variant="club"
+            size="icon"
+            className={cn(
+              "size-10 shrink-0 rounded-full transition-all",
+              (disabled || !value.trim())
+                ? "opacity-50 cursor-not-allowed"
+                : "shadow-sm hover:shadow-md hover:scale-105",
+            )}
+            onClick={submit}
+            disabled={disabled || !value.trim()}
+            aria-label="Send message"
+          >
+            {disabled ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
-      <p className="text-[10px] text-muted-foreground mt-1.5 px-1 hidden sm:block">
+      <p className="text-[10px] text-muted-foreground/60 mt-1.5 px-1 hidden sm:block">
         Press <kbd className="rounded border border-border px-1">Enter</kbd> to send,{" "}
         <kbd className="rounded border border-border px-1">Shift+Enter</kbd> for a new line.
         Type <kbd className="rounded border border-border px-1">@</kbd> to mention someone.

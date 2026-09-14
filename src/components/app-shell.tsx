@@ -270,7 +270,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const weight = tier.id === "home" ? "home" : tier.id === "work" ? "work" : "manage"
         return (
           <div key={tier.id} className="space-y-0.5">
-            <div className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
               {tier.label}
             </div>
             {items.map((item) => {
@@ -286,7 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     weight === "work" && "px-3 py-1.5 text-sm font-medium",
                     weight === "manage" && "px-3 py-1.5 text-[13px] font-medium text-muted-foreground",
                     active
-                      ? "bg-club-muted text-club"
+                      ? "bg-club-muted/60 text-club"
                       : weight === "manage"
                         ? "hover:bg-accent hover:text-foreground"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -403,15 +403,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       <UrgentBanner />
       {topBar}
-      <div className="flex flex-1 min-h-0">
-        <aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">
+      <div className="flex flex-1 min-h-0 gap-2 p-2">
+        <aside className="hidden md:flex md:w-60 flex-col rounded-2xl border bg-background shadow-sm overflow-hidden shrink-0">
           {/* Club switcher pinned to the TOP of the sidebar (moved here from
-              the top bar per the user's request). */}
-          <div className="p-3 shrink-0 border-b">{clubSwitcher}</div>
+              the top bar per the user's request). No border-b — the rounded
+              panel border + the nav's own padding provides the separation. */}
+          <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto">{navList}</div>
           {/* Theme toggle pinned to the BOTTOM of the sidebar */}
-          <div className="border-t p-2 shrink-0">
+          <div className="p-2 shrink-0">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="ml-2">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
@@ -419,7 +420,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 flex flex-col">
+        <main className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
             <div className="max-w-7xl mx-auto" key={`${currentClubId}-${view}`}>
               {children}
@@ -778,17 +779,17 @@ function ClubSwitcher({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="w-full justify-between h-auto py-2 px-3">
-            <div className="flex items-center gap-2 min-w-0">
+          <Button variant="outline" className="w-full justify-between h-auto py-2.5 px-3 rounded-xl gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-white text-sm font-bold shrink-0 overflow-hidden"
                 style={{ backgroundColor: currentClub?.accentColor ?? "#10b981" }}
               >
                 {currentClub ? initials(currentClub.clubName) : "?"}
               </div>
               <div className="min-w-0 text-left">
-                <div className="text-sm font-medium truncate">{currentClub?.clubName ?? "Select club"}</div>
-                <div className="text-caption capitalize truncate">
+                <div className="text-sm font-semibold truncate">{currentClub?.clubName ?? "Select club"}</div>
+                <div className="text-[11px] text-muted-foreground capitalize truncate">
                   {currentClub ? currentClub.role : "No club selected"}
                 </div>
               </div>

@@ -254,20 +254,70 @@ export function MembersView() {
           description={`No members match “${search}”. Try a different search.`}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((m) => (
-            <MemberCard
-              key={m.membershipId}
-              clubId={clubId}
-              member={m}
-              isExec={isExec}
-              isSelf={m.user.id === data.myUserId}
-              online={online}
-              onRemove={() => setRemoveTarget(m)}
-              onOpenDetail={() => setDetailMember(m)}
-            />
-          ))}
-        </div>
+        (() => {
+          const executives = filtered.filter((m) => m.role === "executive")
+          const regular = filtered.filter((m) => m.role !== "executive")
+          return (
+            <div className="space-y-6">
+              {/* Leadership row — featured executives */}
+              {executives.length > 0 && (
+                <section aria-labelledby="leadership-heading" className="space-y-3">
+                  <h2
+                    id="leadership-heading"
+                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Leadership
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {executives.map((m) => (
+                      <MemberCard
+                        key={m.membershipId}
+                        clubId={clubId}
+                        member={m}
+                        isExec={isExec}
+                        isSelf={m.user.id === data.myUserId}
+                        online={online}
+                        onRemove={() => setRemoveTarget(m)}
+                        onOpenDetail={() => setDetailMember(m)}
+                        featured
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Divider + All Members */}
+              {executives.length > 0 && regular.length > 0 && (
+                <Separator className="bg-border" />
+              )}
+
+              {regular.length > 0 && (
+                <section aria-labelledby="all-members-heading" className="space-y-3">
+                  <h2
+                    id="all-members-heading"
+                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    All Members
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {regular.map((m) => (
+                      <MemberCard
+                        key={m.membershipId}
+                        clubId={clubId}
+                        member={m}
+                        isExec={isExec}
+                        isSelf={m.user.id === data.myUserId}
+                        online={online}
+                        onRemove={() => setRemoveTarget(m)}
+                        onOpenDetail={() => setDetailMember(m)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )
+        })()
       )}
 
       {/* Remove confirm */}
@@ -873,6 +923,7 @@ function MemberCard({
   online,
   onRemove,
   onOpenDetail,
+  featured,
 }: {
   clubId: string
   member: ClubMember
@@ -881,6 +932,12 @@ function MemberCard({
   online: Set<string>
   onRemove: () => void
   onOpenDetail: () => void
+  /**
+   * Leadership-row variant: slightly larger card (avatar h-14 w-14,
+   * name text-base font-semibold) for the featured executive grid.
+   * Purely visual — no logic depends on it.
+   */
+  featured?: boolean
 }) {
   const qc = useQueryClient()
   // Briefly highlight when this member was just promoted/demoted/removed by
@@ -904,7 +961,8 @@ function MemberCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "card-quiet rounded-xl p-5 cursor-pointer hover:shadow-sm hover:border-club/30 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in",
+        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-club/30 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in border-t-2",
+        member.role === "executive" ? "border-t-violet-400" : "border-t-club/30",
         flash && "ring-1 ring-inset ring-club/30 bg-club/5"
       )}
       onClick={onOpenDetail}
@@ -921,9 +979,9 @@ function MemberCard({
             on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
             and would clip it). */}
         <span className="relative inline-flex shrink-0">
-          <Avatar className="h-12 w-12">
+          <Avatar className={featured ? "h-14 w-14" : "h-12 w-12"}>
             <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-            <AvatarFallback className="text-base">{initials(member.user.name)}</AvatarFallback>
+            <AvatarFallback className={featured ? "text-lg" : "text-base"}>{initials(member.user.name)}</AvatarFallback>
           </Avatar>
           {online.has(member.user.id) && (
             <span
@@ -935,7 +993,9 @@ function MemberCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-medium truncate">{member.user.name}</span>
+            <span className={cn("truncate", featured ? "text-base font-semibold" : "font-medium")}>
+              {member.user.name}
+            </span>
             {isSelf && (
               <span className="text-[10px] uppercase font-semibold text-muted-foreground shrink-0">
                 (you)
@@ -1955,24 +2015,60 @@ function LeaveClubDialog({
 
 function MembersSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="card-quiet rounded-xl p-5 space-y-4">
-          <div className="flex items-start gap-3">
-            <Skeleton className="h-12 w-12 rounded-full shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <Skeleton className="h-3.5 w-32" />
-              <Skeleton className="h-2.5 w-44" />
-              <Skeleton className="h-5 w-20 rounded-full" />
+    <div className="space-y-6">
+      {/* Leadership row skeleton */}
+      <section className="space-y-3">
+        <div className="h-3 w-20 rounded bg-muted animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="card-quiet rounded-xl p-5 space-y-4 border-t-2 border-t-violet-400"
+            >
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-14 w-14 rounded-full shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-2.5 w-44" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-4 w-24 rounded-full" />
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-3 w-16" />
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-4 w-24 rounded-full" />
-            <Skeleton className="h-3 w-12" />
-            <Skeleton className="h-3 w-16" />
-          </div>
+          ))}
         </div>
-      ))}
+      </section>
+
+      {/* All members skeleton */}
+      <section className="space-y-3">
+        <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="card-quiet rounded-xl p-5 space-y-4 border-t-2 border-t-club/30"
+            >
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-2.5 w-44" />
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-4 w-24 rounded-full" />
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

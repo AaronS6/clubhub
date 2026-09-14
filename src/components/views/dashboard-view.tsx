@@ -103,6 +103,13 @@ function stagger(i: number): CSSProperties {
   }
 }
 
+// Bento tile — hairline border, card surface, larger radius, hover lift.
+// Used for every top-level tile in the new asymmetric grid. NO `card-quiet`.
+const TILE =
+  "border border-border bg-card rounded-2xl p-5 hover:shadow-sm transition-all duration-200"
+const TILE_COMPACT =
+  "border border-border bg-card rounded-2xl p-4 hover:shadow-sm transition-all duration-200"
+
 // =========================================================================
 // Main component
 // =========================================================================
@@ -687,16 +694,29 @@ export function DashboardView() {
 
   return (
     <div className="space-y-4 sm:space-y-5 min-w-0">
-      {/* Row 1 — Slim hero bar --------------------------------------------- */}
-      <HeroBar
-        name={data.club.name}
-        logoUrl={data.club.logoUrl}
-        memberCount={data.club.memberCount}
-        createdAt={data.club.createdAt}
-        role={data.myRole}
-      />
+      {/* Row 1 — Hero panel (60%) + Progress ring tile (40%) ----------------- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        <HeroPanel
+          name={data.club.name}
+          logoUrl={data.club.logoUrl}
+          memberCount={data.club.memberCount}
+          createdAt={data.club.createdAt}
+          role={data.myRole}
+          approvedHours={data.myStats.approvedHours}
+          hoursGoal={data.club.hoursGoal}
+          hoursPct={hoursPct}
+          hoursTrend={data.hoursTrend}
+        />
+        <ProgressRingTile
+          approvedHours={data.myStats.approvedHours}
+          hoursGoal={data.club.hoursGoal}
+          hoursPct={hoursPct}
+          hoursTrend={data.hoursTrend}
+          onViewHours={() => setView("hours")}
+        />
+      </div>
 
-      {/* Row 2 — Tier 1 (or onboarding banner) ----------------------------- */}
+      {/* Row 2 — Tier 1 attention items (or onboarding banner) ---------------- */}
       {showOnboarding ? (
         <OnboardingBanner
           clubCode={currentClub?.clubCode ?? null}
@@ -712,68 +732,68 @@ export function DashboardView() {
       ) : attentionItems.length === 0 ? (
         <AllCaughtUpCard />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {attentionItems}
         </div>
       )}
 
-      {/* Rows 3+4 — chart + leaderboard + snapshot + announcements + meetings
+      {/* Rows 3+4 — Supporting tiles in asymmetric bento grid.
           Role-aware: members get snapshot → announcements → meetings → chart →
           leaderboard (their own work first, club context later). Execs keep the
           original chart-first layout (they want the pulse of the club at a
           glance). The `{!isExec ? … : …}` pattern keeps the two layouts as
           explicit siblings rather than conditional class swaps. */}
       {!isExec ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Your snapshot — first */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-1 lg:order-1 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-1 animate-fade-in")}
             style={stagger(0)}
           >
             {snapshotBody}
           </section>
           {/* Announcements — second */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-2 lg:order-2 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-2 lg:order-2 animate-fade-in")}
             style={stagger(1)}
           >
             {announcementsBody}
           </section>
           {/* Upcoming meetings — third */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-3 lg:order-3 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-3 lg:order-3 animate-fade-in")}
             style={stagger(2)}
           >
             {meetingsBody}
           </section>
-          {/* Hours trend chart — fourth */}
+          {/* Hours trend chart — fourth (wide) */}
           <section
-            className="card-quiet p-5 lg:col-span-8 order-4 lg:order-4 animate-fade-in"
+            className={cn(TILE, "lg:col-span-8 order-4 lg:order-4 animate-fade-in")}
             style={stagger(3)}
           >
             {chartBody}
           </section>
-          {/* Leaderboard — fifth */}
+          {/* Leaderboard — fifth (narrow, tall) */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5 animate-fade-in")}
             style={stagger(4)}
           >
             {leaderboardBody}
           </section>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+          {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 (wide) */}
           <section
-            className="card-quiet p-5 lg:col-span-8 order-2 lg:order-1 animate-fade-in"
+            className={cn(TILE, "lg:col-span-8 order-2 lg:order-1 animate-fade-in")}
             style={stagger(2)}
           >
             {chartBody}
           </section>
 
-          {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 */}
+          {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 (narrow, tall) */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-3 lg:order-2 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-3 lg:order-2 animate-fade-in")}
             style={stagger(3)}
           >
             {leaderboardBody}
@@ -781,7 +801,7 @@ export function DashboardView() {
 
           {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-1 lg:order-3 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-3 animate-fade-in")}
             style={stagger(0)}
           >
             {snapshotBody}
@@ -789,7 +809,7 @@ export function DashboardView() {
 
           {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-4 lg:order-4 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-4 lg:order-4 animate-fade-in")}
             style={stagger(4)}
           >
             {announcementsBody}
@@ -797,7 +817,7 @@ export function DashboardView() {
 
           {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
           <section
-            className="card-quiet p-5 lg:col-span-4 order-5 lg:order-5 animate-fade-in"
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5 animate-fade-in")}
             style={stagger(5)}
           >
             {meetingsBody}
@@ -808,17 +828,17 @@ export function DashboardView() {
       {/* Row 5 — Club-wide stats mini-strip (exec only) --------------------- */}
       {isExec && (
         <section
-          className="card-quiet p-4 animate-fade-in"
+          className={cn(TILE_COMPACT, "animate-fade-in")}
           style={stagger(6)}
         >
           {clubStatsBody}
         </section>
       )}
 
-      {/* Row 6 (execs only) — Executive insights compact strip ---------------- */}
+      {/* Row 6 (execs only) — Executive insights wide strip ---------------- */}
       {isExec && data.execStats && (
         <section
-          className="card-quiet p-4 animate-fade-in"
+          className={cn(TILE_COMPACT, "animate-fade-in")}
           style={stagger(7)}
         >
           <div className="flex items-center gap-2 mb-3">
@@ -880,25 +900,60 @@ export function DashboardView() {
 // Sub-components
 // =========================================================================
 
-function HeroBar({
+function HeroPanel({
   name,
   logoUrl,
   memberCount,
   createdAt,
   role,
+  approvedHours,
+  hoursGoal,
+  hoursPct,
+  hoursTrend,
 }: {
   name: string
   logoUrl: string | null
   memberCount: number
   createdAt: string
   role: "member" | "executive"
+  approvedHours: number
+  hoursGoal: number
+  hoursPct: number
+  hoursTrend: { date: string; hours: number }[]
 }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-club-muted to-transparent animate-fade-in">
-      <div aria-hidden className="absolute left-0 top-0 h-full w-1.5 bg-club" />
-      <div className="flex items-center justify-between gap-4 p-4 sm:p-5 pl-5 sm:pl-6">
+    <section
+      className={cn(
+        "bg-accent-tint relative overflow-hidden rounded-2xl border border-border animate-fade-in",
+        "bg-gradient-to-br from-club-muted/60 to-transparent",
+        "lg:col-span-7 p-5 sm:p-6 hover:shadow-sm transition-all duration-200"
+      )}
+    >
+      {/* Barely-visible dot-grid texture overlay (matches the auth-screen
+          pattern but at opacity 0.05 for an even quieter feel). */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, currentColor 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
+          color: "var(--foreground)",
+          opacity: 0.05,
+        }}
+      />
+      {/* Accent edge — subtle vertical bar pinned to the left edge. */}
+      <div
+        aria-hidden
+        className="absolute left-0 top-0 h-full w-1.5 bg-club"
+      />
+
+      <div className="relative flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-club text-club-foreground text-xs font-bold shrink-0 overflow-hidden">
+          {/* Larger logo / initials tile (was h-10 w-10 rounded-lg, now
+              h-12 w-12 rounded-xl for more visual presence in the bento
+              hero). */}
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-club text-club-foreground text-sm font-bold shrink-0 overflow-hidden">
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -917,14 +972,138 @@ function HeroBar({
               <h1 className="text-page-title truncate min-w-0">{name}</h1>
               <RoleBadgePill role={role} />
             </div>
-            <p className="text-caption mt-0.5">
+            <p className="text-caption mt-1">
               {memberCount} {memberCount === 1 ? "member" : "members"} · joined{" "}
               {format(new Date(createdAt), "MMM yyyy")}
             </p>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Personal progress element — inline hours summary with either a thin
+          Progress bar (when a goal is set) or a tiny sparkline (no goal). */}
+      <div className="relative mt-5 pt-4 border-t border-border/60">
+        <div className="flex items-baseline justify-between mb-2 gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Clock className="h-4 w-4 text-club shrink-0" />
+            <span className="text-body-medium truncate">Your hours</span>
+          </div>
+          <div className="flex items-baseline gap-1.5 shrink-0">
+            <span className="text-xl font-bold tabular-nums">
+              {fmtHours(approvedHours)}h
+            </span>
+            {hoursGoal > 0 && (
+              <span className="text-caption">of {hoursGoal}h goal</span>
+            )}
+          </div>
+        </div>
+        {hoursGoal > 0 ? (
+          <Progress
+            value={hoursPct}
+            className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
+          />
+        ) : (
+          <div className="h-7 max-w-[220px]">
+            <Sparkline data={hoursTrend} />
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ProgressRingTile({
+  approvedHours,
+  hoursGoal,
+  hoursPct,
+  hoursTrend,
+  onViewHours,
+}: {
+  approvedHours: number
+  hoursGoal: number
+  hoursPct: number
+  hoursTrend: { date: string; hours: number }[]
+  onViewHours?: () => void
+}) {
+  // Two states: goal set → conic-gradient ring; no goal → big number + sparkline.
+  const Comp = onViewHours ? "button" : "div"
+  return (
+    <Comp
+      type={onViewHours ? "button" : undefined}
+      onClick={onViewHours}
+      className={cn(
+        TILE,
+        "lg:col-span-5 text-left flex flex-col animate-fade-in",
+        onViewHours &&
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      )}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          {hoursGoal > 0 ? (
+            <Target className="h-4 w-4 text-club shrink-0" />
+          ) : (
+            <TrendingUp className="h-4 w-4 text-club shrink-0" />
+          )}
+          <h2 className="text-card-title truncate">
+            {hoursGoal > 0 ? "Hours toward goal" : "Approved hours"}
+          </h2>
+        </div>
+        {onViewHours && (
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+        )}
+      </div>
+
+      {hoursGoal > 0 ? (
+        <div className="flex items-center gap-5 flex-1">
+          {/* CSS conic-gradient progress ring (~80px). The outer div paints
+              the ring via conic-gradient; the inner div is the donut hole
+              (bg-card) showing the absolute hours value. */}
+          <div
+            className="relative h-20 w-20 shrink-0 rounded-full bg-muted"
+            role="img"
+            aria-label={`${Math.round(hoursPct)}% of ${hoursGoal} hour goal`}
+          >
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `conic-gradient(var(--club-accent) ${hoursPct}%, transparent 0)`,
+              }}
+            />
+            <div className="absolute inset-[6px] rounded-full bg-card flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-base font-bold tabular-nums leading-none">
+                  {fmtHours(approvedHours)}h
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
+                  of {hoursGoal}h
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-2xl font-bold tabular-nums">
+              {Math.round(hoursPct)}%
+            </div>
+            <p className="text-caption mt-1">
+              {hoursPct >= 100
+                ? "Goal achieved! 🎉"
+                : `${fmtHours(Math.max(0, hoursGoal - approvedHours))}h to go`}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center">
+          <div className="text-4xl font-bold tabular-nums leading-tight">
+            {fmtHours(approvedHours)}h
+          </div>
+          <p className="text-caption mt-1 mb-3">Approved · last 30 days</p>
+          <div className="h-7 max-w-[260px]">
+            <Sparkline data={hoursTrend} />
+          </div>
+        </div>
+      )}
+    </Comp>
   )
 }
 
@@ -967,7 +1146,7 @@ function AttentionCard({
       onClick={onClick}
       style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
       className={cn(
-        "card-quiet p-4 text-left border-l-2 border-l-club animate-fade-in transition-colors",
+        "border border-border bg-card rounded-2xl p-4 text-left border-l-2 border-l-club animate-fade-in hover:shadow-sm transition-all duration-200",
         onClick &&
           "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         urgent && "border-l-red-500"
@@ -991,7 +1170,7 @@ function AttentionCard({
 
 function AllCaughtUpCard() {
   return (
-    <div className="card-quiet p-5 flex items-center gap-4 animate-fade-in">
+    <div className="border border-border bg-card rounded-2xl p-5 flex items-center gap-4 animate-fade-in hover:shadow-sm transition-all duration-200">
       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-club-muted text-club shrink-0">
         <CheckCircle2 className="h-5 w-5" />
       </div>
@@ -1041,7 +1220,7 @@ function OnboardingBanner({
     },
   ]
   return (
-    <div className="card-quiet p-5 bg-club-muted/40 border-club/30 animate-fade-in relative">
+    <div className="border border-club/30 bg-club-muted/40 rounded-2xl p-5 animate-fade-in relative hover:shadow-sm transition-all duration-200">
       <button
         type="button"
         onClick={onDismiss}
@@ -1199,33 +1378,106 @@ function formatTurnaround(hours: number | null) {
   return `${(hours / 24).toFixed(1)}d`
 }
 
+// Bucket a 30-day hours trend down to 7 evenly-spaced points (sum per bucket)
+// so the inline SVG sparkline has a manageable number of vertices.
+function bucketToSeven(trend: { date: string; hours: number }[]): number[] {
+  const zeros = [0, 0, 0, 0, 0, 0, 0]
+  if (trend.length === 0) return zeros
+  if (trend.length <= 7) {
+    return [...trend.map((d) => d.hours), ...Array(7 - trend.length).fill(0)]
+  }
+  const buckets: number[] = []
+  const bucketSize = trend.length / 7
+  for (let i = 0; i < 7; i++) {
+    const start = Math.floor(i * bucketSize)
+    const end = Math.max(Math.floor((i + 1) * bucketSize), start + 1)
+    const slice = trend.slice(start, end)
+    buckets.push(slice.reduce((s, d) => s + d.hours, 0))
+  }
+  return buckets
+}
+
+// Tiny inline-SVG sparkline (no recharts). 7 data points, area fill + line +
+// end dot, all tinted with --club-accent. Scales horizontally via viewBox +
+// preserveAspectRatio="none" so it can sit inside any width container.
+function Sparkline({
+  data,
+  className,
+}: {
+  data: { date: string; hours: number }[]
+  className?: string
+}) {
+  const points = bucketToSeven(data)
+  const max = Math.max(...points, 1)
+  const w = 100
+  const h = 28
+  const step = points.length > 1 ? w / (points.length - 1) : w
+  const yFor = (v: number) => h - (v / max) * (h - 4) - 2
+  const lineD = points
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"} ${(i * step).toFixed(1)} ${yFor(p).toFixed(1)}`
+    )
+    .join(" ")
+  const areaD = `${lineD} L ${w} ${h} L 0 ${h} Z`
+  const lastX = (points.length - 1) * step
+  const lastY = yFor(points[points.length - 1])
+  return (
+    <svg
+      width="100%"
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className={cn("overflow-visible", className)}
+      aria-hidden
+    >
+      <path d={areaD} fill="var(--club-accent)" fillOpacity={0.12} />
+      <path
+        d={lineD}
+        stroke="var(--club-accent)"
+        strokeWidth={1.5}
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle cx={lastX} cy={lastY} r={1.8} fill="var(--club-accent)" />
+    </svg>
+  )
+}
+
 // =========================================================================
 // Loading skeleton — matches new bento-grid layout
 // =========================================================================
 function DashboardSkeleton() {
+  const tile =
+    "border border-border bg-card rounded-2xl animate-pulse"
   return (
     <div className="space-y-4 sm:space-y-5">
-      {/* Hero bar */}
-      <div className="card-quiet h-20 animate-pulse" />
-      {/* Tier 1 strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Row 1 — Hero panel + Progress ring tile */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className={cn(tile, "lg:col-span-7 h-32")} />
+        <div className={cn(tile, "lg:col-span-5 h-32")} />
+      </div>
+      {/* Tier 1 strip — 4 tighter tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <StatCardSkeleton key={i} />
         ))}
       </div>
       {/* Chart + Leaderboard row */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="card-quiet p-5 lg:col-span-8 h-64 animate-pulse" />
-        <div className="card-quiet p-5 lg:col-span-4 h-64 animate-pulse" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className={cn(tile, "p-5 lg:col-span-8 h-64")} />
+        <div className={cn(tile, "p-5 lg:col-span-4 h-64")} />
       </div>
       {/* Snapshot + Announcements + Meetings row */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
-        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
-        <div className="card-quiet p-5 lg:col-span-4 h-56 animate-pulse" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className={cn(tile, "p-5 lg:col-span-4 h-56")} />
+        <div className={cn(tile, "p-5 lg:col-span-4 h-56")} />
+        <div className={cn(tile, "p-5 lg:col-span-4 h-56")} />
       </div>
-      {/* Club stats strip */}
-      <div className="card-quiet p-4 h-24 animate-pulse" />
+      {/* Exec insights wide strip */}
+      <div className={cn(tile, "p-4 h-24")} />
     </div>
   )
 }

@@ -395,8 +395,8 @@ function AnnouncementCard({
 
   return (
     <div className={cn(
-      "card-quiet rounded-xl p-0 gap-0 overflow-hidden animate-fade-in hover:shadow-sm transition-all duration-150",
-      announcement.isPinned && "border-l-2 border-l-amber-400"
+      "rounded-2xl border border-border bg-card overflow-hidden animate-fade-in hover:shadow-sm transition-all duration-200",
+      announcement.isPinned && "border-l-4 border-l-amber-400 bg-amber-50/30 dark:bg-amber-950/10"
     )}>
       <div className="p-4 md:p-5 space-y-3">
         {/* Header — avatar + name + relative time + pills in one inline row */}
@@ -408,7 +408,7 @@ function AnnouncementCard({
             </Avatar>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-body-medium truncate">{announcement.author.name}</span>
+                <span className="text-sm font-semibold truncate">{announcement.author.name}</span>
                 <span className="text-caption text-muted-foreground">·</span>
                 <span className="text-caption text-muted-foreground">{relativeTime(announcement.createdAt)}</span>
                 {new Date(announcement.updatedAt).getTime() - new Date(announcement.createdAt).getTime() > 1000 && (
@@ -464,7 +464,7 @@ function AnnouncementCard({
         <button
           type="button"
           onClick={() => setCommentsOpen((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs hover:bg-accent transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs hover:bg-accent cursor-pointer transition-colors"
           aria-expanded={commentsOpen}
         >
           <MessageSquare className="h-3.5 w-3.5" />

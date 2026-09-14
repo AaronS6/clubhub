@@ -426,7 +426,7 @@ export function ApprovalsView() {
           {/* Desktop: table */}
           <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
-              <TableHeader>
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
@@ -458,6 +458,7 @@ export function ApprovalsView() {
                       (reviewMutation.isPending && reviewMutation.variables?.id === it.id) ||
                       (bulkMutation.isPending && selectedInScope.has(it.id))
                     }
+                    goal={approvalsQuery.data?.clubHoursGoal ?? 0}
                   />
                 ))}
               </TableBody>
@@ -495,7 +496,7 @@ export function ApprovalsView() {
           {/* Reviewed tab — desktop table */}
           <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
-              <TableHeader>
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
                 <TableRow>
                   <TableHead className="min-w-[10rem]">Member</TableHead>
                   <TableHead className="min-w-[7rem]">Date</TableHead>
@@ -516,6 +517,7 @@ export function ApprovalsView() {
                     item={it}
                     onDelete={() => deleteMutation.mutate(it.id)}
                     deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                    goal={approvalsQuery.data?.clubHoursGoal ?? 0}
                   />
                 ))}
               </TableBody>
@@ -563,6 +565,7 @@ function ApprovalRow({
   onApprove,
   onReject,
   reviewing,
+  goal,
 }: {
   item: HoursItem
   checked: boolean
@@ -570,15 +573,34 @@ function ApprovalRow({
   onApprove: () => void
   onReject: () => void
   reviewing: boolean
+  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
+      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
+  goal?: number
 }) {
+  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
-    <TableRow data-state={checked ? "selected" : undefined} className="hover:bg-muted/40 transition-colors">
+    <TableRow data-state={checked ? "selected" : undefined} className="hover:bg-muted/30 transition-colors">
       <TableCell>
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Select entry from ${item.user?.name ?? "member"}`} />
       </TableCell>
       <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
-      <TableCell>{fmtDate(item.dateOfService)}</TableCell>
-      <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+          {goal && goal > 0 && pct > 0 && (
+            <span
+              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="block h-full rounded-full bg-club"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          )}
+        </div>
+      </TableCell>
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>
       </TableCell>
@@ -693,16 +715,36 @@ function ReviewedRow({
   item,
   onDelete,
   deleting,
+  goal,
 }: {
   item: HoursItem
   onDelete: () => void
   deleting: boolean
+  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
+      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
+  goal?: number
 }) {
+  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors">
+    <TableRow className="hover:bg-muted/30 transition-colors">
       <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
-      <TableCell>{fmtDate(item.dateOfService)}</TableCell>
-      <TableCell className="font-mono tabular-nums">{item.hours}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+          {goal && goal > 0 && pct > 0 && (
+            <span
+              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="block h-full rounded-full bg-club"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          )}
+        </div>
+      </TableCell>
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>
       </TableCell>

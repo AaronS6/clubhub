@@ -30,6 +30,7 @@ import { toast } from "sonner"
 import {
   Plus,
   Calendar,
+  Check,
   CheckCircle2,
   ListChecks,
   MessageSquare,
@@ -189,6 +190,14 @@ const COLUMN_ACCENT: Record<TaskStatus, string> = {
   not_started: "bg-amber-500/10 dark:bg-amber-500/15",
   in_progress: "bg-sky-500/10 dark:bg-sky-500/15",
   done: "bg-emerald-500/10 dark:bg-emerald-500/15",
+}
+
+// Left-edge accent bar per status — colored 3px strip on the card's left
+// edge so the status is readable at a glance without reading the badge text.
+const CARD_ACCENT: Record<TaskStatus, string> = {
+  not_started: "border-l-[3px] border-l-amber-400",
+  in_progress: "border-l-[3px] border-l-sky-400",
+  done: "border-l-[3px] border-l-emerald-400",
 }
 
 // ---------------------------------------------------------------------------
@@ -683,8 +692,10 @@ function BoardColumn({
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <StatusBadge status={status.badge} />
-          <span className="text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground">
+            {status.id === "done" && <Check className="size-3" />}
             {tasks.length}
+            {status.id === "done" && <span className="hidden sm:inline">done</span>}
           </span>
         </div>
       </div>
@@ -841,8 +852,9 @@ function TaskCardContent({
       {...(dragListeners ?? {})}
       className={cn(
         "group card-quiet rounded-xl cursor-grab p-3 text-left transition-all duration-150 hover:shadow-sm hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        dragging && "shadow-xl rotate-1 cursor-grabbing ring-2 ring-club/40",
-        isDragging && "scale-[1.02] shadow-lg ring-2 ring-club/40 cursor-grabbing",
+        CARD_ACCENT[task.status],
+        dragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
+        isDragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
         flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
       )}
     >

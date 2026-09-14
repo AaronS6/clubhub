@@ -151,7 +151,7 @@ function AuthScreenInner() {
           Solid colors only — no gradients. Visual interest comes from a
           subtle dot-grid texture + a soft accent blob (flat, blurred, not a
           gradient). */}
-      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/20 border-r border-border relative overflow-hidden">
+      <aside className="bg-accent-tint hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/20 border-r border-border relative overflow-hidden">
         {/* Dot-grid texture — very low opacity, barely visible. */}
         <div
           aria-hidden
@@ -162,11 +162,19 @@ function AuthScreenInner() {
             color: "var(--foreground)",
           }}
         />
-        {/* Soft accent blob — flat color with blur, NOT a gradient. Positioned
-            off-canvas in the top-right corner as a decorative shape. */}
+        {/* Soft radial gradient behind the value props — adds a gentle visual
+            centerpiece glow in the club accent color. Very low opacity so it
+            reads as ambient light, not a solid block of color. */}
         <div
           aria-hidden
-          className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-club/20 blur-3xl"
+          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--club),transparent_70%)] opacity-[0.07]"
+        />
+        {/* Soft accent blob — flat color with blur, NOT a gradient. Positioned
+            off-canvas in the top-right corner as a decorative shape. Slowly
+            floats up and down for a calm, living background. */}
+        <div
+          aria-hidden
+          className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-club/20 blur-3xl animate-[float_8s_ease-in-out_infinite]"
         />
 
         <div className="relative flex items-center gap-2.5">
@@ -198,12 +206,12 @@ function AuthScreenInner() {
                   className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500"
                   style={{ animationDelay: `${200 + i * 80}ms` }}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-club-muted text-club">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-club-muted text-club">
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-card-title">{v.title}</div>
-                    <div className="text-caption mt-0.5 text-muted-foreground">{v.body}</div>
+                    <div className="text-base font-semibold">{v.title}</div>
+                    <div className="text-sm text-muted-foreground mt-0.5">{v.body}</div>
                   </div>
                 </li>
               )

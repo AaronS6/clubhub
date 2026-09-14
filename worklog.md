@@ -1531,3 +1531,76 @@ Stage Summary:
 - Awarding a badge fires a `badge_awarded` notification (the bell rings with an Award icon), logs activity (`badge_awarded`), and emits a realtime club event so other execs viewing the member detail sheet see the new badge appear live.
 - On app load, if the user has any unseen badge awards since their `last-seen-badges` localStorage timestamp, a 36-piece CSS confetti popup celebrates the most recent one — auto-dismisses after 5 seconds; "Awesome!" button + backdrop click also dismiss. First-ever load seeds the baseline to `now()` so users don't get a popup for old badges.
 - `supabase_badges.sql` is ready to paste into the Supabase SQL Editor — creates both tables with all indexes + FKs matching the Prisma schema, idempotently.
+
+---
+Task ID: REDESIGN-1
+Agent: ui-mod (Z.ai Code)
+Task: Full visual redesign — UI/CSS/component structure ONLY. Two sections: (1) Dashboard redesigned as asymmetric bento-grid with hero panel + CSS conic-gradient progress ring tile; (2) Sidebar redesigned as a floating panel (Linear/Vercel/Raycast pattern).
+
+Work Log:
+
+### §1 — DASHBOARD (`src/components/views/dashboard-view.tsx`)
+
+What I found:
+- Top-down admin layout: slim `HeroBar` strip + 4-up `card-quiet` `AttentionCard` row + uniform 12-col grid where every supporting tile used `card-quiet p-5 lg:col-span-{4|8}`. All tiles visually identical → flat, admin-like feel.
+- `card-quiet` is `border border-border bg-card rounded-xl` + subtle hover shadow. Used ~12 times across the dashboard.
+- `hoursTrend`, `data.club.hoursGoal`, `data.myStats.approvedHours` already fetched + used to compute `hoursPct` for the snapshot's `Progress` bar — progress-ring tile could be built with zero new data.
+
+What I changed:
+1. Added two tile constants at module scope (after `stagger()`): `TILE = "border border-border bg-card rounded-2xl p-5 hover:shadow-sm transition-all duration-200"` and `TILE_COMPACT` (same but `p-4`). Both use `rounded-2xl` (bigger radius than `card-quiet`'s `rounded-xl`).
+2. Added `bucketToSeven()` + `Sparkline` helpers near the bottom helpers. `bucketToSeven` reduces a 30-day trend to 7 evenly-spaced points by summing each ~4-day bucket. `Sparkline` renders a 100×28 viewBox inline SVG with `preserveAspectRatio="none"`, an area fill (fillOpacity 0.12), a 1.5px line (`vectorEffect="non-scaling-stroke"`), and an end dot — all tinted with `var(--club-accent)`. NO recharts dependency.
+3. Replaced the entire `return` block with a 4-row asymmetric bento layout:
+   - Row 1: `<div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">` containing `HeroPanel` (lg:col-span-7) + `ProgressRingTile` (lg:col-span-5).
+   - Row 2: attention items in `grid grid-cols-2 lg:grid-cols-4 gap-3` (was `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4` — tighter gap, always-2-cols on mobile).
+   - Row 3+: supporting tiles in `grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5`, role-aware ordering. Every `<section>` uses `cn(TILE, "lg:col-span-{n} order-{m} animate-fade-in")` instead of `card-quiet p-5 …`.
+   - Row 5 (exec only): club-stats strip wrapped in `cn(TILE_COMPACT, "animate-fade-in")`.
+   - Row 6 (exec only): exec-insights wide strip wrapped in `cn(TILE_COMPACT, "animate-fade-in")`. Inner `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3` of `ExecMetric`s preserved.
+4. Replaced `HeroBar` with new `HeroPanel` (signature extended with `approvedHours`, `hoursGoal`, `hoursPct`, `hoursTrend` — all already-fetched data):
+   - Outer `<section>`: `relative overflow-hidden rounded-2xl border border-border lg:col-span-7 p-5 sm:p-6 hover:shadow-sm transition-all duration-200 bg-gradient-to-br from-club-muted/60 to-transparent`.
+   - Dot-grid texture overlay via absolutely-positioned `<div aria-hidden>` with `backgroundImage: radial-gradient(circle, currentColor 1px, transparent 1px)`, `backgroundSize: 20px 20px`, `color: var(--foreground)`, `opacity: 0.05` (matches auth-screen pattern, quieter per spec).
+   - Left accent bar preserved. Logo tile bumped from `h-10 w-10 rounded-lg` to `h-12 w-12 rounded-xl`.
+   - Added personal-progress strip (`mt-5 pt-4 border-t border-border/60`): "Your hours: Xh [of Yh goal]" with either a thin `Progress` bar (goal set) or a tiny `Sparkline` (no goal).
+5. Added new `ProgressRingTile` component (props: `approvedHours`, `hoursGoal`, `hoursPct`, `hoursTrend`, `onViewHours?`). Renders as `<button>` (whole-tile clickable → hours view) when `onViewHours` set, else `<div>`. Uses `TILE` + `lg:col-span-5 flex flex-col`.
+   - Goal-set state: CSS conic-gradient ring at ~80px (`h-20 w-20`). Outer div `bg-muted` (track); inner absolutely-positioned div paints `conic-gradient(var(--club-accent) ${hoursPct}%, transparent 0)`; `bg-card` donut-hole (`absolute inset-[6px] rounded-full`) shows `{approvedHours}h / of {hoursGoal}h`. Large `{pct}%` + hint ("Xh to go" / "Goal achieved! 🎉") to the right. `role="img"` + `aria-label` for a11y.
+   - No-goal state: large `{approvedHours}h` (`text-4xl font-bold tabular-nums`), "Approved · last 30 days" caption, then a `Sparkline` (max-w-[260px]).
+6. Updated sub-components to drop `card-quiet`:
+   - `AttentionCard`: → `border border-border bg-card rounded-2xl p-4 … hover:shadow-sm transition-all duration-200`. Kept `border-l-2 border-l-club` accent (and `border-l-red-500` for urgent).
+   - `AllCaughtUpCard`: → `border border-border bg-card rounded-2xl p-5 … hover:shadow-sm transition-all duration-200`.
+   - `OnboardingBanner`: → `border border-club/30 bg-club-muted/40 rounded-2xl p-5 … hover:shadow-sm transition-all duration-200`.
+   - `DashboardSkeleton`: rewrote to match the new bento layout — Row 1 has `lg:col-span-7` + `lg:col-span-5` skeletons, then `grid-cols-2 lg:grid-cols-4 gap-3` of `StatCardSkeleton`s, then chart+leaderboard row, then 3-tile row, then exec strip. All skeleton tiles use a local `tile = "border border-border bg-card rounded-2xl animate-pulse"`.
+
+### §2 — SIDEBAR (`src/components/app-shell.tsx`)
+
+What I found:
+- Desktop sidebar flush against viewport: `<aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">`. Hard `border-r`, no margin. Club switcher trigger: `h-7 w-7 rounded-md` avatar, `text-sm font-medium` name, `text-caption capitalize` sub-label. Section dividers: `text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-2.5 pt-1 pb-0.5`. Active nav: `bg-club-muted text-club`.
+
+What I changed:
+1. Floating panel treatment (main AppShell return):
+   - Parent flex container: `flex flex-1 min-h-0` → `flex flex-1 min-h-0 gap-2 p-2` (8px breathing room on all sides + 8px gap between sidebar and main).
+   - Aside: `border-r bg-muted/20` → `rounded-2xl border bg-background shadow-sm overflow-hidden`. Width `md:w-60` preserved. `overflow-hidden` so the rounded corners clip the inner scroll area.
+   - Removed `border-b` from the club-switcher wrapper; removed `border-t` from the theme-toggle wrapper — the panel's rounded border provides separation now.
+   - Main: `flex-1 min-w-0 flex flex-col` → `flex-1 min-w-0 flex flex-col min-h-0` (so the inner `overflow-y-auto` can scroll inside the new padded parent).
+   - Mobile drawer (`SheetContent`) untouched per spec.
+2. Club switcher enlarged (`ClubSwitcher` component):
+   - Trigger `Button`: `h-auto py-2 px-3` → `h-auto py-2.5 px-3 rounded-xl gap-3`.
+   - Avatar: `h-7 w-7 rounded-md text-xs` → `h-10 w-10 rounded-xl text-sm`.
+   - Club name: `text-sm font-medium` → `text-sm font-semibold`.
+   - Sub-label: `text-caption capitalize` → `text-[11px] text-muted-foreground capitalize`. Content is still the role (`"member" | "executive" | "No club selected"`) because `MeResponse["memberships"][number]` doesn't carry `memberCount` and the "do not change data variables" rule forbids adding one.
+   - Dropdown items left as-is (spec scoped only the trigger).
+3. Section dividers: `text-muted-foreground/70 px-2.5 pt-1 pb-0.5` → `text-muted-foreground/60 px-3 pt-3 pb-1` (per spec — slightly quieter color, more padding for label presence).
+4. Active nav item background: `bg-club-muted text-club` → `bg-club-muted/60 text-club` (per spec — slightly stronger than the previous pass's `bg-club-muted`). Centered accent pill (`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club`, opacity-100 when active / opacity-0 otherwise) preserved exactly. Weight-based padding/typography (home/work/manage tiers) unchanged.
+
+### Verification
+- `bun run lint` → **EXIT 0** (zero errors, zero warnings).
+- `bunx tsc --noEmit -p tsconfig.json` → **EXIT 0** (zero TypeScript errors).
+- `curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:3000` → **HTTP 200** (dev server still serving).
+- No `dev.log` present at project root at time of work — could not inspect server log; lint + tsc + HTTP 200 is the verification signal.
+- Did NOT touch any API route, `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, `server-auth.ts`, or `src/lib/store.ts`.
+- Did NOT restart the dev server.
+- Did NOT add any new dependencies (sparkline is a hand-rolled inline SVG; progress ring is a CSS `conic-gradient`).
+
+Stage Summary:
+- Dashboard is now an asymmetric bento-grid: hero panel (col-span-7) with gradient + dot-grid texture + inline progress element, paired with a progress-ring tile (col-span-5) that uses a CSS `conic-gradient` ring when a goal is set, or a large number + tiny inline-SVG sparkline (7 data points, no recharts) when there's no goal. Supporting tiles use varied sizes (8/4 splits) with `rounded-2xl` borders + hover-lift. Exec insights is a wide bottom strip.
+- Sidebar is now a floating panel: `m-2`-equivalent padding on the parent + `rounded-2xl border bg-background shadow-sm` on the aside. Club switcher has a larger `h-10 w-10 rounded-xl` avatar, `text-sm font-semibold` name, and `text-[11px] text-muted-foreground` sub-label. Section dividers are more prominent. Active nav uses `bg-club-muted/60`. Mobile drawer untouched.
+- All `card-quiet` references removed from `dashboard-view.tsx` (only a comment remains explaining the new `TILE` constant replaces it).
+- Full worklog with detailed change-by-change breakdown in `/agent-ctx/REDESIGN-1-ui-mod.md`.
