@@ -7,7 +7,9 @@ import { api, apiUpload } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { usePollingFallback } from "@/lib/realtime-store"
 import { toast } from "sonner"
-import { PageHeader, StatusBadge, EmptyState, TableSkeleton, relativeTime } from "@/components/shared/page-header"
+import { PageHeader, EmptyState, TableSkeleton, relativeTime, initials, avatarColor } from "@/components/shared/page-header"
+import { StatusPill } from "@/components/shared/status-pill"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -234,7 +236,9 @@ export function HoursView() {
 
   function handleExport() {
     if (!clubId) return
-    window.location.href = `/api/clubs/${clubId}/hours/export`
+    // Opens the styled, printable HTML export in a new tab. The user can then
+    // use "Print → Save as PDF" or click "Download CSV" inside the doc.
+    window.open(`/api/clubs/${clubId}/hours/export`, "_blank", "noopener,noreferrer")
   }
 
   if (!clubId) {
@@ -255,7 +259,7 @@ export function HoursView() {
           <>
             <Button variant="outline" size="sm" onClick={handleExport} disabled={!data || data.items.length === 0}>
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export CSV</span>
+              <span className="hidden sm:inline">Export</span>
             </Button>
             <Button size="sm" variant="club" onClick={() => setSubmitOpen(true)}>
               <Plus className="h-4 w-4" />
@@ -336,7 +340,7 @@ export function HoursView() {
           <EmptyState
             icon={<Clock className="h-8 w-8" />}
             title="No service hours yet"
-            description="Log your first contribution! ⏰"
+            description="Log your first contribution."
             action={
               <Button size="sm" variant="club" onClick={() => setSubmitOpen(true)}>
                 <Plus className="h-4 w-4" /> Submit Hours
@@ -543,7 +547,7 @@ function HoursRow({
         <ProofLink url={item.proofFileUrl} />
       </TableCell>
       <TableCell>
-        <StatusBadge status={statusKind(item.status)} />
+        <StatusPill status={statusKind(item.status)} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{relativeTime(item.submittedAt)}</TableCell>
       <TableCell className="text-right">
@@ -555,6 +559,7 @@ function HoursRow({
             onClick={onDelete}
             disabled={deleting}
             aria-label="Delete entry"
+            title="Delete entry"
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </Button>
@@ -585,7 +590,7 @@ function HoursCard({
             {item.category && <span> · {item.category.name}</span>}
           </div>
         </div>
-        <StatusBadge status={statusKind(item.status)} />
+        <StatusPill status={statusKind(item.status)} />
       </div>
       <div className="text-body">{item.reasonText}</div>
       {item.status === "rejected" && item.reviewComment && (
@@ -593,11 +598,20 @@ function HoursCard({
           <span className="font-medium">Reason:</span> {item.reviewComment}
         </div>
       )}
+      {/* §39 — Reviewer name + avatar (when reviewed). The API exposes
+          only the reviewer's id+name; we render initials as the fallback. */}
       <div className="flex items-center justify-between pt-1 gap-2">
-        <div className="text-caption min-w-0">
+        <div className="text-caption min-w-0 flex items-center gap-1.5">
           Submitted {relativeTime(item.submittedAt)}
           {item.reviewer && item.reviewedAt && (
-            <span className="truncate"> · reviewed by {item.reviewer.name}</span>
+            <span className="truncate inline-flex items-center gap-1.5">
+              <Avatar className="h-4 w-4">
+                <AvatarFallback className={cn("text-[8px]", avatarColor(item.reviewer.name))}>
+                  {initials(item.reviewer.name)}
+                </AvatarFallback>
+              </Avatar>
+              · reviewed by {item.reviewer.name}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -610,6 +624,7 @@ function HoursCard({
               onClick={onDelete}
               disabled={deleting}
               aria-label="Delete entry"
+              title="Delete entry"
             >
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             </Button>
@@ -663,6 +678,9 @@ function SubmitHoursDialog({
   const [proofLabel, setProofLabel] = useState<string>("")
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [hoursError, setHoursError] = useState<string | null>(null)
+  const [dateError, setDateError] = useState<string | null>(null)
+  const [reasonError, setReasonError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function reset() {
@@ -672,6 +690,9 @@ function SubmitHoursDialog({
     setCategoryId("__none__")
     setProofUrl(null)
     setProofLabel("")
+    setHoursError(null)
+    setDateError(null)
+    setReasonError(null)
     if (fileRef.current) fileRef.current.value = ""
   }
 
@@ -698,9 +719,26 @@ function SubmitHoursDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const hoursNum = Number(hours)
-    if (!date) return toast.error("Please pick a date")
-    if (!isFinite(hoursNum) || hoursNum <= 0) return toast.error("Enter a valid number of hours")
-    if (!reason.trim()) return toast.error("Please describe what you did")
+    let bad = false
+    if (!date) {
+      setDateError("Please pick a date")
+      bad = true
+    } else {
+      setDateError(null)
+    }
+    if (!hours.trim() || !isFinite(hoursNum) || hoursNum <= 0) {
+      setHoursError("Enter a valid number of hours")
+      bad = true
+    } else {
+      setHoursError(null)
+    }
+    if (!reason.trim()) {
+      setReasonError("Please describe what you did")
+      bad = true
+    } else {
+      setReasonError(null)
+    }
+    if (bad) return
 
     setSubmitting(true)
     try {
@@ -751,9 +789,17 @@ function SubmitHoursDialog({
                   type="date"
                   value={date}
                   max={todayISO()}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(e) => {
+                    setDate(e.target.value)
+                    if (dateError) setDateError(null)
+                  }}
                   required
+                  aria-invalid={!!dateError}
+                  className={dateError ? "border-red-500 focus-visible:ring-red-500" : ""}
                 />
+                {dateError && (
+                  <p className="text-xs text-red-500 mt-1">{dateError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="hours-num">Hours</Label>
@@ -766,9 +812,17 @@ function SubmitHoursDialog({
                   max="1000"
                   placeholder="e.g. 3.5 or 0.25"
                   value={hours}
-                  onChange={(e) => setHours(e.target.value)}
+                  onChange={(e) => {
+                    setHours(e.target.value)
+                    if (hoursError) setHoursError(null)
+                  }}
                   required
+                  aria-invalid={!!hoursError}
+                  className={hoursError ? "border-red-500 focus-visible:ring-red-500" : ""}
                 />
+                {hoursError && (
+                  <p className="text-xs text-red-500 mt-1">{hoursError}</p>
+                )}
               </div>
             </div>
 
@@ -779,11 +833,19 @@ function SubmitHoursDialog({
                 rows={3}
                 placeholder="e.g. Helped set up the spring fair booths and cleaned up afterwards."
                 value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                onChange={(e) => {
+                  setReason(e.target.value)
+                  if (reasonError) setReasonError(null)
+                }}
                 maxLength={2000}
                 required
+                aria-invalid={!!reasonError}
+                className={reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
               <div className="text-right text-xs text-muted-foreground">{reason.length}/2000</div>
+              {reasonError && (
+                <p className="text-xs text-red-500 mt-1">{reasonError}</p>
+              )}
             </div>
 
             <div className="space-y-2">

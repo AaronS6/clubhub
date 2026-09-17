@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
@@ -11,6 +11,7 @@ import { toast } from "sonner"
 import {
   PageHeader,
   EmptyState,
+  AnnouncementsEmptyIllustration,
   FeedSkeleton,
   initials,
   relativeTime,
@@ -50,7 +51,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import {
-  Megaphone,
   Pin,
   PinOff,
   MessageSquare,
@@ -218,6 +218,31 @@ export function AnnouncementsView() {
 
   const queryClient = useQueryClient()
 
+  // §45 — Mark announcements as "seen" when the user opens the view. Updates
+  // the localStorage timestamp under `last-seen-announcements-<clubId>` so
+  // the nav unread dot clears. We only update to the latest createdAt we
+  // actually saw — never backward (avoids re-flagging old items as unread).
+  useEffect(() => {
+    if (!clubId || items.length === 0) return
+    const latestCreatedAt = items.reduce<number>((max, it) => {
+      const t = new Date(it.createdAt).getTime()
+      return t > max ? t : max
+    }, 0)
+    if (latestCreatedAt === 0) return
+    try {
+      const raw = localStorage.getItem(`last-seen-announcements-${clubId}`)
+      const prev = raw ? parseInt(raw, 10) : 0
+      if (latestCreatedAt > prev) {
+        localStorage.setItem(
+          `last-seen-announcements-${clubId}`,
+          String(latestCreatedAt)
+        )
+      }
+    } catch {
+      // ignore — localStorage may be unavailable in private browsing
+    }
+  }, [clubId, items])
+
   if (!clubId) {
     return (
       <div className="p-8 text-muted-foreground">Select a club to view announcements.</div>
@@ -226,28 +251,46 @@ export function AnnouncementsView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Announcements"
-        description="Stay up to date with club news, pinned notices, and discussions."
-        actions={
-          isExec ? (
-            <Button variant="club" onClick={() => setComposeOpen(true)}>
-              <Plus className="h-4 w-4" /> New Announcement
-            </Button>
-          ) : undefined
-        }
-      />
+      {/* §37 — Sticky page header on desktop. Hidden on mobile to avoid
+          double-stacking with the mobile nav. */}
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-b border-border/60">
+        <PageHeader
+          title="Announcements"
+          description="Stay up to date with club news, pinned notices, and discussions."
+          actions={
+            isExec ? (
+              <Button variant="club" onClick={() => setComposeOpen(true)}>
+                <Plus className="h-4 w-4" /> New Announcement
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+      {/* Mobile (non-sticky) header */}
+      <div className="sm:hidden">
+        <PageHeader
+          title="Announcements"
+          description="Stay up to date with club news, pinned notices, and discussions."
+          actions={
+            isExec ? (
+              <Button variant="club" onClick={() => setComposeOpen(true)}>
+                <Plus className="h-4 w-4" /> New Announcement
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
 
       {query.isLoading ? (
         <FeedSkeleton />
       ) : items.length === 0 ? (
         <EmptyState
-          icon={<Megaphone className="h-8 w-8" />}
+          illustration={<AnnouncementsEmptyIllustration />}
           title="No announcements yet"
           description={
             isExec
-              ? "Share an update with your club! 📢"
-              : "Check back soon — execs will post updates here. 📢"
+              ? "Share an update with your club."
+              : "Check back soon — execs will share updates here."
           }
           action={
             isExec ? (
@@ -387,8 +430,23 @@ function AnnouncementCard({
     mutationFn: () =>
       api(`/api/clubs/${clubId}/announcements/${announcement.id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Announcement deleted")
       onMutated()
+      // 5-second undo: the API uses soft-delete (sets deletedAt), and a
+      // /restore endpoint clears it. Show an Undo toast that restores.
+      const annId = announcement.id
+      const undo = async () => {
+        try {
+          await api(`/api/clubs/${clubId}/announcements/${annId}/restore`, { method: "POST" })
+          toast.success("Announcement restored")
+          onMutated()
+        } catch (e: any) {
+          toast.error(e.message || "Couldn't restore the announcement")
+        }
+      }
+      toast.success("Announcement deleted", {
+        duration: 5000,
+        action: { label: "Undo", onClick: undo },
+      })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -905,6 +963,8 @@ function ComposeAnnouncementDialog({
   const [body, setBody] = useState("")
   const [isPinned, setIsPinned] = useState(false)
   const [isUrgent, setIsUrgent] = useState(false)
+  const [titleError, setTitleError] = useState<string | null>(null)
+  const [bodyError, setBodyError] = useState<string | null>(null)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -918,6 +978,8 @@ function ComposeAnnouncementDialog({
       setBody("")
       setIsPinned(false)
       setIsUrgent(false)
+      setTitleError(null)
+      setBodyError(null)
       onCreated()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -925,10 +987,16 @@ function ComposeAnnouncementDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim() || !body.trim()) {
-      toast.error("Title and body are required")
-      return
-    }
+    let bad = false
+    if (!title.trim()) {
+      setTitleError("Title is required")
+      bad = true
+    } else setTitleError(null)
+    if (!body.trim()) {
+      setBodyError("Body is required")
+      bad = true
+    } else setBodyError(null)
+    if (bad) return
     mutation.mutate()
   }
 
@@ -942,32 +1010,48 @@ function ComposeAnnouncementDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="ann-title">Title</Label>
               <Input
                 id="ann-title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  if (titleError) setTitleError(null)
+                }}
                 placeholder="e.g. Spring service drive kicks off next week"
                 maxLength={200}
                 required
+                aria-invalid={!!titleError}
+                className={titleError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
+              {titleError && (
+                <p className="text-xs text-red-500 mt-1">{titleError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="ann-body">Body</Label>
               <Textarea
                 id="ann-body"
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={(e) => {
+                  setBody(e.target.value)
+                  if (bodyError) setBodyError(null)
+                }}
                 placeholder="Write your announcement. URLs will become clickable links automatically."
                 rows={6}
                 maxLength={8000}
                 required
+                aria-invalid={!!bodyError}
+                className={bodyError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
               <p className="text-xs text-muted-foreground">
                 {body.length}/8000 characters · URLs auto-link
               </p>
+              {bodyError && (
+                <p className="text-xs text-red-500 mt-1">{bodyError}</p>
+              )}
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <Switch checked={isPinned} onCheckedChange={setIsPinned} id="ann-pinned" />
@@ -1064,7 +1148,7 @@ function EditAnnouncementDialog({
           <DialogDescription>Update the title, body, or pin status.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Title</Label>
               <Input

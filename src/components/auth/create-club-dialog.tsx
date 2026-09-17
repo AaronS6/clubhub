@@ -28,12 +28,26 @@ export function CreateClubDialog({
   const [clubPassword, setClubPassword] = useState("")
   const [adminPasscode, setAdminPasscode] = useState("")
   const [loading, setLoading] = useState(false)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passcodeError, setPasscodeError] = useState<string | null>(null)
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return toast.error("Club name is required")
-    if (clubPassword.length < 4) return toast.error("Club password must be at least 4 characters")
-    if (!adminPasscode) return toast.error("Admin passcode is required")
+    let bad = false
+    if (!name.trim()) {
+      setNameError("Club name is required")
+      bad = true
+    } else setNameError(null)
+    if (clubPassword.length < 4) {
+      setPasswordError("Club password must be at least 4 characters")
+      bad = true
+    } else setPasswordError(null)
+    if (!adminPasscode) {
+      setPasscodeError("Admin passcode is required")
+      bad = true
+    } else setPasscodeError(null)
+    if (bad) return
     setLoading(true)
     try {
       // Verify the admin passcode SERVER-SIDE (the literal never lives in the
@@ -45,8 +59,9 @@ export function CreateClubDialog({
         json: { adminPasscode },
       })
       if (!verify.valid) {
+        setPasscodeError("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
         setLoading(false)
-        return toast.error("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
+        return
       }
       await api("/api/clubs", {
         method: "POST",
@@ -57,6 +72,9 @@ export function CreateClubDialog({
       setDescription("")
       setClubPassword("")
       setAdminPasscode("")
+      setNameError(null)
+      setPasswordError(null)
+      setPasscodeError(null)
       onCreated()
       onOpenChange(false)
     } catch (err: any) {
@@ -79,7 +97,20 @@ export function CreateClubDialog({
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
             <div className="space-y-2">
               <Label>Club name *</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Robotics Club" maxLength={80} />
+              <Input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  if (nameError) setNameError(null)
+                }}
+                placeholder="e.g. Robotics Club"
+                maxLength={80}
+                aria-invalid={!!nameError}
+                className={nameError ? "border-red-500 focus-visible:ring-red-500" : ""}
+              />
+              {nameError && (
+                <p className="text-xs text-red-500 mt-1">{nameError}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
@@ -93,7 +124,7 @@ export function CreateClubDialog({
                     key={c}
                     type="button"
                     onClick={() => setAccentColor(c)}
-                    className="h-9 w-9 rounded-full border-2 transition-transform hover:scale-110"
+                    className="h-9 w-9 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     style={{
                       backgroundColor: c,
                       borderColor: accentColor === c ? "white" : "transparent",
@@ -108,11 +139,20 @@ export function CreateClubDialog({
               <Label>Club password *</Label>
               <Input
                 value={clubPassword}
-                onChange={(e) => setClubPassword(e.target.value)}
+                onChange={(e) => {
+                  setClubPassword(e.target.value)
+                  if (passwordError) setPasswordError(null)
+                }}
                 placeholder="Members need this to join"
                 minLength={4}
+                aria-invalid={!!passwordError}
+                className={passwordError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
-              <p className="text-xs text-muted-foreground">A 6-character club code will be auto-generated.</p>
+              {passwordError ? (
+                <p className="text-xs text-red-500 mt-1">{passwordError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">A 6-character club code will be auto-generated.</p>
+              )}
             </div>
             <div className="space-y-2 rounded-md border border-club/30 bg-club-subtle p-3">
               <Label className="flex items-center gap-1.5">
@@ -122,13 +162,22 @@ export function CreateClubDialog({
               <Input
                 type="password"
                 value={adminPasscode}
-                onChange={(e) => setAdminPasscode(e.target.value)}
+                onChange={(e) => {
+                  setAdminPasscode(e.target.value)
+                  if (passcodeError) setPasscodeError(null)
+                }}
                 placeholder="Enter the admin passcode"
                 autoComplete="off"
+                aria-invalid={!!passcodeError}
+                className={passcodeError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
-              <p className="text-xs text-muted-foreground">
-                Required to create a new club. Ask your ClubHub admin if you don&apos;t have it.
-              </p>
+              {passcodeError ? (
+                <p className="text-xs text-red-500 mt-1">{passcodeError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Required to create a new club. Ask your ClubHub admin if you don&apos;t have it.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">

@@ -103,15 +103,15 @@
   --club-accent-muted: rgba(16, 185, 129, 0.12);
   --club-accent-subtle: rgba(16, 185, 129, 0.06);
 
-  /* Status palette — soft, low-saturation tints (Notion-style chips) */
-  --status-pending: oklch(0.95 0.05 85);
-  --status-pending-fg: oklch(0.45 0.11 70);
-  --status-approved: oklch(0.94 0.06 155);
-  --status-approved-fg: oklch(0.42 0.11 155);
-  --status-rejected: oklch(0.95 0.04 22);
-  --status-rejected-fg: oklch(0.5 0.16 25);
-  --status-progress: oklch(0.94 0.05 240);
-  --status-progress-fg: oklch(0.46 0.13 245);
+  /* Status palette — confident, saturated tints (immediately legible at a glance) */
+  --status-pending: oklch(0.9 0.14 85);
+  --status-pending-fg: oklch(0.4 0.15 65);
+  --status-approved: oklch(0.88 0.16 155);
+  --status-approved-fg: oklch(0.35 0.15 155);
+  --status-rejected: oklch(0.88 0.14 22);
+  --status-rejected-fg: oklch(0.42 0.19 25);
+  --status-progress: oklch(0.88 0.15 240);
+  --status-progress-fg: oklch(0.38 0.16 245);
 
   --chart-1: oklch(0.62 0.15 160);
   --chart-2: oklch(0.6 0.12 240);
@@ -151,14 +151,14 @@
   --input: oklch(1 0 0 / 13%);
   --ring: oklch(0.7 0.15 160);
 
-  --status-pending: oklch(0.32 0.06 85);
-  --status-pending-fg: oklch(0.82 0.09 85);
-  --status-approved: oklch(0.3 0.07 155);
-  --status-approved-fg: oklch(0.82 0.1 155);
-  --status-rejected: oklch(0.33 0.07 22);
-  --status-rejected-fg: oklch(0.8 0.12 22);
-  --status-progress: oklch(0.32 0.07 240);
-  --status-progress-fg: oklch(0.82 0.1 240);
+  --status-pending: oklch(0.28 0.1 85);
+  --status-pending-fg: oklch(0.82 0.14 85);
+  --status-approved: oklch(0.26 0.12 155);
+  --status-approved-fg: oklch(0.82 0.16 155);
+  --status-rejected: oklch(0.28 0.1 22);
+  --status-rejected-fg: oklch(0.8 0.18 22);
+  --status-progress: oklch(0.26 0.11 240);
+  --status-progress-fg: oklch(0.82 0.16 240);
 
   --chart-1: oklch(0.7 0.15 160);
   --chart-2: oklch(0.65 0.13 240);
@@ -185,6 +185,18 @@
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     text-rendering: optimizeLegibility;
   }
+  /* Smooth cross-fade when toggling dark/light mode.
+     The `html.dark` class swap re-paints backgrounds and borders across the
+     whole tree. Without this rule the change is a hard flash; with it, the
+     transition is a 150ms ease that reads as a gentle cross-fade. Scope is
+     global because theme variables affect every element. The transition
+     only covers background-color and border-color so it doesn't interfere
+     with hover transforms or opacity animations. */
+  html *,
+  html *::before,
+  html *::after {
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
   /* Smooth transitions on interactive elements — subtle, not jarring */
   button,
   a,
@@ -194,6 +206,11 @@
   select {
     transition: background-color 150ms ease, border-color 150ms ease,
       color 150ms ease, opacity 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+  /* Active-state press: a snappier transform timing so the scale-down
+     feels immediate (press feedback). 100ms vs the default 150ms. */
+  button:active {
+    transition: transform 100ms ease;
   }
   /* Refined focus rings — visible but not heavy */
   :focus-visible {
@@ -336,6 +353,34 @@
   .animate-badge-pop {
     animation: badge-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
   }
+
+  /* §31 — Dialog entrance animation for centered modals.
+     The shadcn Dialog primitive already ships a `zoom-in-95` Tailwind
+     animation. This keyframe is a more pronounced, snappier variant
+     (96% → 100% over 150ms) that we layer on top via the [role=dialog]
+     selector for any dialog that doesn't already use the Tailwind
+     `animate-in` utilities. Sheet (side panel) dialogs keep their own
+     slide-in/out animations from the shadcn Sheet primitive. */
+  @keyframes dialog-scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/* §31 — Apply the centered-modal scale-in animation. Only targets dialogs
+   that are NOT side sheets (Sheet uses its own slide animation) and that
+   don't already have the Tailwind `animate-in` class (which would set the
+   animation property with higher specificity). The :not() guard keeps this
+   rule inert for shadcn DialogContent (which already zoom-in-95's) but
+   active for any future custom dialogs built without animate-in. */
+[role="dialog"]:not(.animate-in):not([data-slot="sheet-content"]) {
+  animation: dialog-scale-in 150ms ease-out;
 }
 
 /* Thin, unobtrusive scrollbars (Notion/Linear style) */

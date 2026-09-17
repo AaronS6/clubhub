@@ -50,11 +50,12 @@ import { cn } from "@/lib/utils"
 import { usePollingFallback, useRemoteChange } from "@/lib/realtime-store"
 import {
   PageHeader,
-  StatusBadge,
   EmptyState,
+  TasksEmptyIllustration,
   initials,
   relativeTime,
 } from "@/components/shared/page-header"
+import { StatusPill } from "@/components/shared/status-pill"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -187,9 +188,9 @@ const STATUSES: { id: TaskStatus; label: string; badge: "not_started" | "in_prog
 // in-progress, emerald for done. The opacity is kept low so the column
 // background stays calm and the status dot/badge carries the signal.
 const COLUMN_ACCENT: Record<TaskStatus, string> = {
-  not_started: "bg-amber-500/10 dark:bg-amber-500/15",
-  in_progress: "bg-sky-500/10 dark:bg-sky-500/15",
-  done: "bg-emerald-500/10 dark:bg-emerald-500/15",
+  not_started: "bg-amber-500/20 dark:bg-amber-500/25",
+  in_progress: "bg-sky-500/20 dark:bg-sky-500/25",
+  done: "bg-emerald-500/20 dark:bg-emerald-500/25",
 }
 
 // Left-edge accent bar per status — colored 3px strip on the card's left
@@ -418,18 +419,39 @@ export function TasksView() {
 
   return (
     <div className="flex flex-col gap-6 p-4 sm:p-6">
-      <PageHeader
-        title="Tasks"
-        description="Track club work, subtasks, and assignments."
-        actions={
-          isExec ? (
-            <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
-              <Plus className="size-4" />
-              <span className="hidden sm:inline">New Task</span>
-            </Button>
-          ) : null
-        }
-      />
+      {/* §37 — Sticky page header on desktop. Wraps PageHeader in a sticky,
+          backdrop-blurred bar so it stays visible while scrolling long task
+          lists. Hidden on mobile to avoid double-stacking with the mobile tab
+          switcher. */}
+      <div className="hidden sm:block sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-background/95 backdrop-blur-sm border-b border-border/60">
+        <PageHeader
+          title="Tasks"
+          description="Track club work, subtasks, and assignments."
+          actions={
+            isExec ? (
+              <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">New Task</span>
+              </Button>
+            ) : null
+          }
+        />
+      </div>
+      {/* Mobile (non-sticky) header so the New Task button stays reachable */}
+      <div className="sm:hidden">
+        <PageHeader
+          title="Tasks"
+          description="Track club work, subtasks, and assignments."
+          actions={
+            isExec ? (
+              <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">New Task</span>
+              </Button>
+            ) : null
+          }
+        />
+      </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -482,24 +504,6 @@ export function TasksView() {
           </Select>
         )}
 
-        {(teamFilter !== "all" ||
-          assigneeFilter !== "all" ||
-          statusFilter !== "all") && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setTeamFilter("all")
-              setAssigneeFilter("all")
-              setStatusFilter("all")
-            }}
-            className="text-muted-foreground"
-          >
-            <X className="size-4" />
-            Clear
-          </Button>
-        )}
-
         <div className="hidden sm:block sm:ml-auto">
           <Tabs value={tab} onValueChange={(v) => setTab(v as "board" | "list")}>
             <TabsList>
@@ -515,6 +519,61 @@ export function TasksView() {
           </Tabs>
         </div>
       </div>
+
+      {/* §33 — Active filter chips. Show each active filter as a removable pill
+          above the list so the user can see what's filtered and clear them in
+          one tap. Mirrors the convention used in Linear/Notion. */}
+      {(teamFilter !== "all" ||
+        assigneeFilter !== "all" ||
+        statusFilter !== "all") && (
+        <div className="flex flex-wrap items-center gap-2 -mt-2">
+          {teamFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setTeamFilter("all")}
+              className="inline-flex items-center gap-1 rounded-full bg-club-muted px-2.5 py-1 text-xs text-club hover:bg-club-muted/70 transition-colors"
+            >
+              {data?.teams.find((t) => t.id === teamFilter)?.name ?? "Team"}
+              <X className="size-3" />
+            </button>
+          )}
+          {assigneeFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter("all")}
+              className="inline-flex items-center gap-1 rounded-full bg-club-muted px-2.5 py-1 text-xs text-club hover:bg-club-muted/70 transition-colors"
+            >
+              {assigneeFilter === "me"
+                ? "Assigned to me"
+                : data?.members.find((m) => m.id === assigneeFilter)?.name ?? "Assignee"}
+              <X className="size-3" />
+            </button>
+          )}
+          {tab === "list" && statusFilter !== "all" && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className="inline-flex items-center gap-1 rounded-full bg-club-muted px-2.5 py-1 text-xs text-club hover:bg-club-muted/70 transition-colors"
+            >
+              {STATUSES.find((s) => s.id === statusFilter)?.label ?? "Status"}
+              <X className="size-3" />
+            </button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setTeamFilter("all")
+              setAssigneeFilter("all")
+              setStatusFilter("all")
+            }}
+            className="h-7 text-muted-foreground hover:text-foreground px-2"
+          >
+            <X className="size-3.5" />
+            Clear all
+          </Button>
+        </div>
+      )}
 
       {/* Mobile tab switcher */}
       <div className="sm:hidden">
@@ -535,7 +594,7 @@ export function TasksView() {
       {/* Body */}
       {isError ? (
         <EmptyState
-          icon={<X className="size-6" />}
+          icon={<X className="h-8 w-8" />}
           title="Couldn't load tasks"
           description={error instanceof Error ? error.message : "Try again."}
           action={
@@ -548,11 +607,11 @@ export function TasksView() {
         <TasksLoadingSkeleton variant={tab} />
       ) : filteredTasks.length === 0 ? (
         <EmptyState
-          icon={<ListChecks className="size-6" />}
+          illustration={<TasksEmptyIllustration />}
           title={isExec ? "No tasks yet" : "No tasks match your filters"}
           description={
             isExec
-              ? "Create your first task to start tracking work for the club."
+              ? "Create one to get started."
               : "Try clearing filters or check back later."
           }
           action={
@@ -691,7 +750,7 @@ function BoardColumn({
     >
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <StatusBadge status={status.badge} />
+          <StatusPill status={status.badge} />
           <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 text-xs font-medium text-muted-foreground">
             {status.id === "done" && <Check className="size-3" />}
             {tasks.length}
@@ -864,7 +923,7 @@ function TaskCardContent({
             draggable; this grip icon just hints at affordance. */}
         {dragListeners && (
           <span
-            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/50 group-hover:text-muted-foreground touch-none pointer-events-none"
+            className="mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 touch-none pointer-events-none"
             aria-hidden
           >
             <GripVertical className="size-4" />
@@ -884,6 +943,7 @@ function TaskCardContent({
         {canDelete && clubId && (
           <button
             type="button"
+            title="Delete task"
             className="flex size-8 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors md:opacity-0 md:group-hover:opacity-100"
             aria-label="Delete task"
             onPointerDown={(e) => e.stopPropagation()}
@@ -1160,6 +1220,7 @@ function NewTaskDialog({
   const [teamId, setTeamId] = React.useState<string>("none")
   const [assigneeId, setAssigneeId] = React.useState<string>("none")
   const [dueDate, setDueDate] = React.useState<string>("")
+  const [titleError, setTitleError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!open) {
@@ -1168,6 +1229,7 @@ function NewTaskDialog({
       setTeamId("none")
       setAssigneeId("none")
       setDueDate("")
+      setTitleError(null)
     }
   }, [open])
 
@@ -1191,9 +1253,10 @@ function NewTaskDialog({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) {
-      toast.error("Title is required")
+      setTitleError("Title is required")
       return
     }
+    setTitleError(null)
     mutation.mutate()
   }
 
@@ -1214,12 +1277,20 @@ function NewTaskDialog({
               <Input
                 id="task-title"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitle(e.target.value)
+                  if (titleError) setTitleError(null)
+                }}
                 placeholder="e.g. Plan spring fundraiser"
                 autoFocus
                 maxLength={200}
                 required
+                aria-invalid={!!titleError}
+                className={titleError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
+              {titleError && (
+                <p className="text-xs text-red-500 mt-1">{titleError}</p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2">
@@ -1518,7 +1589,7 @@ function TaskDetailBody({
             </SelectContent>
           </Select>
         ) : (
-          <StatusBadge status={task.status} />
+          <StatusPill status={task.status} />
         )}
         {task.creator && (
           <>

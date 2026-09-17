@@ -12,6 +12,7 @@ import {
   PageHeader,
   RoleBadge,
   EmptyState,
+  MembersEmptyIllustration,
   initials,
   relativeTime,
 } from "@/components/shared/page-header"
@@ -196,22 +197,46 @@ export function MembersView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Members"
-        description="Browse, search, and manage everyone in this club."
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            {isExec && (
-              <Button variant="club" onClick={() => setImportOpen(true)}>
-                <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+      {/* §37 — Sticky page header on desktop. Wraps PageHeader in a sticky,
+          backdrop-blurred bar so it stays visible while scrolling long member
+          lists. Hidden on mobile to avoid double-stacking with the mobile nav. */}
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-b border-border/60">
+        <PageHeader
+          title="Members"
+          description="Browse, search, and manage everyone in this club."
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              {isExec && (
+                <Button variant="club" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setLeaveOpen(true)}>
+                <LogOut className="mr-1.5 h-4 w-4" /> Leave club
               </Button>
-            )}
-            <Button variant="outline" onClick={() => setLeaveOpen(true)}>
-              <LogOut className="mr-1.5 h-4 w-4" /> Leave club
-            </Button>
-          </div>
-        }
-      />
+            </div>
+          }
+        />
+      </div>
+      {/* Mobile (non-sticky) header */}
+      <div className="sm:hidden">
+        <PageHeader
+          title="Members"
+          description="Browse, search, and manage everyone in this club."
+          actions={
+            <div className="flex items-center gap-2 flex-wrap">
+              {isExec && (
+                <Button variant="club" onClick={() => setImportOpen(true)}>
+                  <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setLeaveOpen(true)}>
+                <LogOut className="mr-1.5 h-4 w-4" /> Leave club
+              </Button>
+            </div>
+          }
+        />
+      </div>
 
       {/* Club logo section — exec only */}
       {isExec && <ClubLogoSection clubId={clubId} />}
@@ -219,17 +244,44 @@ export function MembersView() {
       {/* Club code section — exec only */}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
 
-      {/* Search */}
+      {/* §35 — Search input. Icon pinned inside-left, focus ring in the
+          club accent color, and a clear-X button on the right when text is
+          entered. §33 — When a search is active, render the current query as
+          a removable chip below the input. */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or email…"
-          className="pl-9"
+          className="pl-9 pr-9 focus-visible:ring-2 focus-visible:ring-club"
           aria-label="Search members"
         />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        )}
       </div>
+
+      {/* §33 — Active search chip (removable). */}
+      {search && (
+        <div className="-mt-3">
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="inline-flex items-center gap-1 rounded-full bg-club-muted px-2.5 py-1 text-xs text-club hover:bg-club-muted/70 transition-colors"
+          >
+            Search: {search}
+            <XIcon className="size-3" />
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       {isError ? (
@@ -243,13 +295,13 @@ export function MembersView() {
         <MembersSkeleton />
       ) : !data || data.members.length === 0 ? (
         <EmptyState
-          icon={<UsersIcon className="h-8 w-8" />}
+          illustration={<MembersEmptyIllustration />}
           title="No members yet"
-          description="Members will appear here once they join this club."
+          description="Share your club code to invite people."
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          icon={<Search className="h-8 w-8" />}
+          illustration={<MembersEmptyIllustration />}
           title="No matches"
           description={`No members match “${search}”. Try a different search.`}
         />
@@ -338,17 +390,40 @@ export function MembersView() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (!removeTarget) return
+                const target = removeTarget
+                setRemoveTarget(null)
                 try {
                   await api(`/api/clubs/${clubId}/members`, {
                     method: "PATCH",
-                    json: { userId: removeTarget.user.id, action: "remove" },
+                    json: { userId: target.user.id, action: "remove" },
                   })
-                  toast.success("Member removed")
+                  // Optimistically refetch so the list updates immediately.
                   refetch()
+                  // 5-second undo: re-add the member via the import endpoint
+                  // with a tiny CSV containing name + email. The import route
+                  // reactivates removed memberships in-place (no new user
+                  // created) — exactly the "undo" we want. We catch any
+                  // errors and surface them as a follow-up toast.
+                  toast.success("Member removed", {
+                    duration: 5000,
+                    action: {
+                      label: "Undo",
+                      onClick: async () => {
+                        try {
+                          const fd = new FormData()
+                          const csv = `name,email\n${target.user.name},${target.user.email}`
+                          fd.append("file", new Blob([csv], { type: "text/csv" }), "undo.csv")
+                          await apiUpload(`/api/clubs/${clubId}/members/import`, fd)
+                          toast.success(`${target.user.name} was re-added`)
+                          refetch()
+                        } catch (e: any) {
+                          toast.error(e.message || "Couldn't undo — re-add the member manually.")
+                        }
+                      },
+                    },
+                  })
                 } catch (e: any) {
                   toast.error(e.message)
-                } finally {
-                  setRemoveTarget(null)
                 }
               }}
             >
@@ -397,6 +472,10 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  // §44 — Drag-and-drop state for the upload drop zone. When true the drop
+  // target renders a dashed club-colored border + tinted background so the
+  // user knows the file will land here.
+  const [isDragging, setIsDragging] = useState(false)
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -421,6 +500,43 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
     }
   }
 
+  // §44 — Drag-and-drop handlers. Allow dropping an image file anywhere on
+  // the avatar/upload area. We don't accept the drop on the inner button (so
+  // the click-to-pick flow still works); instead we wire the dragover/
+  // drop on the wrapping section so the whole card acts as the drop target.
+  function onDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return
+    e.preventDefault()
+    setIsDragging(true)
+  }
+  function onDragLeave(e: React.DragEvent) {
+    // Only clear if we left the wrapper itself (not bubbled up from a child).
+    if (e.currentTarget === e.target) setIsDragging(false)
+  }
+  async function onDrop(e: React.DragEvent) {
+    if (!e.dataTransfer?.files?.length) return
+    e.preventDefault()
+    setIsDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (!f.type.startsWith("image/")) {
+      toast.error("Please drop an image file")
+      return
+    }
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", f)
+      const res = await apiUpload<{ logoUrl: string }>(`/api/clubs/${clubId}/logo`, fd)
+      patchCurrentClub({ logoUrl: res.logoUrl })
+      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      toast.success("Club logo updated")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't upload logo")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   async function handleRemove() {
     setUploading(true)
     try {
@@ -436,7 +552,17 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="card-quiet p-5">
+    // §44 — Wrapping drop zone with onDragOver/onDragLeave/onDrop. The
+    // dashed border + tinted bg appear only when isDragging.
+    <div
+      className={cn(
+        "card-quiet p-5 transition-colors",
+        isDragging && "border-2 border-dashed border-club bg-club-muted/20"
+      )}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <div className="pb-3">
         <h3 className="text-section-title flex items-center gap-2">
           <ImageIcon className="h-4 w-4" /> Club logo
@@ -1133,6 +1259,7 @@ function MemberDetailSheet({
   onOpenChange: (v: boolean) => void
 }) {
   if (!member) return null
+  const isExec = member.role === "executive"
   return (
     <Sheet open={!!member} onOpenChange={onOpenChange}>
       <SheetContent
@@ -1143,34 +1270,64 @@ function MemberDetailSheet({
           <div className="flex items-center gap-3">
             {/* Avatar wrapper is `relative` so the presence dot can be positioned
                 on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
-                and would clip it). This is the most visible spot for the dot,
-                so it's the one the user noticed was being cut off. */}
+                and would clip it). Larger 64×64 with a role accent ring —
+                executives get the club accent color, members get a subtle
+                muted ring. This gives the detail sheet more presence. */}
             <span className="relative inline-flex shrink-0">
-              <Avatar className="h-12 w-12">
+              <Avatar
+                className={cn(
+                  "h-16 w-16 ring-2 ring-offset-2 ring-offset-background",
+                  isExec ? "ring-club" : "ring-border"
+                )}
+              >
                 <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-                <AvatarFallback className="text-base">
+                <AvatarFallback className="text-lg font-semibold">
                   {initials(member.user.name)}
                 </AvatarFallback>
               </Avatar>
               {online.has(member.user.id) && (
                 <span
                   aria-label="Online"
-                  className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-club ring-2 ring-background"
+                  className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-club ring-2 ring-background"
                 />
               )}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <SheetTitle className="truncate text-base">{member.user.name}</SheetTitle>
               <SheetDescription className="truncate">{member.user.email}</SheetDescription>
-            </div>
-            <div className="ml-auto">
-              <RoleBadge role={member.role} />
+              <div className="mt-1">
+                <RoleBadge role={member.role} />
+              </div>
             </div>
           </div>
         </SheetHeader>
 
         <ScrollArea className="flex-1">
           <div className="p-5 space-y-5">
+            {/* Stats row — prominent, mirrors the dashboard tile styling.
+                Uses rounded-2xl border bg-card p-3 with icon + value + label,
+                sized to fit a 2-col grid on the narrow sheet. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border bg-card p-3">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-[11px] uppercase tracking-wide font-medium">Hours logged</span>
+                </div>
+                <div className="text-xl font-semibold tabular-nums">
+                  {member.approvedHours.toFixed(1)}
+                </div>
+              </div>
+              <div className="rounded-2xl border bg-card p-3">
+                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
+                  <UsersIcon className="h-4 w-4" />
+                  <span className="text-[11px] uppercase tracking-wide font-medium">Teams</span>
+                </div>
+                <div className="text-xl font-semibold tabular-nums">
+                  {String(member.teams.length)}
+                </div>
+              </div>
+            </div>
+
             {member.user.bio && (
               <div>
                 <h3 className="text-caption-medium uppercase tracking-wide mb-1">Bio</h3>
@@ -1180,41 +1337,21 @@ function MemberDetailSheet({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <StatBox
-                label="Approved hours"
-                value={member.approvedHours.toFixed(1)}
-                icon={<Clock className="h-4 w-4" />}
-              />
-              <StatBox
-                label="Teams"
-                value={String(member.teams.length)}
-                icon={<UsersIcon className="h-4 w-4" />}
-              />
-              <StatBox
-                label="Joined"
-                value={relativeTime(member.joinedAt)}
-                icon={<UserPlus className="h-4 w-4" />}
-              />
-              <StatBox
-                label="Role"
-                value={member.role === "executive" ? "Executive" : "Member"}
-                icon={<Shield className="h-4 w-4" />}
-              />
-            </div>
-
-            {member.teams.length > 0 && (
-              <div>
-                <h3 className="text-caption-medium uppercase tracking-wide mb-2">Teams</h3>
+            {/* Teams pills — surfaces the teams they belong to. */}
+            <div>
+              <h3 className="text-caption-medium uppercase tracking-wide mb-2">Teams</h3>
+              {member.teams.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {member.teams.map((t) => (
-                    <Badge key={t.id} variant="secondary" className="px-2 py-1">
+                    <Badge key={t.id} variant="secondary" className="px-2.5 py-1">
                       {t.name}
                     </Badge>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-muted-foreground italic">Not on any team yet.</p>
+              )}
+            </div>
 
             <Separator />
 
@@ -1332,7 +1469,7 @@ function BadgesSection({ clubId, userId }: { clubId: string; userId: string }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-60 max-h-72 overflow-y-auto"
+                className="w-60 max-h-72 overflow-y-auto scrollbar-thin"
               >
                 <DropdownMenuLabel>Award a badge</DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -1497,7 +1634,7 @@ function CreateBadgeDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
           <div className="space-y-2">
             <Label htmlFor="badge-name">Badge name</Label>
             <Input
@@ -1513,7 +1650,7 @@ function CreateBadgeDialog({
 
           <div className="space-y-2">
             <Label>Emoji</Label>
-            <div className="rounded-lg border p-2 max-h-36 overflow-y-auto">
+            <div className="rounded-lg border p-2 max-h-36 overflow-y-auto scrollbar-thin">
               <div className="grid grid-cols-10 gap-0.5">
                 {EMOJI_CHOICES.map((em) => (
                   <button
@@ -1694,12 +1831,12 @@ function ImportCsvDialog({
         </DialogHeader>
 
         {result ? (
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0">
+          <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0">
             <ImportResults result={result} onAgain={reset} onCopyCode={handleCopyCode} />
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
               <div className="space-y-2">
                 <Label>CSV file</Label>
                 <div className="flex flex-wrap items-center gap-2">

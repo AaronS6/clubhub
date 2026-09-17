@@ -8,7 +8,9 @@ import { useViewingIndicator, useViewingCount } from "@/lib/use-presence"
 import { cn } from "@/lib/utils"
 import { usePollingFallback } from "@/lib/realtime-store"
 import { toast } from "sonner"
-import { PageHeader, StatusBadge, EmptyState, TableSkeleton, relativeTime } from "@/components/shared/page-header"
+import { PageHeader, EmptyState, TableSkeleton, relativeTime, initials, avatarColor } from "@/components/shared/page-header"
+import { StatusPill } from "@/components/shared/status-pill"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -416,10 +418,10 @@ export function ApprovalsView() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={tab === "pending" ? <CheckCircle2 className="h-8 w-8" /> : <History className="h-8 w-8" />}
-          title={tab === "pending" ? "Inbox zero" : "No reviewed entries"}
+          title={tab === "pending" ? "No pending approvals" : "No reviewed entries"}
           description={tab === "pending"
-            ? "No pending submissions right now — you're all caught up! ✨"
-            : "Approve or reject submissions to see them here. 📋"}
+            ? "You're all caught up."
+            : "Approve or reject submissions to see them here."}
         />
       ) : tab === "pending" ? (
         <>
@@ -583,7 +585,20 @@ function ApprovalRow({
       <TableCell>
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Select entry from ${item.user?.name ?? "member"}`} />
       </TableCell>
-      <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
+      {/* §39 — Member cell with avatar + name */}
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-6 w-6">
+            {item.user?.avatarUrl ? (
+              <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
+            ) : null}
+            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+              {initials(item.user?.name)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm">{item.user?.name ?? "Unknown"}</span>
+        </div>
+      </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
@@ -663,8 +678,19 @@ function ApprovalCard({
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label="Select entry" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
-            <StatusBadge status="pending" />
+            {/* §39 — Member name + avatar (mobile card) */}
+            <div className="flex items-center gap-2 min-w-0">
+              <Avatar className="h-6 w-6 shrink-0">
+                {item.user?.avatarUrl ? (
+                  <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
+                ) : null}
+                <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+                  {initials(item.user?.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
+            </div>
+            <StatusPill status="pending" />
           </div>
           <div className="text-caption">
             <span className="font-mono tabular-nums text-foreground">{item.hours}</span>
@@ -727,7 +753,20 @@ function ReviewedRow({
   const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow className="hover:bg-muted/30 transition-colors">
-      <TableCell className="font-medium">{item.user?.name ?? "Unknown"}</TableCell>
+      {/* §39 — Member cell with avatar + name */}
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-6 w-6">
+            {item.user?.avatarUrl ? (
+              <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
+            ) : null}
+            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+              {initials(item.user?.name)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm">{item.user?.name ?? "Unknown"}</span>
+        </div>
+      </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
@@ -752,10 +791,24 @@ function ReviewedRow({
         {item.category?.name ?? <span className="text-muted-foreground/60">—</span>}
       </TableCell>
       <TableCell>
-        <StatusBadge status={item.status} />
+        <StatusPill status={item.status} />
       </TableCell>
+      {/* §39 — Reviewer cell with avatar + name. The API doesn't currently
+          expose the reviewer's avatarUrl (only id+name), so we fall back to
+          initials. The avatar slot is wired for when the API adds it. */}
       <TableCell className="text-sm">
-        {item.reviewer?.name ?? <span className="text-muted-foreground/60">—</span>}
+        {item.reviewer ? (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-6 w-6">
+              <AvatarFallback className={cn("text-[10px]", avatarColor(item.reviewer.name))}>
+                {initials(item.reviewer.name)}
+              </AvatarFallback>
+            </Avatar>
+            <span>{item.reviewer.name}</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground/60">—</span>
+        )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {item.reviewedAt ? relativeTime(item.reviewedAt) : "—"}
@@ -777,6 +830,7 @@ function ReviewedRow({
           onClick={onDelete}
           disabled={deleting}
           aria-label="Delete entry"
+          title="Delete entry"
         >
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
         </Button>
@@ -800,15 +854,26 @@ function ReviewedCard({
   return (
     <div className="card-quiet rounded-xl p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
-          <div className="text-caption">
-            <span className="font-mono tabular-nums text-foreground">{item.hours}</span>
-            {item.hours === 1 ? " hour" : " hours"} · {fmtDate(item.dateOfService)}
-            {item.category && <span> · {item.category.name}</span>}
+        <div className="min-w-0 flex items-center gap-2">
+          {/* §39 — Member name + avatar (mobile Reviewed card) */}
+          <Avatar className="h-6 w-6 shrink-0">
+            {item.user?.avatarUrl ? (
+              <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
+            ) : null}
+            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+              {initials(item.user?.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="text-body-medium truncate">{item.user?.name ?? "Unknown"}</div>
+            <div className="text-caption">
+              <span className="font-mono tabular-nums text-foreground">{item.hours}</span>
+              {item.hours === 1 ? " hour" : " hours"} · {fmtDate(item.dateOfService)}
+              {item.category && <span> · {item.category.name}</span>}
+            </div>
           </div>
         </div>
-        <StatusBadge status={item.status} />
+        <StatusPill status={item.status} />
       </div>
       <div className="text-body">{item.reasonText}</div>
       <div className="text-caption text-muted-foreground">
@@ -828,6 +893,7 @@ function ReviewedCard({
           onClick={onDelete}
           disabled={deleting}
           aria-label="Delete entry"
+          title="Delete entry"
         >
           {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           Delete

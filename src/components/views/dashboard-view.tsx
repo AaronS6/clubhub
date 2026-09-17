@@ -27,6 +27,15 @@ import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
 
+// §41 — Hours milestone celebration. Round numbers we celebrate when the
+// viewer's approved hours cross them.
+const HOURS_MILESTONES = [50, 100, 250, 500] as const
+
+const CONFETTI_COLORS = [
+  "#16a34a", "#f59e0b", "#ef4444", "#a855f7",
+  "#ec4899", "#10b981", "#f97316", "#facc15",
+]
+
 // =========================================================================
 // Types — unchanged (matches the dashboard API response shape)
 // =========================================================================
@@ -118,6 +127,7 @@ export function DashboardView() {
   const setView = useAppStore((s) => s.setView)
   const currentClub = useAppStore((s) => s.currentClub)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
+  const [memberOnboardingDismissed, setMemberOnboardingDismissed] = useState(false)
 
   // Read dismissed state from localStorage on club change.
   // Deferred to a microtask so we don't call setState synchronously
@@ -130,8 +140,11 @@ export function DashboardView() {
       try {
         const v = localStorage.getItem(`onboarding-dismissed-${clubId}`)
         setOnboardingDismissed(v === "true")
+        const mv = localStorage.getItem(`member-onboarding-${clubId}`)
+        setMemberOnboardingDismissed(mv === "true")
       } catch {
         setOnboardingDismissed(false)
+        setMemberOnboardingDismissed(false)
       }
     })
     return () => {
@@ -173,6 +186,18 @@ export function DashboardView() {
   // need to "set up" anything; they just want to see their snapshot.
   const showOnboarding = isExec && !onboardingDismissed && !hasActivity
 
+  // Lightweight first-run experience for members. We treat a member as
+  // "new" if they have no tasks assigned, no hours submitted (approved or
+  // pending), and no RSVPs going. The card sits above the attention row
+  // and is dismissible via localStorage so we don't pester returning users.
+  const memberIsNew =
+    !isExec &&
+    data.myStats.tasksAssigned === 0 &&
+    data.myStats.approvedHours === 0 &&
+    data.myStats.pendingHours === 0 &&
+    data.myStats.myRsvpsGoing === 0
+  const showMemberOnboarding = memberIsNew && !memberOnboardingDismissed
+
   const dismissOnboarding = () => {
     try {
       localStorage.setItem(`onboarding-dismissed-${clubId}`, "true")
@@ -180,6 +205,15 @@ export function DashboardView() {
       /* ignore */
     }
     setOnboardingDismissed(true)
+  }
+
+  const dismissMemberOnboarding = () => {
+    try {
+      localStorage.setItem(`member-onboarding-${clubId}`, "true")
+    } catch {
+      /* ignore */
+    }
+    setMemberOnboardingDismissed(true)
   }
 
   // -- Tier 1 attention items ------------------------------------------------
@@ -729,6 +763,8 @@ export function DashboardView() {
           meetingsCount={data.clubStats.upcomingMeetingsCount}
           memberCount={data.club.memberCount}
         />
+      ) : showMemberOnboarding ? (
+        <MemberOnboardingCard onNavigate={setView} onDismiss={dismissMemberOnboarding} />
       ) : attentionItems.length === 0 ? (
         <AllCaughtUpCard />
       ) : (
@@ -892,6 +928,169 @@ export function DashboardView() {
           </div>
         </section>
       )}
+
+      {/* §41 — Hours milestone celebration. Mounts the confetti overlay so it
+          fires when the user's approved hours cross a round milestone
+          (50/100/250/500) since the last time they viewed the dashboard. */}
+      <HoursMilestoneCelebration
+        clubId={clubId}
+        approvedHours={data.myStats.approvedHours}
+      />
+    </div>
+  )
+}
+
+// =========================================================================
+// §41 — Hours milestone celebration
+// =========================================================================
+//
+// When the viewer lands on the dashboard and their approved-hours total has
+// crossed a new round milestone (50, 100, 250, 500) since their last visit,
+// pop a brief celebratory confetti burst. Uses the same `badge-confetti-piece`
+// keyframes/CSS class as the badge award popup so the visual matches.
+//
+// The "last seen" baseline is stored in localStorage under
+// `last-hours-milestone-${clubId}`. On first run (no value stored), we seed
+// it to the current approved-hours ceiling so we don't surprise the user
+// with confetti for hours they were already aware of.
+
+function buildConfettiPieces(count: number) {
+  return Array.from({ length: count }).map(() => ({
+    left: Math.random() * 100,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    delay: Math.random() * 250,
+    duration: 1800 + Math.random() * 900,
+    x: (Math.random() - 0.5) * 220,
+    rotate: Math.random() * 360,
+  }))
+}
+
+function HoursMilestoneCelebration({
+  clubId,
+  approvedHours,
+}: {
+  clubId: string
+  approvedHours: number
+}) {
+  const [milestone, setMilestone] = useState<number | null>(null)
+  const [pieces] = useState(() => buildConfettiPieces(28))
+
+  useEffect(() => {
+    if (!clubId) return
+    let cancelled = false
+
+    // Find the highest milestone the user has now crossed.
+    const highestCrossed = HOURS_MILESTONES.reduce<number>((acc, m) => {
+      if (approvedHours >= m) return m
+      return acc
+    }, 0)
+
+    // Read the last-seen milestone baseline.
+    const storageKey = `last-hours-milestone-${clubId}`
+    let lastSeen = 0
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const parsed = parseInt(raw, 10)
+        if (!isNaN(parsed)) lastSeen = parsed
+      }
+    } catch {
+      // localStorage unavailable — bail silently.
+      return
+    }
+
+    if (lastSeen === 0) {
+      // First run — seed baseline to the current ceiling. Don't pop confetti
+      // for hours the user already had before they ever saw the dashboard.
+      try {
+        localStorage.setItem(storageKey, String(highestCrossed))
+      } catch {
+        // ignore
+      }
+      return
+    }
+
+    if (highestCrossed > lastSeen) {
+      // New milestone crossed! Pop confetti for the highest new one.
+      // Defer the state update to avoid SSR/tearing concerns.
+      Promise.resolve().then(() => {
+        if (cancelled) return
+        setMilestone(highestCrossed)
+        try {
+          localStorage.setItem(storageKey, String(highestCrossed))
+        } catch {
+          // ignore
+        }
+      })
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [clubId, approvedHours])
+
+  // Auto-dismiss after 4.5s.
+  useEffect(() => {
+    if (milestone === null) return
+    const t = setTimeout(() => setMilestone(null), 4500)
+    return () => clearTimeout(t)
+  }, [milestone])
+
+  function dismiss() {
+    setMilestone(null)
+  }
+
+  if (milestone === null) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`You reached ${milestone} service hours`}
+    >
+      {/* Dim backdrop — click anywhere to dismiss */}
+      <button
+        type="button"
+        aria-label="Dismiss hours celebration"
+        onClick={dismiss}
+        className="absolute inset-0 w-full h-full bg-black/50 backdrop-blur-sm cursor-default"
+      />
+
+      {/* Confetti layer — pointer-events-none so it never blocks clicks.
+          Reuses the `.badge-confetti-piece` keyframe in globals.css. */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {pieces.map((p, i) => (
+          <span
+            key={i}
+            className="badge-confetti-piece"
+            style={{
+              left: `${p.left}%`,
+              background: p.color,
+              animationDelay: `${p.delay}ms`,
+              animationDuration: `${p.duration}ms`,
+              transform: `rotate(${p.rotate}deg)`,
+              ["--confetti-x" as string]: `${p.x}px`,
+            } as CSSProperties}
+          />
+        ))}
+      </div>
+
+      {/* Center card */}
+      <div className="relative pointer-events-auto rounded-2xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
+        <div className="flex justify-center mb-2" aria-hidden>
+          <PartyPopper className="h-10 w-10 text-club" />
+        </div>
+        <h2 className="text-lg font-semibold">{milestone} service hours! 🎉</h2>
+        <p className="text-sm text-muted-foreground mt-1.5">
+          You&apos;ve crossed the{" "}
+          <span className="font-semibold text-foreground">{milestone}-hour</span>{" "}
+          milestone in this club. Thank you for your contributions.
+        </p>
+        <Button variant="club" className="mt-4" onClick={dismiss}>
+          Nice!
+        </Button>
+      </div>
     </div>
   )
 }
@@ -929,6 +1128,15 @@ function HeroPanel({
         "lg:col-span-7 p-5 sm:p-6 hover:shadow-sm transition-all duration-200"
       )}
     >
+      {/* §38 — Club cover identity. A subtle accent gradient strip pinned
+          to the top of the hero panel so each club has a visual "cover"
+          identity in its accent color. Fades from the full accent on the
+          left to transparent on the right. Sits above the dot-grid texture
+          so it reads cleanly. */}
+      <div
+        aria-hidden
+        className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-club via-club/50 to-transparent"
+      />
       {/* Barely-visible dot-grid texture overlay (matches the auth-screen
           pattern but at opacity 0.05 for an even quieter feel). */}
       <div
@@ -1254,6 +1462,62 @@ function OnboardingBanner({
               >
                 {it.label}
               </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MemberOnboardingCard — gentle "Getting started" card for first-time members.
+// Shown only when the member has no tasks, no hours, and no RSVPs.
+// ---------------------------------------------------------------------------
+
+const MEMBER_ONBOARDING_ITEMS: { view: View; label: string; icon: ReactNode }[] = [
+  { view: "announcements", label: "Check announcements", icon: <Megaphone className="h-4 w-4" /> },
+  { view: "tasks", label: "See your tasks", icon: <ListChecks className="h-4 w-4" /> },
+  { view: "hours", label: "Log service hours", icon: <Clock className="h-4 w-4" /> },
+]
+
+function MemberOnboardingCard({
+  onNavigate,
+  onDismiss,
+}: {
+  onNavigate: (v: View) => void
+  onDismiss: () => void
+}) {
+  return (
+    <div className="bg-club-muted/40 rounded-2xl p-5 animate-fade-in relative hover:shadow-sm transition-all duration-200">
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss getting started card"
+        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-center gap-2 mb-1 pr-8">
+        <Target className="h-4 w-4 text-club shrink-0" />
+        <h2 className="text-section-title">Getting started</h2>
+      </div>
+      <p className="text-caption text-muted-foreground mb-4">
+        New here? A few quick links to get you up to speed.
+      </p>
+      <ul className="grid sm:grid-cols-3 gap-2">
+        {MEMBER_ONBOARDING_ITEMS.map((it) => (
+          <li key={it.view}>
+            <button
+              type="button"
+              onClick={() => onNavigate(it.view)}
+              className="flex items-center gap-2 w-full text-left rounded-lg border bg-card/60 px-3 py-2.5 min-h-[44px] hover:bg-accent/50 hover:border-club/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-club-muted/60 text-club shrink-0">
+                {it.icon}
+              </span>
+              <span className="text-body font-medium">{it.label}</span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
             </button>
           </li>
         ))}

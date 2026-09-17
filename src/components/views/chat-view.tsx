@@ -73,6 +73,7 @@ import {
 } from "lucide-react"
 import {
   EmptyState,
+  ChatEmptyIllustration,
   avatarColor,
   initials,
   relativeTime,
@@ -222,7 +223,7 @@ function linkify(text: string) {
         parts.push(
           <span
             key={`m${i}-${m.index}`}
-            className="text-club font-medium"
+            className="font-semibold text-emerald-600 dark:text-emerald-400"
           >
             {m[0]}
           </span>,
@@ -369,7 +370,7 @@ function ChatPane({ clubId }: { clubId: string }) {
           ) : (
             <div className="flex-1 flex items-center justify-center p-6">
               <EmptyState
-                icon={<MessageSquarePlus className="h-8 w-8" />}
+                illustration={<ChatEmptyIllustration />}
                 title="No conversation selected"
                 description="Pick a conversation from the list, or start a new chat."
               />
@@ -507,9 +508,9 @@ function ConversationList({
         ) : conversations.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              icon={<MessageSquarePlus className="h-8 w-8" />}
-              title="No conversations yet"
-              description="Start a direct message or create a group chat."
+              illustration={<ChatEmptyIllustration />}
+              title="No messages yet"
+              description="Say hi 👋"
               action={
                 <Button variant="club" size="sm" onClick={onNewDm}>
                   <Plus className="h-4 w-4" /> Start a conversation
@@ -2016,7 +2017,7 @@ function MessageComposer({
             variant="club"
             size="icon"
             className={cn(
-              "size-10 shrink-0 rounded-full transition-all",
+              "size-11 shrink-0 rounded-full transition-all",
               (disabled || !value.trim())
                 ? "opacity-50 cursor-not-allowed"
                 : "shadow-sm hover:shadow-md hover:scale-105",

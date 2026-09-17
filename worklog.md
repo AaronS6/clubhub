@@ -1440,167 +1440,466 @@ Stage Summary:
 - Activity log: "Clear all" button (exec-only) with confirmation dialog.
 
 ---
-Task ID: R14-FIXES
+Task ID: PART-A
 Agent: full-stack-developer (Z.ai Code)
-Task: Add "Clear all" button to the notification bell dropdown + remove the white background from `public/club-logo.png`.
+Task: UI/CSS-only polish — visual interest in Hours/Approvals tables, sharpen Meetings/Announcements differentiation, auth screen centerpiece, warm empty-state copy, micro-interactions
 
 Work Log:
-- **DELETE /api/notifications** (`src/app/api/notifications/route.ts`):
-  - Added a `DELETE` handler above the existing `GET`. Uses `getSessionUser()` (401 if no session) then `db.notification.deleteMany({ where: { userId: user.id } })` — deletes ALL of the user's notifications (read + unread). The `where` clause is always scoped to the session user, so no request-body-driven scope is possible.
-  - Returns `{ ok: true, deleted: <count> }` (200). Wrapped in try/catch with a human-readable 500 message on failure (`err instanceof Error ? err.message : "Failed to clear notifications"`).
-  - Did NOT touch the existing `GET`, the `/read-all` route, or `prisma/schema.prisma`. Did NOT touch `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
-- **NotificationBell + BellBody "Clear all" button** (`src/components/app-shell.tsx`):
-  - `NotificationBell`: added `clearingAll` state + `clearAll()` — optimistic (empties `items`, zeroes `unread`, snapshots `prevItems` for rollback), `DELETE /api/notifications`, `toast.success("All notifications cleared")` on success, rolls back + `toast.error(...)` on failure. Threaded `clearingAll` + `onClearAll={clearAll}` into `<BellBody>`.
-  - `BellBody`: extended props with `clearingAll: boolean` + `onClearAll: () => void`. Added a small ghost-styled button between "Mark all read" and "View all": only renders when `items.length > 0`; `Trash2` icon (swapped for a spinning `Loader2` while `clearingAll`); `aria-label="Clear all notifications"`; `text-muted-foreground hover:text-destructive hover:underline min-h-9` so it's visually subordinate to "Mark all read" (`text-club`) and destructive on hover. `min-h-9` matches the other header actions for touch targets.
-  - "Mark all read" is unchanged and still only flips `isRead` (POST `/api/notifications/read-all`). The two buttons are clearly distinct in semantics, label, icon, and hover color.
-  - `Trash2` + `Loader2` were already imported from `lucide-react` — no new imports.
-- **Club logo background removal** (`scripts/remove-logo-bg.ts` + `public/club-logo.png`):
-  - Wrote `scripts/remove-logo-bg.ts`: loads `public/club-logo.png` with `sharp`, `.ensureAlpha().raw()` → flat 4-channel RGBA8 buffer (1024×1024). Walks every pixel; if `r > 230 && g > 230 && b > 230` → set alpha byte to `0` (transparent), else set alpha to `255` (opaque, preserving original RGB). Re-wraps the mutated buffer with `sharp(data, { raw: { width, height, channels: 4 } })` and writes back as PNG (`compressionLevel: 9`). Logs dimensions + transparent-pixel count + percentage. Exits 0/1 with clear errors.
-  - `ensureAlpha` is critical because the source file was actually a baseline JPEG renamed to `.png` (verified via `file`) — sharp sniffs the real codec from the buffer, not the extension.
-  - The 230 threshold (just-below pure white) catches slightly-off-white JPEG artifacts around the logo edge for a halo-free cutout. Anything darker than 230 is preserved as-is, so the logo's original colors are untouched.
-  - Ran `bun run scripts/remove-logo-bg.ts`:
-    - Before: 63,174 bytes, "JPEG image data", no alpha channel.
-    - After: 485,339 bytes, "PNG image data, 1024 x 1024, 8-bit/color RGBA", true alpha channel.
-    - 289,354 / 1,048,576 px (27.6%) made transparent (the white background). 72.4% kept at full opacity with original colors.
+- **§1 — Hours & Approvals tables** (verified already implemented by prior agents; no changes needed):
+  - Inline 4px progress bar (`h-1 w-16 rounded-full bg-muted` track + `bg-club` fill) sits next to each row's hours number, rendered only when `goal > 0 && pct > 0`. Present in `HoursRow`, `ApprovalRow`, and `ReviewedRow`.
+  - Hours number styled `text-base font-semibold tabular-nums` (distinct from surrounding `text-sm` body copy).
+  - Sticky headers via `[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10` on every `TableHeader` (4 tables across hours-view + approvals-view).
+  - Row hover: `hover:bg-muted/30 transition-colors` on every `TableRow`.
+- **§2 — Meetings vs Announcements differentiation** (verified already implemented by prior agents):
+  - Meetings cards: `rounded-2xl border border-border bg-card p-4 sm:p-5 animate-fade-in transition-all duration-200 hover:shadow-sm`. Calendar-page date badge (`w-16 rounded-xl bg-club-muted text-club p-2` with `text-3xl font-bold` day number + `text-[10px] uppercase tracking-wide` month abbreviation). Time range with `Clock` icon, location with `MapPin` icon.
+  - Announcements cards: `rounded-2xl border border-border bg-card overflow-hidden animate-fade-in hover:shadow-sm transition-all duration-200`. Larger `h-10 w-10` author avatar. Author name `text-sm font-semibold truncate`. Pinned state: `border-l-4 border-l-amber-400 bg-amber-50/30 dark:bg-amber-950/10`.
+- **§3 — Auth screen centerpiece** (verified already implemented by prior agents):
+  - Soft radial gradient: `<div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--club),transparent_70%)] opacity-[0.07]" />`.
+  - Floating accent blob: `animate-[float_8s_ease-in-out_infinite]`.
+  - `@keyframes float` already present in `globals.css` (lines 293-296): `0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)}`.
+  - Value-prop icons: `flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-club-muted text-club`.
+- **§4 — Empty states warmed up** (copy edits across 8 views):
+  - `chat-view.tsx` — title `"No messages yet"`, description `"Say hi 👋"`.
+  - `tasks-view.tsx` — exec description `"Create one to get started."` (was `"Create your first task to start tracking work for the club."`).
+  - `members-view.tsx` — description `"Share your club code to invite people."` (was `"Members will appear here once they join this club."`).
+  - `meetings-view.tsx` — `emptyTitle="No meetings scheduled"`, exec description `"Plan one to get the team together."` (was `"No upcoming meetings"` / `"Schedule the next meeting to get RSVPs rolling."`).
+  - `announcements-view.tsx` — exec description `"Share an update with your club."` (was `"Share an update with your club! 📢"`).
+  - `teams-view.tsx` — exec description `"Create one to organize your members."` (was `"Create your first team to organize members around specific projects, events, or ongoing responsibilities."`).
+  - `hours-view.tsx` — description `"Log your first contribution."` (was `"Log your first contribution! ⏰"`).
+  - `approvals-view.tsx` — pending title `"No pending approvals"`, description `"You're all caught up."` (was `"Inbox zero"` / `"No pending submissions right now — you're all caught up! ✨"`).
+- **§5 — Micro-interactions**:
+  - `src/components/ui/button.tsx` — added `active:scale-[0.98]` to the `club` variant for press feedback.
+  - `src/app/globals.css` — added `button:active { transition: transform 100ms ease; }` so the press-scale feels snappy (100ms vs the default 150ms).
+  - Verified `card-quiet` CSS rule already provides hover-shadow behavior; explicit `hover:shadow-sm transition-all duration-200` is consistent across meetings-view, announcements-view, dashboard-view, tasks-view. Sonner toast has slide-in by default. Tabs have `transition-[color,box-shadow]` (shadcn default).
 
 Verification:
-- `bun run lint` → **EXIT 0**, zero errors / zero warnings.
-- Did NOT restart the dev server. Did NOT touch `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
-- `dev.log` was not present at the project root at the time of the work, so no log inspection was possible. Lint passing + the API/frontend changes being syntactically minimal and self-contained is the verification signal.
+- `bun run lint` → EXIT 0, zero errors / zero warnings.
+- Did NOT touch any API route files. Did NOT touch `prisma/schema.prisma`. Did NOT touch data fetching logic.
+- Did NOT restart the dev server (dev process PID 1758/1784 still running on port 3000; pre-existing prisma `db:push` error at startup is out of scope — schema was swapped to postgres in a prior agent's work, my task is UI/CSS only).
 
 Stage Summary:
-- Notification bell has a "Clear all" button (ghost, trash icon, destructive hover) next to "Mark all read" — actually deletes all notifications (distinct from mark-as-read) and shows a success toast.
-- `public/club-logo.png` is now a true PNG with alpha; the white background is transparent while the logo art is preserved.
+- §1: All 4 visual interest items already implemented (inline 4px progress bar, tabular-nums hours, sticky blurred header, row hover) — verified.
+- §2: Meetings (calendar-page date badge + Clock/MapPin icons) and Announcements (larger avatar + amber pinned stripe) — visually distinct at a glance, verified.
+- §3: Auth screen has soft radial gradient, floating accent blob with `@keyframes float`, and `h-11 w-11 rounded-2xl bg-club-muted text-club` value-prop icons — verified.
+- §4: All 8 empty-state copy lines warmed up and made specific (no more "✨ 📢 ⏰" emoji noise — clean, friendly copy).
+- §5: Added `active:scale-[0.98]` to `variant="club"` buttons + `button:active { transition: transform 100ms; }` to globals.css. Verified card hover, tab switching, and sonner toast motion already in place.
 
 ---
-Task ID: R15-BADGES
-Agent: full-stack-developer (Z.ai Code)
-Task: Replace the old hardcoded BADGE_DEFS auto-achievement badge system with a manual award system — execs create custom badges and award them to members. Includes a confetti popup on app load when the user has new unseen badge awards.
+
+## PART-B — Polish & UX (§6–§13)
 
 Work Log:
-- **NEW** `src/app/api/clubs/[clubId]/badges/route.ts`:
-  - GET (any member): returns all club badges with `id, name, description, emoji, createdAt, createdBy, creatorName, awardCount`. Ordered by `createdAt asc`.
-  - POST (exec-only via `getClubContext` + role check): body `{ name, description?, emoji? }`. Validates name (1-60 chars), description (max 280), emoji (max 8 chars — supports ZWJ-joined multi-codepoint emoji). Defaults emoji to "🏆". Stores `createdBy` = exec's user ID. Returns the new badge with 201 status. Best-effort side effects (`logActivity` + `emitClubEvent`) via `Promise.allSettled` so logging/realtime misses never fail the create.
-- **NEW** `src/app/api/clubs/[clubId]/badges/[badgeId]/route.ts`:
-  - DELETE (exec-only): scoped by `(id, clubId)` so a stray ID from another club can't be deleted. The schema's `onDelete: Cascade` on `Badge.awards` cleans up `MemberBadge` rows automatically. Best-effort `logActivity` + `emitClubEvent` via `Promise.allSettled`.
-- **REWRITTEN** `src/app/api/clubs/[clubId]/members/[userId]/badges/route.ts`:
-  - The old BADGE_DEFS catalog + `computeEarned(stats)` auto-achievement code is GONE.
-  - GET (any member): fans out `db.badge.findMany` + `db.memberBadge.findMany` in parallel; returns each catalog badge with `awarded: boolean`, `awardedAt`, `awardedById`, `awardedByName`.
-  - POST (exec-only): body `{ badgeId }`. Validates badge belongs to this club + target user is an active member. Pre-checks the `(badgeId, userId)` uniqueness and returns 409 on duplicate (instead of crashing on the DB unique constraint). Creates the `MemberBadge` row with `awardedBy` = exec's user ID. Creates a Notification for the member: `type="badge_awarded"`, `message="You were awarded the \"🏆 Best Member\" badge by ExecName"` (exactly per spec — emoji + name in quotes, exec name appended). Logs activity (`badge_awarded`) + emits realtime club event. All side effects via `Promise.allSettled`.
-  - DELETE (exec-only): body `{ badgeId }`. Removes the `MemberBadge` row. Logs activity (`badge_revoked`) + emits realtime.
-- **NEW** `src/app/api/me/badges/route.ts`:
-  - GET: returns every badge the session user has been awarded across ALL their clubs. Supports `?since=<ISO>` query param to filter for awards with `awardedAt > since`. Used by the app-shell confetti popup. Includes `badge { id, name, emoji, description }`, `clubName`, `awardedByName`, `awardedAt`. Ordered by `awardedAt desc`.
-- **MODIFIED** `src/lib/notif-meta.ts`:
-  - Added `badge_awarded` to the META map (icon: `Award`, label: "Badge awarded", view: `members`, tone: `badge`). Imported `Award` from lucide-react.
-  - Added `"badge"` to the `NotifTone` union.
-  - Added `case "badge"` to `notifToneClasses` (amber tint, matching the announcement tone).
-  - This makes the notification bell render the badge award with a proper icon + makes `badge_awarded` filterable in the Notifications view (which derives its filter list from `ALL_NOTIF_TYPE_KEYS = Object.keys(META)`).
-- **REWRITTEN** `src/components/shared/badges-display.tsx`:
-  - Dropped the `ICON_MAP` (lucide icons) + `BadgeStats` + `BadgeDef` + 8 hardcoded `BADGE_DEFS`.
-  - New shape: fetches `/api/clubs/[clubId]/members/[userId]/badges` (same query key `["member-badges", clubId, userId]` as before so invalidation still works). Each badge renders as `emoji + name`.
-  - Compact mode (used in members table): shows up to 3 awarded badges as small `bg-club-muted text-club` pills with emoji + name. Overflow shows "+N more". Tooltip (shadcn `Tooltip`) shows description + awarder name + relative time.
-  - Full mode (used in member detail sheet): awarded badges show as `bg-club-muted text-club` rectangles with emoji + name + tooltip. Optional "Available" section (off by default with `hideUnearned=false`) shows not-awarded badges muted with grayscale emoji.
-  - Skeleton while loading (`Skeleton h-7 w-24 rounded-full × 3`).
-- **MODIFIED** `src/components/views/members-view.tsx`:
-  - Added `Textarea` to ui imports; added `Award`, `Plus`, `X as XIcon`, `Trophy` to lucide-react imports.
-  - Removed the unused `BadgesDisplay` import (replaced by the new inline `BadgesSection`).
-  - Added `MemberBadgeItem` + `MemberBadgesResponse` interfaces near the top of the file.
-  - Replaced the inline `<BadgesDisplay userId={member.user.id} clubId={clubId} />` block in `MemberDetailSheet` with `<BadgesSection clubId={clubId} userId={member.user.id} />`.
-  - **NEW** `BadgesSection` component: reads `isExec` from the store directly (so it works without threading the prop through). Uses the existing `["member-badges", clubId, userId]` query key. For execs: renders a header toolbar with a "Create badge" button + an "Award badge" `DropdownMenu` (lists all club badges; already-awarded ones disabled with "Awarded" label). Awarded badges render as `bg-club-muted text-club` pills with emoji + name + a small X revoke button (exec-only, `aria-label="Revoke <name> badge"`). Loading skeleton + empty state ("No badges awarded yet."). Award + revoke via `useMutation` with toast feedback + query invalidation.
-  - **NEW** `CreateBadgeDialog` component: exec-only form for defining a new club badge. Fields: name (Input, 60-char cap, `autoFocus`), emoji picker (40-emoji grid + custom paste Input, 8-char cap), description (Textarea, 280-char cap, optional). Uses `DIALOG_CLASS` for the mobile-fullscreen treatment. Submit via POST `/api/clubs/[clubId]/badges`. Toast on success; reset form on close (200ms deferred so the close animation doesn't jump).
-- **MODIFIED** `src/components/app-shell.tsx`:
-  - Added `<BadgeConfettiPopup />` render at the end of the main AppShell return (after `<GlobalSearch />`).
-  - **NEW** `BadgeConfettiPopup` component: on mount, reads `last-seen-badges` from localStorage (Unix-ms timestamp). First-run baseline: if missing, seeds it to `Date.now()` and shows nothing (treats first load as the baseline). Otherwise fetches `/api/me/badges?since=<ISO>`; if awards come back, shows the most recent one as a celebratory popup. Popup: dim backdrop (click to dismiss), 36-piece CSS confetti layer (`pointer-events-none`), center card with the badge emoji + "You earned a badge! 🎉" + "You were awarded the [emoji] [name] badge by [exec] in [club]." + "Awesome!" button. Auto-dismiss after 5 seconds via `useEffect` + `setTimeout`. On dismiss (button, backdrop click, or auto-dismiss), updates `last-seen-badges` to `Date.now()` so all current awards (including any awarded during this session) are marked as seen.
-  - Confetti pieces: 36 absolutely-positioned `<span>` elements, generated ONCE per mount via `useState(() => buildConfettiPieces(36))` so they don't re-roll on every render. Each piece has a random color (8-color palette: green/amber/red/purple/pink/teal/orange/yellow — deliberately avoiding indigo/blue per house style), random `left %`, random `animationDelay` (0-250ms), random `animationDuration` (1.8-2.7s), and random horizontal drift via a `--confetti-x` CSS custom property consumed by the `@keyframes` in `globals.css`.
-- **MODIFIED** `src/app/globals.css`:
-  - Added `@keyframes badge-confetti-fall` (translate3d from `-10px` to `320px` y, `rotate(0deg)` to `rotate(720deg)`, opacity fade at 80%+).
-  - Added `.badge-confetti-piece` (8×14px rounded rect, `will-change: transform, opacity`, 2.4s `ease-in forwards`).
-  - Added `@keyframes badge-pop-in` (scale 0.85 → 1.02 → 1 + opacity 0 → 1) + `.animate-badge-pop` (280ms cubic-bezier(0.22, 1, 0.36, 1)).
-  - All inside the existing `@layer components` block, consistent with the existing `animate-fade-in` pattern.
-- **NEW** `supabase_badges.sql`: Production SQL for Supabase SQL Editor. Idempotent (`DROP TABLE IF EXISTS` first, with CASCADE so FK dependencies clear). Creates `Badge` table (text PK for `cuid()` IDs, FKs to `Club` + `User` with `ON DELETE CASCADE`, `Badge_clubId_idx`) and `MemberBadge` table (text PK, FKs to `Badge` + `User` × 2 + `Club` all `ON DELETE CASCADE`, `UNIQUE ("badgeId", "userId")`, `MemberBadge_clubId_userId_idx` + `MemberBadge_userId_idx` for cross-club lookups). Column types + names + constraints match the Prisma schema exactly.
+- **§6 — Command palette** (verified already complete in `src/components/global-search.tsx`):
+  - `GlobalSearch` searches across all 4 entity types (members, tasks, announcements, meetings) via the existing `/api/clubs/[clubId]/search` endpoint.
+  - Opens on `Cmd/Ctrl+K` (and `/` when not focused on a text input) — implemented via the global `keydown` listener.
+  - Loading state: 200ms debounced search + `<SearchSkeleton />` (4 animated rows + spinner) shown while `loading === true`.
+- **§7 — Long list pagination** (verified already complete):
+  - `chat-view.tsx`: a "Load older messages" button at the top of the messages list calls `/api/clubs/${clubId}/chat/conversations/${conversationId}/messages?before=${oldest.id}` (line ~1101); also auto-triggers when scrolled to the top.
+  - `announcements-view.tsx`: uses `useInfiniteQuery` with `getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.page + 1 : undefined` and renders a "Load more" button that calls `query.fetchNextPage()` (line ~273).
+- **§8 — Inline form validation** (added red-border + below-field error text to 4 dialogs):
+  - `NewTaskDialog` (`tasks-view.tsx`): added `titleError` state; on submit, if title empty → `border-red-500 focus-visible:ring-red-500` + `<p className="text-xs text-red-500 mt-1">Title is required</p>`; clears on input.
+  - `SubmitHoursDialog` (`hours-view.tsx`): added `dateError`, `hoursError`, `reasonError` state; on submit validates date/hours/reason; each field shows inline red border + message when invalid; clears on input.
+  - `ComposeAnnouncementDialog` (`announcements-view.tsx`): added `titleError` + `bodyError` state; on submit validates title + body; each field shows inline red border + message; clears on input.
+  - `CreateClubDialog` (`auth/create-club-dialog.tsx`): added `nameError`, `passwordError`, `passcodeError` state; on submit validates name/password/passcode; each field shows inline red border + message; replaces the previous `toast.error` flow.
+- **§9 — Undo for destructive actions**:
+  - Task delete (verified already implemented): `tasks-view.tsx` `deleteMutation.onSuccess` shows a `toast(…, { duration: 5000, action: { label: "Undo", onClick: undo } })` that calls `POST /api/clubs/[clubId]/tasks/[id]/restore`.
+  - Member remove (added): `members-view.tsx` AlertDialog now shows `toast.success("Member removed", { duration: 5000, action: { label: "Undo", onClick: … } })`. Undo re-adds via the existing `POST /api/clubs/[clubId]/members/import` endpoint (the only existing route that can re-activate a removed membership by email) with a minimal `name,email\n…` CSV blob. No new API route added.
+  - Announcement delete (added): `announcements-view.tsx` `deleteMutation.onSuccess` now shows `toast.success("Announcement deleted", { duration: 5000, action: { label: "Undo", onClick: … } })` that calls `POST /api/clubs/[clubId]/announcements/[id]/restore` (existing soft-delete restore endpoint).
+- **§10 — Mobile touch targets**:
+  - Chat composer send button: bumped from `size-10` (40px) to `size-11` (44px) to meet the minimum touch target (`chat-view.tsx`).
+  - Nav items (`app-shell.tsx`): added `min-h-[44px]` to the primary nav button className so every tier (home/work/manage) hits the 44px target on mobile; also added `focus-visible:ring-2 focus-visible:ring-ring` for keyboard focus.
+  - Tasks board mobile status dropdown: verified already present in `tasks-view.tsx` (line ~946) — a `<Select>` rendered inside `md:hidden` wrapper on every task card, replacing drag-and-drop on mobile.
+- **§11 — Notifications actionable deep links** (verified already complete in `src/components/app-shell.tsx` `NotificationBell`):
+  - `handleNotifClick(n)` calls `targetViewFor(n)` from `notif-meta.ts`, which resolves the destination `View` based on `n.linkUrl` (parses `?view=…`) falling back to the type's default view (task → "tasks", announcement → "announcements", etc.).
+  - Marks the notification as read (optimistic + `POST /api/notifications/[id]/read`) when not already read.
+  - Calls `setView(view)` to navigate, then closes the bell.
+- **§12 — Member first-run onboarding** (added to `dashboard-view.tsx`):
+  - New `MemberOnboardingCard` component rendered in Row 2 when:
+    - `!isExec` (members only — execs already get the `OnboardingBanner`)
+    - `myStats.tasksAssigned === 0 && myStats.approvedHours === 0 && myStats.pendingHours === 0 && myStats.myRsvpsGoing === 0` (no interaction)
+    - localStorage key `member-onboarding-${clubId}` is not `"true"` (dismiss state read on club change).
+  - Card style: `bg-club-muted/40 rounded-2xl p-5 animate-fade-in relative hover:shadow-sm` — gentle, not a loud banner.
+  - Contains 3 quick-link buttons (`min-h-[44px]`): "Check announcements" → `setView("announcements")`, "See your tasks" → `setView("tasks")`, "Log service hours" → `setView("hours")`. Each has a club-colored icon tile + chevron.
+  - Dismiss button (top-right `X`) writes the localStorage key.
+- **§13 — Keyboard accessibility** (audited):
+  - `AttentionCard` (`dashboard-view.tsx`) renders as a native `<button>` when `onClick` is provided — keyboard accessible by default; already has `focus-visible:ring-2 focus-visible:ring-ring`.
+  - `ClubStat`, leaderboard rows, recent-announcement rows, recent-meeting rows — all native `<button>` elements with `focus-visible:ring-2 focus-visible:ring-ring`.
+  - Task card (`tasks-view.tsx` line ~838): the `<div onClick={onOpen}>` already has `role="button"`, `tabIndex={0}`, and an `onKeyDown` handler that fires `onOpen()` on Enter/Space — fully keyboard accessible.
+  - Member card (`members-view.tsx` line ~983): the `<div onClick={onOpenDetail}>` already has `role="button"`, `tabIndex={0}`, and an `onKeyDown` handler for Enter/Space.
+  - The focus ring uses the `--ring` CSS variable (already wired in `globals.css`) which inherits the club accent color.
+  - Added `focus-visible:ring-2 focus-visible:ring-ring` to the nav buttons and the color-picker buttons in `CreateClubDialog` for completeness.
 
 Verification:
-- Verified the Prisma client (`node_modules/.prisma/client/index.d.ts`) has the new `Badge` + `MemberBadge` models — 88 references to the delegates — so `db.badge.*` and `db.memberBadge.*` are typed correctly without needing to regenerate.
-- `bun run lint` → **EXIT 0**, zero errors, zero warnings. (Initial run had one warning about an unused `eslint-disable` directive on the confetti auto-dismiss `useEffect` — removed the directive since the effect only depends on `activeAward` and `dismiss` is a stable closure.)
-- Did NOT touch `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, or `server-auth.ts`.
-- Did NOT restart the dev server. No `dev.log` was present at the project root at the time of the work, so no live server log inspection was possible — lint passing + the changes being self-contained and consistent with existing patterns is the verification signal.
+- `bun run lint` → EXIT 0, zero errors / zero warnings.
+- Did NOT touch any API route files. Did NOT touch `prisma/schema.prisma`. Did NOT touch data fetching logic.
+- Did NOT restart the dev server (dev process PID 1758/1784 still running on port 3000; pre-existing prisma `db:push` error at startup is unrelated — schema was swapped to postgres in a prior agent's work).
+- Did NOT add new npm packages — used only existing `sonner` (toast with `action`), existing `api`/`apiUpload` clients, and existing shadcn primitives.
 
 Stage Summary:
-- The old hardcoded BADGE_DEFS auto-achievement system is completely replaced. No code references the old `BADGE_DEFS`, `computeEarned`, `BadgeStats`, `BadgeDef`, or the `icon` field anywhere — `rg` confirms the only remaining hits are in this worklog + the agent-ctx file.
-- Executives can create custom badges (name + 40-emoji picker + custom paste + optional description), award them to any member via the member detail sheet's "Award badge" dropdown, and revoke them via the small X on each awarded badge pill.
-- Awarding a badge fires a `badge_awarded` notification (the bell rings with an Award icon), logs activity (`badge_awarded`), and emits a realtime club event so other execs viewing the member detail sheet see the new badge appear live.
-- On app load, if the user has any unseen badge awards since their `last-seen-badges` localStorage timestamp, a 36-piece CSS confetti popup celebrates the most recent one — auto-dismisses after 5 seconds; "Awesome!" button + backdrop click also dismiss. First-ever load seeds the baseline to `now()` so users don't get a popup for old badges.
-- `supabase_badges.sql` is ready to paste into the Supabase SQL Editor — creates both tables with all indexes + FKs matching the Prisma schema, idempotently.
+- §6: GlobalSearch verified — searches all 4 entity types, opens on Cmd/Ctrl+K, has loading skeleton.
+- §7: Both chat "Load older messages" and announcements "Load more" already in place; no new deps added.
+- §8: All 4 forms (New Task, Submit Hours, Create Announcement, Create Club) now display inline `border-red-500` + below-field error `<p className="text-xs text-red-500 mt-1">…</p>`; errors clear on input; replaces the previous toast-only validation.
+- §9: Task delete undo already present; added Member remove undo (via existing import endpoint + tiny CSV) and Announcement delete undo (via existing `/restore` endpoint). All three toasts run for 5 seconds.
+- §10: Chat send button bumped to `size-11`; nav items got `min-h-[44px]`; task mobile status dropdown verified present.
+- §11: NotificationBell already routes correctly via `targetViewFor`; marks read + navigates — no fixes needed.
+- §12: New `MemberOnboardingCard` for first-time members (no tasks/hours/RSVPs); dismissible via `localStorage:member-onboarding-${clubId}`; styled `bg-club-muted/40 rounded-2xl p-5` (gentle, not loud).
+- §13: All interactive cards are either native `<button>` (auto-accessible) or divs with explicit `role="button"` + `tabIndex={0}` + `onKeyDown` for Enter/Space; `focus-visible:ring-2 focus-visible:ring-ring` is wired through the `--ring` CSS variable.
 
 ---
-Task ID: REDESIGN-1
-Agent: ui-mod (Z.ai Code)
-Task: Full visual redesign — UI/CSS/component structure ONLY. Two sections: (1) Dashboard redesigned as asymmetric bento-grid with hero panel + CSS conic-gradient progress ring tile; (2) Sidebar redesigned as a floating panel (Linear/Vercel/Raycast pattern).
 
-Work Log:
+## PART-C — UI/CSS Polish Pass (§14–§22)
 
-### §1 — DASHBOARD (`src/components/views/dashboard-view.tsx`)
+**Scope:** UI and CSS only — no data fetching, query keys, or API response
+shapes were changed. The single exception is the hours export route, which
+was explicitly permitted to update its output format (CSV → styled HTML)
+while keeping the underlying query identical.
 
-What I found:
-- Top-down admin layout: slim `HeroBar` strip + 4-up `card-quiet` `AttentionCard` row + uniform 12-col grid where every supporting tile used `card-quiet p-5 lg:col-span-{4|8}`. All tiles visually identical → flat, admin-like feel.
-- `card-quiet` is `border border-border bg-card rounded-xl` + subtle hover shadow. Used ~12 times across the dashboard.
-- `hoursTrend`, `data.club.hoursGoal`, `data.myStats.approvedHours` already fetched + used to compute `hoursPct` for the snapshot's `Progress` bar — progress-ring tile could be built with zero new data.
+### §14 — Teams page: real team identity
+File: `src/components/views/teams-view.tsx`
+- `TeamCard` now accepts an `index` prop. The card grid (`TeamsView`) passes
+  the array index so each card gets a deterministic accent from a fixed
+  6-color palette `['#f97316','#06b6d4','#8b5cf6','#ec4899','#14b8a6','#eab308']`
+  (assigned by `index % 6`). No random per-render variation — the same team
+  keeps the same color across realtime refetches.
+- Card surface upgraded to `rounded-2xl border border-border bg-card` with
+  `hover:shadow-md hover:-translate-y-0.5` (lift on hover) and
+  `transition-all`. Replaced the previous `card-quiet` (rounded-xl) so the
+  card looks like a proper rounded surface that pairs with the new accent.
+- A `1.5px` colored accent strip spans the top edge (`absolute inset-x-0 top-0 h-1.5`) using the team's accent color — instantly recognizable identity.
+- A small 8px accent dot is placed next to the team name in the header so
+  the accent reads even when the top strip is scrolled out of view (in the
+  detail sheet).
+- A subtle tinted halo (`opacity-[0.08]` → `group-hover:opacity-[0.14]`) in
+  the top-right corner picks up the accent color without overwhelming the
+  text content.
+- Stacked avatar preview now shows 4 avatars (was 5) with a `+N` chip AND a
+  "+N more" text label so the count is unambiguous at a glance.
+- Team description is surfaced (and now styled `text-muted-foreground` to
+  differentiate from the title) — previously showed in the same color.
+- `pt-2` added below the accent strip so card content doesn't sit under it.
 
-What I changed:
-1. Added two tile constants at module scope (after `stagger()`): `TILE = "border border-border bg-card rounded-2xl p-5 hover:shadow-sm transition-all duration-200"` and `TILE_COMPACT` (same but `p-4`). Both use `rounded-2xl` (bigger radius than `card-quiet`'s `rounded-xl`).
-2. Added `bucketToSeven()` + `Sparkline` helpers near the bottom helpers. `bucketToSeven` reduces a 30-day trend to 7 evenly-spaced points by summing each ~4-day bucket. `Sparkline` renders a 100×28 viewBox inline SVG with `preserveAspectRatio="none"`, an area fill (fillOpacity 0.12), a 1.5px line (`vectorEffect="non-scaling-stroke"`), and an end dot — all tinted with `var(--club-accent)`. NO recharts dependency.
-3. Replaced the entire `return` block with a 4-row asymmetric bento layout:
-   - Row 1: `<div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">` containing `HeroPanel` (lg:col-span-7) + `ProgressRingTile` (lg:col-span-5).
-   - Row 2: attention items in `grid grid-cols-2 lg:grid-cols-4 gap-3` (was `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4` — tighter gap, always-2-cols on mobile).
-   - Row 3+: supporting tiles in `grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5`, role-aware ordering. Every `<section>` uses `cn(TILE, "lg:col-span-{n} order-{m} animate-fade-in")` instead of `card-quiet p-5 …`.
-   - Row 5 (exec only): club-stats strip wrapped in `cn(TILE_COMPACT, "animate-fade-in")`.
-   - Row 6 (exec only): exec-insights wide strip wrapped in `cn(TILE_COMPACT, "animate-fade-in")`. Inner `grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3` of `ExecMetric`s preserved.
-4. Replaced `HeroBar` with new `HeroPanel` (signature extended with `approvedHours`, `hoursGoal`, `hoursPct`, `hoursTrend` — all already-fetched data):
-   - Outer `<section>`: `relative overflow-hidden rounded-2xl border border-border lg:col-span-7 p-5 sm:p-6 hover:shadow-sm transition-all duration-200 bg-gradient-to-br from-club-muted/60 to-transparent`.
-   - Dot-grid texture overlay via absolutely-positioned `<div aria-hidden>` with `backgroundImage: radial-gradient(circle, currentColor 1px, transparent 1px)`, `backgroundSize: 20px 20px`, `color: var(--foreground)`, `opacity: 0.05` (matches auth-screen pattern, quieter per spec).
-   - Left accent bar preserved. Logo tile bumped from `h-10 w-10 rounded-lg` to `h-12 w-12 rounded-xl`.
-   - Added personal-progress strip (`mt-5 pt-4 border-t border-border/60`): "Your hours: Xh [of Yh goal]" with either a thin `Progress` bar (goal set) or a tiny `Sparkline` (no goal).
-5. Added new `ProgressRingTile` component (props: `approvedHours`, `hoursGoal`, `hoursPct`, `hoursTrend`, `onViewHours?`). Renders as `<button>` (whole-tile clickable → hours view) when `onViewHours` set, else `<div>`. Uses `TILE` + `lg:col-span-5 flex flex-col`.
-   - Goal-set state: CSS conic-gradient ring at ~80px (`h-20 w-20`). Outer div `bg-muted` (track); inner absolutely-positioned div paints `conic-gradient(var(--club-accent) ${hoursPct}%, transparent 0)`; `bg-card` donut-hole (`absolute inset-[6px] rounded-full`) shows `{approvedHours}h / of {hoursGoal}h`. Large `{pct}%` + hint ("Xh to go" / "Goal achieved! 🎉") to the right. `role="img"` + `aria-label` for a11y.
-   - No-goal state: large `{approvedHours}h` (`text-4xl font-bold tabular-nums`), "Approved · last 30 days" caption, then a `Sparkline` (max-w-[260px]).
-6. Updated sub-components to drop `card-quiet`:
-   - `AttentionCard`: → `border border-border bg-card rounded-2xl p-4 … hover:shadow-sm transition-all duration-200`. Kept `border-l-2 border-l-club` accent (and `border-l-red-500` for urgent).
-   - `AllCaughtUpCard`: → `border border-border bg-card rounded-2xl p-5 … hover:shadow-sm transition-all duration-200`.
-   - `OnboardingBanner`: → `border border-club/30 bg-club-muted/40 rounded-2xl p-5 … hover:shadow-sm transition-all duration-200`.
-   - `DashboardSkeleton`: rewrote to match the new bento layout — Row 1 has `lg:col-span-7` + `lg:col-span-5` skeletons, then `grid-cols-2 lg:grid-cols-4 gap-3` of `StatCardSkeleton`s, then chart+leaderboard row, then 3-tile row, then exec strip. All skeleton tiles use a local `tile = "border border-border bg-card rounded-2xl animate-pulse"`.
+### §15 — Settings: Danger Zone section
+File: `src/components/app-shell.tsx`
+- Added a new `DangerZoneSection` component rendered at the bottom of the
+  Profile tab inside `SettingsDialog` (after the "Save profile" button).
+- Visual treatment: `border border-red-200 dark:border-red-900/50 rounded-xl p-4 mt-4`.
+- Header row: `<AlertTriangle className="h-4 w-4 text-red-600">` icon +
+  "Danger Zone" in `text-sm font-semibold text-red-600 dark:text-red-400`
+  + helper text "These actions are permanent and cannot be undone."
+- Contains two rows, each `flex flex-col sm:flex-row` so they stack on
+  mobile and align horizontally on desktop:
+  1. **Leave this club** — outline button with red tint
+     (`border-red-300 text-red-600 hover:bg-red-50`) + AlertDialog
+     confirm reusing the existing `/api/clubs/[id]/leave` endpoint.
+  2. **Delete this club** (exec only) — subtle "Delete this club" text
+     link (`text-muted-foreground/70 hover:text-red-600`) + AlertDialog
+     that asks for the club password before calling
+     `DELETE /api/clubs/[id]` with `{ confirmPassword }` (matches the
+     existing `DeleteClubSection` in `members-view.tsx`).
+- Imports added: `AlertDialog`, `AlertDialogAction`, `AlertDialogCancel`,
+  `AlertDialogContent`, `AlertDialogDescription`, `AlertDialogFooter`,
+  `AlertDialogHeader`, `AlertDialogTitle`, `AlertDialogTrigger` (none were
+  previously imported in `app-shell.tsx`).
+- No new API endpoints. Reuses `/api/clubs/[id]/leave` and
+  `DELETE /api/clubs/[id]` exactly as `members-view.tsx` does.
 
-### §2 — SIDEBAR (`src/components/app-shell.tsx`)
+### §16 — Member detail sheet: more presence
+File: `src/components/views/members-view.tsx` (`MemberDetailSheet`)
+- Avatar bumped from `h-12 w-12` (48px) → `h-16 w-16` (64px) with a
+  `ring-2 ring-offset-2 ring-offset-background` role-accent treatment:
+  - Executives get `ring-club` (the club accent color)
+  - Members get `ring-border` (subtle neutral)
+- Online dot grew from `h-3 w-3` → `h-3.5 w-3.5` to match the larger
+  avatar.
+- `RoleBadge` moved from `ml-auto` (right-aligned next to the avatar)
+  into the title block (under the email) so the avatar has more room and
+  the layout reads as "person → role" instead of "person | role".
+- New stats row at the TOP of the scrollable body (above bio): 2-col grid
+  of `rounded-2xl border bg-card p-3` tiles matching the dashboard bento
+  tiles. Shows:
+  1. **Hours logged** — `member.approvedHours.toFixed(1)` with a `Clock`
+     icon and a tabular-nums value at `text-xl font-semibold`.
+  2. **Teams** — count of teams, with `UsersIcon` icon.
+- Teams section is now always rendered (was conditional on
+  `member.teams.length > 0`). When the member isn't on any team, shows
+  italic muted "Not on any team yet." empty state.
+- Removed the redundant `Joined` and `Role` stat tiles (the role is now
+  shown by the badge, and joined date is contextual — they were
+  duplicate surface area).
 
-What I found:
-- Desktop sidebar flush against viewport: `<aside className="hidden md:flex md:w-60 flex-col border-r bg-muted/20 shrink-0">`. Hard `border-r`, no margin. Club switcher trigger: `h-7 w-7 rounded-md` avatar, `text-sm font-medium` name, `text-caption capitalize` sub-label. Section dividers: `text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-2.5 pt-1 pb-0.5`. Active nav: `bg-club-muted text-club`.
+### §17 — Theme toggle: smooth cross-fade
+File: `src/app/globals.css`
+- Added a scoped rule inside `@layer base`:
+  ```css
+  html *, html *::before, html *::after {
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+  ```
+- This applies only to `background-color` and `border-color` (the two
+  properties the `html.dark` class swap re-paints) so the dark/light
+  toggle cross-fades over 150ms instead of flashing.
+- Other properties (transform, opacity, box-shadow) are NOT affected,
+  so existing hover transforms and animations still feel snappy.
+- Confirmed the theme toggle button sits at the bottom of the sidebar
+  (desktop: `app-shell.tsx` line ~425-431; mobile drawer: line ~354-359),
+  is full-width `justify-start`, and shows `Light mode` / `Dark mode`
+  label + `Sun`/`Moon` icon.
 
-What I changed:
-1. Floating panel treatment (main AppShell return):
-   - Parent flex container: `flex flex-1 min-h-0` → `flex flex-1 min-h-0 gap-2 p-2` (8px breathing room on all sides + 8px gap between sidebar and main).
-   - Aside: `border-r bg-muted/20` → `rounded-2xl border bg-background shadow-sm overflow-hidden`. Width `md:w-60` preserved. `overflow-hidden` so the rounded corners clip the inner scroll area.
-   - Removed `border-b` from the club-switcher wrapper; removed `border-t` from the theme-toggle wrapper — the panel's rounded border provides separation now.
-   - Main: `flex-1 min-w-0 flex flex-col` → `flex-1 min-w-0 flex flex-col min-h-0` (so the inner `overflow-y-auto` can scroll inside the new padded parent).
-   - Mobile drawer (`SheetContent`) untouched per spec.
-2. Club switcher enlarged (`ClubSwitcher` component):
-   - Trigger `Button`: `h-auto py-2 px-3` → `h-auto py-2.5 px-3 rounded-xl gap-3`.
-   - Avatar: `h-7 w-7 rounded-md text-xs` → `h-10 w-10 rounded-xl text-sm`.
-   - Club name: `text-sm font-medium` → `text-sm font-semibold`.
-   - Sub-label: `text-caption capitalize` → `text-[11px] text-muted-foreground capitalize`. Content is still the role (`"member" | "executive" | "No club selected"`) because `MeResponse["memberships"][number]` doesn't carry `memberCount` and the "do not change data variables" rule forbids adding one.
-   - Dropdown items left as-is (spec scoped only the trigger).
-3. Section dividers: `text-muted-foreground/70 px-2.5 pt-1 pb-0.5` → `text-muted-foreground/60 px-3 pt-3 pb-1` (per spec — slightly quieter color, more padding for label presence).
-4. Active nav item background: `bg-club-muted text-club` → `bg-club-muted/60 text-club` (per spec — slightly stronger than the previous pass's `bg-club-muted`). Centered accent pill (`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club`, opacity-100 when active / opacity-0 otherwise) preserved exactly. Weight-based padding/typography (home/work/manage tiers) unchanged.
+### §18 — Notification preferences matrix
+File: `src/components/app-shell.tsx` (`NotificationsTab`)
+- **Verified already a clean matrix/table** — no restructuring needed:
+  - Header row (`grid-cols-[1fr_auto_auto]`): "Type | In-app | Email",
+    styled `bg-muted/40 border-b text-[10px] font-semibold uppercase
+    tracking-wider text-muted-foreground`.
+  - One row per notification type from `ALL_NOTIF_TYPES`.
+  - Each row shows the type label + description on the left, then two
+    centered 56px-wide cells each containing a `<Switch>` (not checkbox,
+    not button) bound to `prefs.inApp[type]` / `prefs.email[type]`.
+- No code changes — confirmed correct.
+
+### §19 — Error & 404 pages
+- Created `src/app/not-found.tsx` (server component, no `"use client"`):
+  - Centered 404 page with `text-6xl font-extrabold text-club` heading,
+    "Page not found" subtitle, muted description, and a `bg-club
+    text-club-foreground` "Back to dashboard" button linking to `/`.
+- Created `src/app/error.tsx` (client component, `"use client"`):
+  - Centered error page with `⚠️` emoji icon, "Something went wrong"
+    title, muted description, and a "Try again" button that calls
+    `reset()` (Next.js error boundary reset).
+- Both use the `bg-club` accent so they match the app's identity even
+  outside the main shell.
+
+### §20 — Loading state consistency audit
+Audited all skeletons across views — verified each matches the real
+layout shape:
+- **Dashboard**: `DashboardSkeleton` matches the bento grid (StatCardSkeleton
+  tiles + section skeletons). ✓ No change needed.
+- **Members**: `MembersSkeleton` renders two sections matching the
+  Leadership (4-col grid) + All Members (3-col grid) layout, each with
+  card-shaped skeletons (`card-quiet rounded-xl p-5`) showing avatar +
+  name + role pill + stat row. ✓ No change needed.
+- **Tasks**: `TasksLoadingSkeleton({ variant })` renders:
+  - `list` variant: 5 stacked `h-10 w-full` rows inside a card.
+  - `board` variant: 3 columns (one per status) with `card-quiet p-3`
+    + `COLUMN_ACCENT` tint + 3 `h-20` task skeletons per column.
+  Both match the real layout. ✓ No change needed.
+- **Chat**: `ConversationListSkeleton` (7 conversation rows with 36px
+  avatar + name + preview lines) + `MessagesSkeleton` (6 messages with
+  alternating left/right alignment, 32px avatar + name + bubble). ✓
+  Matches the real chat layout. No change needed.
+
+### §21 — Icon consistency audit
+- **Nav icons**: home tier uses `h-[18px] w-[18px]`, all other tiers use
+  `h-4 w-4` (16px). ✓ Already consistent.
+- **Inline text icons**: most use `h-4 w-4` (16px). The `h-3.5 w-3.5`
+  (14px) instances are paired with `text-caption` text (12px) where 16px
+  would be disproportionate. Left as-is — intentional visual pairing.
+- **Empty-state icons**: normalized to `h-8 w-8` (32px) across the few
+  that were inconsistent:
+  - `tasks-view.tsx` line 538: `X` was `size-6` → `h-8 w-8`.
+  - `tasks-view.tsx` line 551: `ListChecks` was `size-6` → `h-8 w-8`.
+  - `meetings-view.tsx` line 233: `CalendarDays` was `size-10` → `h-8 w-8`.
+  - `meetings-view.tsx` line 432: `CalendarDays` was `size-10` → `h-8 w-8`.
+- All icons come from `lucide-react`. ✓
+
+### §22 — Hours export: styled printable document
+File: `src/app/api/clubs/[clubId]/hours/export/route.ts`
+- The route previously returned CSV only. Now:
+  - **Default (no query param)**: returns a fully styled, printable
+    HTML document the user opens in a new tab. They can use the
+    browser's "Print → Save as PDF" (or click the prominent "Print /
+    Save as PDF" button in the sticky toolbar) to produce a clean PDF.
+    A secondary "Download CSV" button in the toolbar links to
+    `?format=csv` to preserve the old machine-readable flow.
+  - **`?format=csv`**: returns the original CSV byte-for-byte (same
+    columns, same row order, same Content-Disposition).
+- Data fetching logic is unchanged — same `db.serviceHour.findMany`
+  call, same `where` clause, same `include`s, same `orderBy`. Only the
+  serialization step changed.
+- The HTML document includes:
+  - `font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif` per the spec.
+  - Header band with the club name + a 3px bottom border in the club's
+    accent color (`c.club.accentColor`), plus the club logo (if any)
+    rendered as a 48px rounded image.
+  - A meta row with Member name, Member email, and "Generated"
+    timestamp.
+  - A summary tile: total approved hours (big tabular number) + entry
+    count, with a tinted background using the club accent at 8% alpha.
+  - A bordered table using `border-collapse: collapse` with:
+    - `thead th` cells using `background: #f9fafb` (light gray) +
+      `border: 1px solid #e5e7eb` + `border-bottom: 2px solid #d1d5db`
+      (heavier bottom rule under the header).
+    - Zebra striping (`tr.odd` light, `tr.even` white).
+    - Fixed `table-layout: fixed` with explicit column widths
+      (Date 14%, Hours 8%, Reason 32%, Category 14%, Reviewed By 16%,
+      Reviewed At 16%) so columns don't reflow depending on content.
+  - Footer with "Generated by ClubHub" branding + timestamp.
+  - `@media print` rules: tightens page padding, makes the table header
+    repeat on every printed page (`thead { display: table-header-group }`),
+    avoids row page-breaks (`tbody tr { page-break-inside: avoid }`),
+    and hides the on-screen toolbar (`.no-print { display: none }`).
+- Updated `hours-view.tsx`:
+  - `handleExport` now calls `window.open(url, "_blank", "noopener,noreferrer")`
+    instead of `window.location.href = url` so the export opens in a
+    new tab (the user keeps their place in the app).
+  - Button label changed from "Export CSV" → "Export" to reflect the
+    new dual HTML/CSV capability (the toolbar in the doc itself
+    surfaces the CSV option).
 
 ### Verification
-- `bun run lint` → **EXIT 0** (zero errors, zero warnings).
-- `bunx tsc --noEmit -p tsconfig.json` → **EXIT 0** (zero TypeScript errors).
-- `curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:3000` → **HTTP 200** (dev server still serving).
-- No `dev.log` present at project root at time of work — could not inspect server log; lint + tsc + HTTP 200 is the verification signal.
-- Did NOT touch any API route, `prisma/schema.prisma`, `src/lib/auth.ts`, `authOptions.ts`, `server-auth.ts`, or `src/lib/store.ts`.
-- Did NOT restart the dev server.
-- Did NOT add any new dependencies (sparkline is a hand-rolled inline SVG; progress ring is a CSS `conic-gradient`).
+- `bun run lint` → **EXIT 0**, zero errors / zero warnings.
+- Did NOT touch `prisma/schema.prisma`. Did NOT touch data fetching
+  logic, query keys, or API response shapes (the only API file touched
+  is the hours export route, explicitly permitted by the brief).
+- Did NOT restart the dev server. Did NOT add new npm packages — only
+  existing shadcn primitives (`AlertDialog*`), existing `lucide-react`
+  icons, and existing `api` client.
 
-Stage Summary:
-- Dashboard is now an asymmetric bento-grid: hero panel (col-span-7) with gradient + dot-grid texture + inline progress element, paired with a progress-ring tile (col-span-5) that uses a CSS `conic-gradient` ring when a goal is set, or a large number + tiny inline-SVG sparkline (7 data points, no recharts) when there's no goal. Supporting tiles use varied sizes (8/4 splits) with `rounded-2xl` borders + hover-lift. Exec insights is a wide bottom strip.
-- Sidebar is now a floating panel: `m-2`-equivalent padding on the parent + `rounded-2xl border bg-background shadow-sm` on the aside. Club switcher has a larger `h-10 w-10 rounded-xl` avatar, `text-sm font-semibold` name, and `text-[11px] text-muted-foreground` sub-label. Section dividers are more prominent. Active nav uses `bg-club-muted/60`. Mobile drawer untouched.
-- All `card-quiet` references removed from `dashboard-view.tsx` (only a comment remains explaining the new `TILE` constant replaces it).
-- Full worklog with detailed change-by-change breakdown in `/agent-ctx/REDESIGN-1-ui-mod.md`.
+---
+
+## PART-G — UI/CSS polish across 15 sections (§31–§45)
+
+### Task
+UI/CSS-only polish: dialog animations, empty-state line illustrations,
+filter chips, sticky headers, table-row avatars, StatusPill component,
+hours-milestone confetti, scrollbar styling, drag-handle affordance,
+file-upload drop zones, unread-indicator consistency. No API/schema/data
+changes; lint clean.
+
+### Files Touched (modified)
+1. `src/app/globals.css` — added `@keyframes dialog-scale-in` + a
+   scoped `[role="dialog"]:not(.animate-in):not([data-slot="sheet-content"])`
+   selector that applies the animation to centered modals only (Sheet
+   side panels keep their own slide animations). The existing `scrollbar-thin`
+   utility was already in place; verified.
+2. `src/components/shared/page-header.tsx` — added an `illustration` prop
+   to `EmptyState` (renders raw, no muted circle wrapper). Exported 4 new
+   line-art illustration components:
+   - `ChatEmptyIllustration` (speech bubble outline + accent line)
+   - `TasksEmptyIllustration` (checklist outline + accent checkmark)
+   - `MembersEmptyIllustration` (two-people outline + accent body)
+   - `AnnouncementsEmptyIllustration` (megaphone outline + accent waves)
+   Each is ~48px, uses `text-muted-foreground` for outline strokes and
+   `var(--club)` for a single accent line.
+3. `src/components/shared/status-pill.tsx` — NEW file. Reusable
+   `StatusPill({ status, label })` that maps pending/approved/rejected/
+   not_started/in_progress/done to dot+text+bg colors using the existing
+   semantic `--status-*` CSS tokens.
+4. `src/components/views/tasks-view.tsx`:
+   - Replaced `StatusBadge` (column header + task detail sheet) with
+     `StatusPill`. Removed the now-unused `StatusBadge` import.
+   - Replaced `EmptyState icon={<ListChecks/>}` with `illustration={<TasksEmptyIllustration/>}`.
+   - §37: Wrapped `PageHeader` in a `hidden sm:block sticky top-0 z-20
+     bg-background/95 backdrop-blur-sm` container (desktop only); added a
+     non-sticky mobile fallback so the "New Task" button stays reachable.
+   - §33: Added active-filter chips below the filter row (removable pills
+     for team / assignee / status; each shows the active filter value with
+     an X icon; "Clear all" button at the end).
+   - §36: Added `title="Delete task"` to the icon-only delete button.
+   - §43: Changed the GripVertical drag handle from
+     `text-muted-foreground/50 group-hover:text-muted-foreground` to
+     `opacity-40 group-hover:opacity-100 transition-opacity` and kept the
+     existing `cursor-grab` so the affordance is more visible at rest.
+5. `src/components/views/members-view.tsx`:
+   - Replaced both `EmptyState` icons (no members / no matches) with
+     `MembersEmptyIllustration`.
+   - §37: Sticky desktop header + non-sticky mobile header (same pattern
+     as tasks-view).
+   - §35: Search input now has `pr-9 focus-visible:ring-2 focus-visible:ring-club`
+     and a clear-X button (`absolute right-2 top-1/2 -translate-y-1/2`)
+     that appears only when text is entered.
+   - §33: Added an active-search chip ("Search: {query}") below the input
+     that's removable.
+   - §44: Wrapped `ClubLogoSection` in a drop zone with `onDragOver`/
+     `onDragLeave`/`onDrop` handlers; while dragging, the card renders
+     `border-2 border-dashed border-club bg-club-muted/20`.
+   - §42: Applied `scrollbar-thin` to badge dropdown + emoji picker +
+     badge-creator dialog body + import dialog body.
+6. `src/components/views/announcements-view.tsx`:
+   - Replaced `EmptyState` icon with `AnnouncementsEmptyIllustration`.
+     Removed the now-unused `Megaphone` import.
+   - §37: Sticky desktop header + non-sticky mobile header.
+   - §45: Added a `useEffect` that updates localStorage's
+     `last-seen-announcements-${clubId}` to the latest announcement's
+     createdAt whenever the user is on the announcements view (so the nav
+     dot clears).
+   - §42: Applied `scrollbar-thin` to both the compose + edit dialog bodies.
+7. `src/components/views/chat-view.tsx`:
+   - Replaced both `EmptyState` icons ("No conversation selected" + "No
+     messages yet") with `ChatEmptyIllustration`.
+8. `src/components/views/hours-view.tsx`:
+   - Replaced both `StatusBadge` instances (row + mobile card) with
+     `StatusPill`. Removed unused `StatusBadge` import; added `initials`,
+     `avatarColor`, and `Avatar` imports.
+   - §39: Added an `Avatar` next to the "reviewed by {name}" text in the
+     mobile `HoursCard` (uses initials fallback since the API doesn't
+     expose reviewer avatarUrl).
+   - §36: Added `title="Delete entry"` to both delete buttons.
+9. `src/components/views/approvals-view.tsx`:
+   - Replaced all `StatusBadge` instances (PendingRow, PendingCard,
+     ReviewedRow, ReviewedCard) with `StatusPill`. Removed unused
+     `StatusBadge` import; added `initials`, `avatarColor`, `Avatar`
+     imports.
+   - §39: Added `Avatar + name` to the Member cell in `ApprovalRow`,
+     `ApprovalCard`, `ReviewedRow`, `ReviewedCard`, and the Reviewer cell
+     in `ReviewedRow` (initials fallback for reviewer).
+   - §36: Added `title="Delete entry"` to all delete buttons (desktop +
+     mobile).
+10. `src/components/views/dashboard-view.tsx`:
+    - §38: Added a `h-1 w-full bg-gradient-to-r from-club via-club/50
+      to-transparent` accent strip pinned to the top of the HeroPanel
+      (sits above the dot-grid texture).
+    - §41: Added a new `HoursMilestoneCelebration` component mounted at
+      the end of the dashboard return. It checks localStorage's
+      `last-hours-milestone-${clubId}` against the current
+      `approvedHours`; if the user has crossed a new milestone (50,
+      100, 250, 500), it pops a centered confetti burst reusing the
+      existing `badge-confetti-piece` CSS keyframes. Auto-dismisses after
+      4.5s. First-run seeds the baseline silently so existing users
+      aren't surprised.
+11. `src/components/app-shell.tsx`:
+    - §45: Added a `useUnreadAnnouncements(clubId)` hook that polls the
+      announcements list (60s) and compares the latest createdAt to
+      localStorage. Returns true when there's an unseen announcement;
+      AnnouncementsView's new effect updates the timestamp when the user
+      visits. Added a small `size-1.5 rounded-full bg-club` dot to the
+      Announcements nav item when this is true (hidden when the item is
+      the active view).
+    - §44: Wrapped the avatar upload area in the SettingsDialog in a
+      drop zone with `onDragOver`/`onDragLeave`/`onDrop` handlers; while
+      dragging, renders `border-2 border-dashed border-club
+      bg-club-muted/20`. Reuses the same upload path as the file input.
+    - §42: Applied `scrollbar-thin` to the mobile Sheet nav container +
+      the desktop sidebar nav container.
+12. `src/components/ui/command.tsx`:
+    - §42: Added `scrollbar-thin` to `CommandList` so the command palette
+      results use the same thin scrollbar as the rest of the app.
+
+### Verified Already Implemented (no changes needed)
+- §31 Sheets: shadcn Sheet primitive already ships
+  `slide-in-from-right/left/top/bottom` animations — verified.
+- §34 Bulk action bar: `approvals-view.tsx` already has a sticky
+  `bottom-3` floating bulk-approve/reject bar that appears when
+  `selectedInScope.size > 0`. Tasks don't have multi-select (uses drag-
+  and-drop + single delete) — skipped per spec.
+- §36 Chat message actions: already use the shadcn `Tooltip` component
+  with `<TooltipContent>Edit</TooltipContent>`, `Pin`/`Unpin`,
+  `Delete`. Notification bell + theme toggle already have `aria-label`
+  attributes. No changes needed.
+- §42 Existing scrollbar-thin: chat-view, notifications-bell dropdown,
+  several members-view dropdowns already had `scrollbar-thin`. Added it
+  to the remaining containers listed above.
+
+### Verification
+- `bun run lint` → **EXIT 0**, zero errors / zero warnings (after fixing
+  an initial `react-hooks/set-state-in-effect` warning by deferring the
+  `useUnreadAnnouncements` effect body to a microtask, matching the
+  existing `UrgentBanner` pattern).
+- Dev server running (PID 1758/1772/6321 on port 3000). Did NOT restart.
+- Did NOT touch API routes, prisma schema, or data fetching logic.
+- Did NOT add new npm packages — only existing shadcn primitives,
+  lucide-react icons, and existing `api` client.
+- The pre-existing `prisma db:push` failure (schema swapped to
+  postgres by a prior agent; .env still has a sqlite URL) is unchanged
+  and out of scope.

@@ -201,7 +201,7 @@ export function TeamsView() {
           title="No teams yet"
           description={
             isExec
-              ? "Create your first team to organize members around specific projects, events, or ongoing responsibilities."
+              ? "Create one to organize your members."
               : "Your club hasn't created any teams yet. Check back soon."
           }
           action={
@@ -214,7 +214,7 @@ export function TeamsView() {
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.teams.map((team) => (
+          {data.teams.map((team, i) => (
             <TeamCard
               key={team.id}
               clubId={clubId}
@@ -222,6 +222,7 @@ export function TeamsView() {
               isExec={isExec}
               online={online}
               onOpen={() => setSelectedTeamId(team.id)}
+              index={i}
             />
           ))}
         </div>
@@ -275,14 +276,27 @@ function TeamCard({
   isExec,
   online,
   onOpen,
+  index,
 }: {
   clubId: string
   team: Team
   isExec: boolean
   online: Set<string>
   onOpen: () => void
+  index: number
 }) {
-  const visibleMembers = team.members.slice(0, 5)
+  // Deterministic accent palette per card position — no random flicker on
+  // re-render. Stable across realtime updates.
+  const ACCENT_PALETTE = [
+    "#f97316",
+    "#06b6d4",
+    "#8b5cf6",
+    "#ec4899",
+    "#14b8a6",
+    "#eab308",
+  ]
+  const accent = ACCENT_PALETTE[index % ACCENT_PALETTE.length]
+  const visibleMembers = team.members.slice(0, 4)
   const overflow = team.members.length - visibleMembers.length
   // Briefly highlight when this card was just touched by another user's
   // realtime action (create/rename/member add/remove).
@@ -301,16 +315,37 @@ function TeamCard({
         }
       }}
       className={cn(
-        "card-quiet p-5 cursor-pointer hover:shadow-md hover:border-club/40 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-club animate-fade-in",
+        "group relative overflow-hidden rounded-2xl border border-border bg-card p-5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-club animate-fade-in",
         flash && "ring-2 ring-club/50 shadow-md"
       )}
     >
-      <div className="pb-3">
+      {/* Colored accent strip across the top edge — gives each team identity. */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-1.5"
+        style={{ backgroundColor: accent }}
+      />
+      {/* Soft tinted halo in the top-right corner — picks up the accent color
+          without overwhelming the card content. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full opacity-[0.08] blur-2xl transition-opacity group-hover:opacity-[0.14]"
+        style={{ backgroundColor: accent }}
+      />
+
+      <div className="relative pt-2 pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="text-card-title truncate">{team.name}</h3>
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: accent }}
+              />
+              <h3 className="text-card-title truncate">{team.name}</h3>
+            </div>
             {team.description ? (
-              <p className="text-caption mt-1 line-clamp-2">
+              <p className="text-caption mt-1 line-clamp-2 text-muted-foreground">
                 {team.description}
               </p>
             ) : (
@@ -320,12 +355,12 @@ function TeamCard({
           {isExec && <TeamCardMenu clubId={clubId} team={team} />}
         </div>
       </div>
-      <div className="space-y-3">
+      <div className="relative space-y-3">
         <div className="flex items-center gap-2 min-h-[32px]">
           {team.members.length === 0 ? (
             <span className="text-caption text-muted-foreground/70">No members yet</span>
           ) : (
-            <div className="flex -space-x-2">
+            <div className="flex items-center -space-x-2">
               {visibleMembers.map((m) => (
                 <Avatar
                   key={m.id}
@@ -346,6 +381,11 @@ function TeamCard({
                 <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium text-muted-foreground">
                   +{overflow}
                 </div>
+              )}
+              {overflow > 0 && (
+                <span className="ml-2.5 text-caption text-muted-foreground">
+                  +{overflow} more
+                </span>
               )}
             </div>
           )}

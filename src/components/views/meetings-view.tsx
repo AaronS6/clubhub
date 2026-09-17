@@ -230,7 +230,7 @@ export function MeetingsView() {
     return (
       <div className="p-6">
         <EmptyState
-          icon={<CalendarDays className="size-10" />}
+          icon={<CalendarDays className="h-8 w-8" />}
           title="No club selected"
           description="Join or create a club to manage meetings."
         />
@@ -303,10 +303,10 @@ export function MeetingsView() {
               onRetry={() => refetch()}
               onEdit={(m) => setEditingMeeting(m)}
               onOpenDetail={(m) => setDetailMeeting(m)}
-              emptyTitle="No upcoming meetings"
+              emptyTitle="No meetings scheduled"
               emptyDescription={
                 isExec
-                  ? "Schedule the next meeting to get RSVPs rolling."
+                  ? "Plan one to get the team together."
                   : "Check back soon — execs haven't scheduled anything yet."
               }
               emptyAction={
@@ -429,7 +429,7 @@ function MeetingsList({
   if (meetings.length === 0) {
     return (
       <EmptyState
-        icon={<CalendarDays className="size-10" />}
+        icon={<CalendarDays className="h-8 w-8" />}
         title={emptyTitle}
         description={emptyDescription}
         action={emptyAction}

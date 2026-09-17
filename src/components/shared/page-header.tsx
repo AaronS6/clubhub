@@ -97,12 +97,17 @@ export function RoleBadge({ role }: { role: "member" | "executive" }) {
 
 export function EmptyState({
   icon,
+  illustration,
   title,
   description,
   action,
   className,
 }: {
   icon?: ReactNode
+  /** Optional line-art illustration — when provided, replaces the icon-in-circle
+   *  entirely (rendered raw, no muted circle wrapper). Use for the high-visibility
+   *  empty states (chat, tasks, members, announcements) per §32. */
+  illustration?: ReactNode
   title: string
   description?: string
   action?: ReactNode
@@ -115,17 +120,208 @@ export function EmptyState({
         className
       )}
     >
-      {icon && (
+      {illustration ? (
+        illustration
+      ) : icon ? (
         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
           {icon}
         </div>
-      )}
+      ) : null}
       <h3 className="text-card-title">{title}</h3>
       {description && (
         <p className="text-body text-muted-foreground mt-1.5 max-w-sm">{description}</p>
       )}
       {action && <div className="mt-5">{action}</div>}
     </div>
+  )
+}
+
+/* =========================================================================
+   §32 — Custom empty-state illustrations (line art).
+   Each is a small inline SVG (~40px) using muted-foreground stroke with a
+   single accent line in the club accent color (currentColor with text-club).
+   ========================================================================= */
+
+export function ChatEmptyIllustration() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="mb-4 text-muted-foreground"
+    >
+      {/* Speech bubble outline (muted) */}
+      <path
+        d="M10 14a4 4 0 0 1 4-4h20a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4h-9l-7 6v-6h-4a4 4 0 0 1-4-4V14Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      {/* Single accent line inside the bubble */}
+      <path
+        d="M16 18h12"
+        stroke="var(--club)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {/* Second muted line */}
+      <path
+        d="M16 22h8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+    </svg>
+  )
+}
+
+export function TasksEmptyIllustration() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="mb-4 text-muted-foreground"
+    >
+      {/* Checklist outline (muted) */}
+      <rect
+        x="10"
+        y="8"
+        width="28"
+        height="32"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      {/* First checkmark row — accent */}
+      <path
+        d="M15 17l2 2 4-4"
+        stroke="var(--club)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Line next to accent check */}
+      <path
+        d="M24 18h8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+      {/* Second row check (muted) */}
+      <path
+        d="M15 27l2 2 4-4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.6"
+      />
+      <path
+        d="M24 28h8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+    </svg>
+  )
+}
+
+export function MembersEmptyIllustration() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="mb-4 text-muted-foreground"
+    >
+      {/* Two people outline (muted) */}
+      <circle
+        cx="18"
+        cy="17"
+        r="5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      {/* Accent body for the front person */}
+      <path
+        d="M9 36c0-5 4-8 9-8s9 3 9 8"
+        stroke="var(--club)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      {/* Back person (muted, slightly offset) */}
+      <circle
+        cx="32"
+        cy="19"
+        r="4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        opacity="0.6"
+      />
+      <path
+        d="M28 32c0-3 3-6 6-6s6 3 6 6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+    </svg>
+  )
+}
+
+export function AnnouncementsEmptyIllustration() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className="mb-4 text-muted-foreground"
+    >
+      {/* Megaphone outline (muted) */}
+      <path
+        d="M12 20v8l16 6V14L12 20Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      {/* Handle (muted) */}
+      <path
+        d="M12 22H8v4h4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      {/* Sound waves — accent */}
+      <path
+        d="M32 18c2 2 2 8 0 10"
+        stroke="var(--club)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M35 15c4 4 4 12 0 16"
+        stroke="var(--club)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        opacity="0.6"
+      />
+    </svg>
   )
 }
 

@@ -26,6 +26,17 @@ import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescri
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -135,6 +146,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const params = useSearchParams()
   const { theme, setTheme } = useTheme()
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark")
+
+  // §45 — Unread-announcements indicator. Polls the first page of the
+  // announcements list for the current club and compares the latest item's
+  // createdAt to a localStorage timestamp (`last-seen-announcements-<clubId>`).
+  // When newer, returns true so the Announcements nav item can show a
+  // small accent dot.
+  const hasUnreadAnnouncements = useUnreadAnnouncements(currentClubId ?? undefined)
 
   // Bootstrap: fetch /api/me once the session is authenticated. This is the
   // gate that keeps the entire app on the loading screen, so it has a hard
@@ -281,7 +299,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-md w-full text-left transition-colors",
+                    "group relative flex items-center gap-2.5 rounded-md w-full text-left transition-colors min-h-[44px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     weight === "home" && "px-3 py-2 text-sm font-semibold",
                     weight === "work" && "px-3 py-1.5 text-sm font-medium",
                     weight === "manage" && "px-3 py-1.5 text-[13px] font-medium text-muted-foreground",
@@ -311,6 +329,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     active ? "text-club" : "text-muted-foreground/80 group-hover:text-foreground"
                   )} />
                   <span className="flex-1 truncate">{item.label}</span>
+                  {/* §45 — Unread indicator. Shows a small accent dot when
+                      there are unseen announcements on the Announcements
+                      nav item. Hidden for other nav items and when the
+                      item itself is the active view. */}
+                  {item.view === "announcements" &&
+                    hasUnreadAnnouncements &&
+                    !active && (
+                      <span
+                        aria-label="New announcements"
+                        className="ml-auto inline-block size-1.5 shrink-0 rounded-full bg-club"
+                      />
+                    )}
                   {item.execOnly && <ShieldCheck className="ml-auto h-3 w-3 text-muted-foreground/50" />}
                 </button>
               )
@@ -335,9 +365,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-72 p-0 flex flex-col">
+        <SheetContent side="left" className="w-72 p-0 flex flex-col rounded-r-2xl overflow-hidden">
           {/* Nav at the top */}
-          <div className="flex-1 overflow-y-auto">{navList}</div>
+          <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
           {/* Club switcher + theme toggle at the BOTTOM of the mobile drawer */}
           <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
           <div className="border-t p-2 shrink-0">
@@ -410,7 +440,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               panel border + the nav's own padding provides the separation. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
-          <div className="flex-1 overflow-y-auto">{navList}</div>
+          <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
           {/* Theme toggle pinned to the BOTTOM of the sidebar */}
           <div className="p-2 shrink-0">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
@@ -438,6 +468,87 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Footer() {
   // Footer removed per user request
+}
+
+/**
+ * §45 — Hook: unread announcements indicator.
+ *
+ * Polls the first page of the announcements list for the current club and
+ * compares the latest item's createdAt to a localStorage timestamp under
+ * `last-seen-announcements-<clubId>`. Returns true when there's at least
+ * one announcement newer than the stored timestamp.
+ *
+ * The timestamp is updated (in AnnouncementsView) whenever the user opens
+ * the announcements view, so the dot clears once they've "seen" them.
+ */
+function useUnreadAnnouncements(clubId: string | undefined): boolean {
+  const [hasUnread, setHasUnread] = useState(false)
+
+  const { data } = useQuery<{ items: { id: string; createdAt: string }[] }>({
+    queryKey: ["announcements-unread-peek", clubId ?? ""],
+    queryFn: () =>
+      api<{ items: { id: string; createdAt: string }[] }>(
+        `/api/clubs/${clubId}/announcements?page=1`
+      ),
+    enabled: !!clubId,
+    // Poll every 60s — same cadence as the urgent banner. Don't hammer.
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    // Deferred to a microtask so we don't call setState synchronously inside
+    // the effect body (avoids cascading renders per the React 19 lint rule).
+    Promise.resolve().then(() => {
+      if (cancelled) return
+      if (!clubId) {
+        setHasUnread(false)
+        return
+      }
+      const items = data?.items
+      if (!items || items.length === 0) {
+        setHasUnread(false)
+        return
+      }
+      let lastSeen = 0
+      try {
+        const raw = localStorage.getItem(`last-seen-announcements-${clubId}`)
+        if (raw) {
+          const parsed = parseInt(raw, 10)
+          if (!isNaN(parsed)) lastSeen = parsed
+        }
+      } catch {
+        setHasUnread(false)
+        return
+      }
+      // First-run (no stored baseline) — seed silently so we don't surprise
+      // the user with a dot for announcements they already implicitly know
+      // about.
+      if (lastSeen === 0) {
+        const latest = new Date(items[0].createdAt).getTime()
+        try {
+          localStorage.setItem(
+            `last-seen-announcements-${clubId}`,
+            String(latest)
+          )
+        } catch {
+          // ignore
+        }
+        setHasUnread(false)
+        return
+      }
+      const hasNew = items.some(
+        (it) => new Date(it.createdAt).getTime() > lastSeen
+      )
+      setHasUnread(hasNew)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data, clubId])
+
+  return hasUnread
 }
 
 // ---------------------------------------------------------------------------
@@ -1041,6 +1152,8 @@ function SettingsDialog({
   const [avatarUrl, setAvatarUrl] = useState(session?.user?.image ?? "")
   const [loading, setLoading] = useState(false)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  // §44 — Drag-and-drop state for the avatar upload drop zone.
+  const [avatarDragging, setAvatarDragging] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const setClubs = useAppStore((s) => s.setClubs)
@@ -1070,6 +1183,41 @@ function SettingsDialog({
     } finally {
       setAvatarUploading(false)
       if (avatarFileRef.current) avatarFileRef.current.value = ""
+    }
+  }
+
+  // §44 — Drag-and-drop handlers for the avatar upload area. Allow dropping
+  // an image file onto the avatar/Upload button row. Re-uses the same upload
+  // path as the file-input flow.
+  function onAvatarDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer?.types?.includes("Files")) return
+    e.preventDefault()
+    setAvatarDragging(true)
+  }
+  function onAvatarDragLeave(e: React.DragEvent) {
+    if (e.currentTarget === e.target) setAvatarDragging(false)
+  }
+  async function onAvatarDrop(e: React.DragEvent) {
+    if (!e.dataTransfer?.files?.length) return
+    e.preventDefault()
+    setAvatarDragging(false)
+    const f = e.dataTransfer.files[0]
+    if (!f.type.startsWith("image/")) {
+      toast.error("Please drop an image file")
+      return
+    }
+    setAvatarUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", f)
+      const res = await apiUpload<{ avatarUrl: string }>("/api/me/avatar", fd)
+      setAvatarUrl(res.avatarUrl)
+      await update({ image: res.avatarUrl })
+      toast.success("Avatar updated")
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't upload avatar")
+    } finally {
+      setAvatarUploading(false)
     }
   }
 
@@ -1136,7 +1284,18 @@ function SettingsDialog({
               </div>
               <div className="space-y-2">
                 <Label>Avatar</Label>
-                <div className="flex items-center gap-4">
+                {/* §44 — Drop zone wrapper. The dashed border + tinted bg appear
+                    only when avatarDragging; the inner avatar + buttons row is
+                    unchanged otherwise. */}
+                <div
+                  className={cn(
+                    "flex items-center gap-4 rounded-md p-2 -m-2 transition-colors",
+                    avatarDragging && "border-2 border-dashed border-club bg-club-muted/20"
+                  )}
+                  onDragOver={onAvatarDragOver}
+                  onDragLeave={onAvatarDragLeave}
+                  onDrop={onAvatarDrop}
+                >
                   <Avatar className="h-16 w-16 shrink-0 border">
                     {avatarUrl ? (
                       <AvatarImage src={avatarUrl} alt={name || "Your avatar"} />
@@ -1198,6 +1357,8 @@ function SettingsDialog({
               <Button variant="club" onClick={saveProfile} disabled={loading}>
                 {loading ? "Saving..." : "Save profile"}
               </Button>
+
+              <DangerZoneSection isExec={isExec} />
             </div>
           </TabsContent>
 
@@ -1222,6 +1383,174 @@ function SettingsDialog({
         </Tabs>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Danger Zone — appears at the bottom of the Profile tab. Groups the two
+ * destructive club-level actions (leave + delete) inside a red-tinted panel
+ * so they're visually separated from the rest of the settings. Both actions
+ * reuse the existing API endpoints (`/api/clubs/[id]/leave` and
+ * `DELETE /api/clubs/[id]`); no data logic is changed here.
+ */
+function DangerZoneSection({ isExec }: { isExec: boolean }) {
+  const clubId = useAppStore((s) => s.currentClubId)
+  const clubName = useAppStore((s) => s.currentClub?.clubName) ?? "this club"
+  const setClubs = useAppStore((s) => s.setClubs)
+  const clubs = useAppStore((s) => s.clubs)
+  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState("")
+  const [leaving, setLeaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Hide the entire section if the user isn't currently in a club context.
+  if (!clubId) return null
+
+  async function handleLeave() {
+    setLeaving(true)
+    try {
+      await api(`/api/clubs/${clubId}/leave`, { method: "POST" })
+      toast.success("You left the club")
+      const me = await api<{ memberships: any[] }>("/api/me")
+      setClubs(me.memberships ?? clubs.filter((c) => c.clubId !== clubId))
+      setLeaveOpen(false)
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setLeaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deletePassword.trim()) {
+      toast.error("Enter the club password to confirm deletion")
+      return
+    }
+    setDeleting(true)
+    try {
+      await api(`/api/clubs/${clubId}`, {
+        method: "DELETE",
+        json: { confirmPassword: deletePassword },
+      })
+      toast.success(`Club "${clubName}" has been permanently deleted`)
+      setDeleteOpen(false)
+      setTimeout(() => window.location.reload(), 500)
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete club")
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="border border-red-200 dark:border-red-900/50 rounded-xl p-4 mt-4">
+      <div className="flex items-center gap-2 mb-1">
+        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+        <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">
+          Danger Zone
+        </h3>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        These actions are permanent and cannot be undone.
+      </p>
+
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Leave this club</p>
+          <p className="text-xs text-muted-foreground">
+            You&apos;ll lose access immediately and can rejoin later with the club code.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40 shrink-0"
+          onClick={() => setLeaveOpen(true)}
+        >
+          <LogOut className="mr-1.5 h-4 w-4" /> Leave club
+        </Button>
+      </div>
+
+      {isExec && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-t border-red-200/60 dark:border-red-900/40 mt-1">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Delete this club</p>
+            <p className="text-xs text-muted-foreground">
+              Permanently removes &quot;{clubName}&quot; and all of its data.
+            </p>
+          </div>
+          <AlertDialog open={deleteOpen} onOpenChange={(v) => { setDeleteOpen(v); if (!v) setDeletePassword("") }}>
+            <AlertDialogTrigger asChild>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground/70 hover:text-red-600 dark:hover:text-red-400 transition-colors underline-offset-2 hover:underline shrink-0"
+              >
+                Delete this club
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  Delete &quot;{clubName}&quot;?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes the club, all members, teams, tasks, hours, and messages.
+                  This cannot be undone. Enter the club password to confirm.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <Input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Club password"
+                className="mt-2"
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleDelete()
+                  }}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting…" : "Delete club"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
+
+      {/* Leave confirm */}
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave this club?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will lose access to this club immediately. If you are the only executive, you must
+              promote another member first. You can rejoin later with the club code and password.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={leaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault()
+                handleLeave()
+              }}
+              disabled={leaving}
+            >
+              {leaving ? "Leaving…" : "Leave club"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }
 
