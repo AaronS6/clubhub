@@ -1150,10 +1150,10 @@ function HeroPanel({
           opacity: 0.05,
         }}
       />
-      {/* Accent edge — subtle vertical bar pinned to the left edge. */}
+      {/* Accent edge — subtle vertical bar pinned to the left edge, curved top/bottom. */}
       <div
         aria-hidden
-        className="absolute left-0 top-0 h-full w-1.5 bg-club"
+        className="absolute left-0 top-0 h-full w-1.5 bg-club rounded-l-2xl"
       />
 
       <div className="relative flex items-start justify-between gap-4 flex-wrap">

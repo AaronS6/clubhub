@@ -1979,6 +1979,13 @@ function CommentsSection({
     addMutation.mutate(body.trim())
   }
 
+  // Direct click handler — ensures the button works even if the form
+  // submit event doesn't fire properly (e.g. inside a Sheet/Dialog).
+  function handlePostClick() {
+    if (!body.trim() || addMutation.isPending) return
+    addMutation.mutate(body.trim())
+  }
+
   const comments = data?.comments ?? []
 
   return (
@@ -2044,6 +2051,7 @@ function CommentsSection({
           placeholder="Write a comment…"
           rows={2}
           maxLength={5000}
+          className={cn(!body.trim() && "border-border", body.trim() && "border-club/40 focus-visible:ring-club/20")}
         />
         <div className="flex justify-end">
           <Button
@@ -2051,6 +2059,11 @@ function CommentsSection({
             variant="club"
             size="sm"
             disabled={!body.trim() || addMutation.isPending}
+            onClick={handlePostClick}
+            className={cn(
+              "transition-all duration-150",
+              body.trim() && !addMutation.isPending && "shadow-sm hover:shadow-md hover:brightness-95"
+            )}
           >
             {addMutation.isPending && (
               <Loader2 className="size-4 animate-spin" />
