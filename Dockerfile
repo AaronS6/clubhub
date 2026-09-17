@@ -15,8 +15,12 @@ COPY package.json bun.lock* ./
 COPY prisma ./prisma
 RUN bun install --frozen-lockfile
 
-# Build the app (prisma generate + next build)
+# Build the app. The committed schema uses SQLite for local dev; flip the
+# provider to PostgreSQL here so the generated Prisma client targets the
+# Supabase Postgres database in production. The schema has no Postgres-only
+# features, so this swap is safe.
 COPY . .
+RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 RUN bun run build
 
 # --- Production image --------------------------------------------------------

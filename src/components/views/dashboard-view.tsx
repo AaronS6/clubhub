@@ -1211,7 +1211,7 @@ function HeroPanel({
             className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
           />
         ) : (
-          <div className="h-7 max-w-[220px]">
+          <div className="h-9 max-w-[240px]">
             <Sparkline data={hoursTrend} />
           </div>
         )}
@@ -1233,7 +1233,7 @@ function ProgressRingTile({
   hoursTrend: { date: string; hours: number }[]
   onViewHours?: () => void
 }) {
-  // Two states: goal set → conic-gradient ring; no goal → big number + sparkline.
+  // Two states: goal set → SVG progress ring; no goal → big number + sparkline.
   const Comp = onViewHours ? "button" : "div"
   return (
     <Comp
@@ -1264,31 +1264,12 @@ function ProgressRingTile({
 
       {hoursGoal > 0 ? (
         <div className="flex items-center gap-5 flex-1">
-          {/* CSS conic-gradient progress ring (~80px). The outer div paints
-              the ring via conic-gradient; the inner div is the donut hole
-              (bg-card) showing the absolute hours value. */}
-          <div
-            className="relative h-20 w-20 shrink-0 rounded-full bg-muted"
-            role="img"
-            aria-label={`${Math.round(hoursPct)}% of ${hoursGoal} hour goal`}
-          >
-            <div
-              className="absolute inset-0 rounded-full"
-              style={{
-                background: `conic-gradient(var(--club-accent) ${hoursPct}%, transparent 0)`,
-              }}
-            />
-            <div className="absolute inset-[6px] rounded-full bg-card flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-base font-bold tabular-nums leading-none">
-                  {fmtHours(approvedHours)}h
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-                  of {hoursGoal}h
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* SVG progress ring — perfect circle with rounded caps + track. */}
+          <ProgressRing
+            percent={hoursPct}
+            label={`${fmtHours(approvedHours)}h`}
+            sublabel={`of ${hoursGoal}h`}
+          />
           <div className="flex-1 min-w-0">
             <div className="text-2xl font-bold tabular-nums">
               {Math.round(hoursPct)}%
@@ -1306,7 +1287,7 @@ function ProgressRingTile({
             {fmtHours(approvedHours)}h
           </div>
           <p className="text-caption mt-1 mb-3">Approved · last 30 days</p>
-          <div className="h-7 max-w-[260px]">
+          <div className="h-10 max-w-[280px]">
             <Sparkline data={hoursTrend} />
           </div>
         </div>
@@ -1661,9 +1642,10 @@ function bucketToSeven(trend: { date: string; hours: number }[]): number[] {
   return buckets
 }
 
-// Tiny inline-SVG sparkline (no recharts). 7 data points, area fill + line +
-// end dot, all tinted with --club-accent. Scales horizontally via viewBox +
-// preserveAspectRatio="none" so it can sit inside any width container.
+// Tiny inline-SVG sparkline (no recharts). 7 data points, smooth bezier
+// curve, gradient area fill, and a crisp end dot rendered as an HTML
+// element (so it never gets distorted into an ellipse by non-uniform
+// SVG scaling). Fills its container width via a responsive viewBox.
 function Sparkline({
   data,
   className,
@@ -1674,39 +1656,152 @@ function Sparkline({
   const points = bucketToSeven(data)
   const max = Math.max(...points, 1)
   const w = 100
-  const h = 28
-  const step = points.length > 1 ? w / (points.length - 1) : w
-  const yFor = (v: number) => h - (v / max) * (h - 4) - 2
-  const lineD = points
-    .map(
-      (p, i) =>
-        `${i === 0 ? "M" : "L"} ${(i * step).toFixed(1)} ${yFor(p).toFixed(1)}`
-    )
-    .join(" ")
-  const areaD = `${lineD} L ${w} ${h} L 0 ${h} Z`
-  const lastX = (points.length - 1) * step
-  const lastY = yFor(points[points.length - 1])
+  const h = 40
+  const padX = 2
+  const padY = 4
+  const usableW = w - padX * 2
+  const usableH = h - padY * 2
+  const step = points.length > 1 ? usableW / (points.length - 1) : usableW
+  const yFor = (v: number) => padY + usableH - (v / max) * usableH
+
+  // Build smooth bezier path through the points (Catmull-Rom → cubic).
+  const coords = points.map((p, i) => ({
+    x: padX + i * step,
+    y: yFor(p),
+  }))
+  let lineD = `M ${coords[0].x.toFixed(2)} ${coords[0].y.toFixed(2)}`
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p0 = coords[i === 0 ? 0 : i - 1]
+    const p1 = coords[i]
+    const p2 = coords[i + 1]
+    const p3 = coords[i + 2 < coords.length ? i + 2 : coords.length - 1]
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = p1.y + (p2.y - p0.y) / 6
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = p2.y - (p3.y - p1.y) / 6
+    lineD += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+  }
+  const baselineY = padY + usableH
+  const areaD = `${lineD} L ${coords[coords.length - 1].x.toFixed(2)} ${baselineY} L ${coords[0].x.toFixed(2)} ${baselineY} Z`
+
+  const last = coords[coords.length - 1]
+  const dotLeftPct = (last.x / w) * 100
+  const dotTopPct = (last.y / h) * 100
+
   return (
-    <svg
-      width="100%"
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      className={cn("overflow-visible", className)}
-      aria-hidden
-    >
-      <path d={areaD} fill="var(--club-accent)" fillOpacity={0.12} />
-      <path
-        d={lineD}
-        stroke="var(--club-accent)"
-        strokeWidth={1.5}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
+    <div className={cn("relative h-full w-full", className)}>
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        className="overflow-visible block"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id="spark-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--club-accent)" stopOpacity={0.28} />
+            <stop offset="100%" stopColor="var(--club-accent)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill="url(#spark-area)" />
+        <path
+          d={lineD}
+          stroke="var(--club-accent)"
+          strokeWidth={2}
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {/* End dot rendered in HTML so it stays a perfect circle regardless
+          of the SVG’s non-uniform scaling. */}
+      <span
+        className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-club ring-2 ring-background"
+        style={{
+          left: `${dotLeftPct}%`,
+          top: `${dotTopPct}%`,
+        }}
       />
-      <circle cx={lastX} cy={lastY} r={1.8} fill="var(--club-accent)" />
-    </svg>
+    </div>
+  )
+}
+
+// SVG progress ring — a perfect circle every time (no conic-gradient
+// distortion). Track + accent arc with rounded caps, value centered.
+function ProgressRing({
+  percent,
+  size = 80,
+  stroke = 7,
+  label,
+  sublabel,
+}: {
+  percent: number
+  size?: number
+  stroke?: number
+  label?: string
+  sublabel?: string
+}) {
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const clamped = Math.max(0, Math.min(100, percent))
+  const offset = c * (1 - clamped / 100)
+  const gid = "ring-grad"
+  return (
+    <div
+      className="relative shrink-0"
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`${Math.round(clamped)}% complete`}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="block -rotate-90"
+        aria-hidden
+      >
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="var(--club-accent)" />
+            <stop offset="100%" stopColor="var(--club-accent-2, var(--club-accent))" />
+          </linearGradient>
+        </defs>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--muted)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={`url(#${gid})`}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1)" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-base font-bold tabular-nums leading-none">
+            {label ?? `${Math.round(clamped)}%`}
+          </div>
+          {sublabel && (
+            <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
+              {sublabel}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

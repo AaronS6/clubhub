@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
@@ -24,11 +24,11 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MentionableTextarea, type MentionableMember } from "@/components/ui/mentionable-textarea"
+import { RichText, MarkdownToolbar } from "@/components/shared/rich-text"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -250,10 +250,14 @@ export function AnnouncementsView() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flow-root">
       {/* §37 — Sticky page header on desktop. Hidden on mobile to avoid
-          double-stacking with the mobile nav. */}
-      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-b border-border/60">
+          double-stacking with the mobile nav. Negative top margin pulls
+          it flush to the top bar (cancelling the scroll container's
+          p-4/md:p-6 top padding); negative horizontal margins make it
+          span full width. The flow-root wrapper stops the negative
+          margin from collapsing into ancestors so it applies here. */}
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 md:-mx-6 -mt-4 md:-mt-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Announcements"
           description="Stay up to date with club news, pinned notices, and discussions."
@@ -266,8 +270,8 @@ export function AnnouncementsView() {
           }
         />
       </div>
-      {/* Mobile (non-sticky) header */}
-      <div className="sm:hidden">
+      {/* Mobile (non-sticky) header — also pulled flush to the top bar. */}
+      <div className="sm:hidden -mx-4 -mt-4 px-4 pt-2 pb-3 border-b border-border/60 bg-background">
         <PageHeader
           title="Announcements"
           description="Stay up to date with club news, pinned notices, and discussions."
@@ -503,9 +507,7 @@ function AnnouncementCard({
         {announcement.title && (
           <h3 className="text-card-title leading-tight">{announcement.title}</h3>
         )}
-        <div className="text-body whitespace-pre-wrap break-words leading-relaxed">
-          {linkify(announcement.body)}
-        </div>
+        <RichText className="text-body">{announcement.body}</RichText>
 
         {/* Reaction bar */}
         <ReactionBar
@@ -965,6 +967,7 @@ function ComposeAnnouncementDialog({
   const [isUrgent, setIsUrgent] = useState(false)
   const [titleError, setTitleError] = useState<string | null>(null)
   const [bodyError, setBodyError] = useState<string | null>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -1003,14 +1006,14 @@ function ComposeAnnouncementDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
-        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
+        <DialogHeader className="px-4 pt-3 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>New announcement</DialogTitle>
           <DialogDescription>
             Share an update with all members. Plain text is fine — line breaks are preserved.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4 pb-24 sm:pb-6">
             <div className="space-y-2">
               <Label htmlFor="ann-title">Title</Label>
               <Input
@@ -1031,15 +1034,26 @@ function ComposeAnnouncementDialog({
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ann-body">Body</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="ann-body">Body</Label>
+                <span className="text-caption text-muted-foreground">**bold** *italic* # heading</span>
+              </div>
+              <MarkdownToolbar
+                textareaRef={bodyRef}
+                onValueChange={(v) => {
+                  setBody(v)
+                  if (bodyError) setBodyError(null)
+                }}
+              />
               <Textarea
+                ref={bodyRef}
                 id="ann-body"
                 value={body}
                 onChange={(e) => {
                   setBody(e.target.value)
                   if (bodyError) setBodyError(null)
                 }}
-                placeholder="Write your announcement. URLs will become clickable links automatically."
+                placeholder="Write your announcement. Use **bold**, *italic*, # headings, - lists, > quotes, or the toolbar above."
                 rows={6}
                 maxLength={8000}
                 required
@@ -1047,7 +1061,7 @@ function ComposeAnnouncementDialog({
                 className={bodyError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
               <p className="text-xs text-muted-foreground">
-                {body.length}/8000 characters · URLs auto-link
+                {body.length}/8000 characters · markdown supported
               </p>
               {bodyError && (
                 <p className="text-xs text-red-500 mt-1">{bodyError}</p>
@@ -1074,24 +1088,27 @@ function ComposeAnnouncementDialog({
               </Label>
             </div>
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
+          {/* Floating Post button — always visible at the bottom-right
+              corner with a soft blur, so it stays reachable even when the
+              body is taller than the viewport. */}
+          <div className="pointer-events-none absolute bottom-3 right-3 z-20 sm:static sm:z-auto sm:pointer-events-auto">
             <Button
               type="submit"
               variant="club"
               disabled={mutation.isPending || !title.trim() || !body.trim()}
+              className="pointer-events-auto shadow-lg shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
             >
               {mutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> Posting…
                 </>
               ) : (
-                "Post announcement"
+                <>
+                  <Send className="h-4 w-4" /> Post announcement
+                </>
               )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
@@ -1117,6 +1134,7 @@ function EditAnnouncementDialog({
   const [body, setBody] = useState(announcement.body)
   const [isPinned, setIsPinned] = useState(announcement.isPinned)
   const [isUrgent, setIsUrgent] = useState(announcement.isUrgent)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -1143,12 +1161,12 @@ function EditAnnouncementDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
-        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
+        <DialogHeader className="px-4 pt-3 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit announcement</DialogTitle>
           <DialogDescription>Update the title, body, or pin status.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4 pb-24 sm:pb-6">
             <div className="space-y-2">
               <Label htmlFor="edit-title">Title</Label>
               <Input
@@ -1160,8 +1178,13 @@ function EditAnnouncementDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-body">Body</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="edit-body">Body</Label>
+                <span className="text-caption text-muted-foreground">**bold** *italic* # heading</span>
+              </div>
+              <MarkdownToolbar textareaRef={bodyRef} onValueChange={setBody} />
               <Textarea
+                ref={bodyRef}
                 id="edit-body"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -1195,24 +1218,26 @@ function EditAnnouncementDialog({
               </div>
             )}
           </div>
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
+          {/* Floating Save button — always visible at the bottom-right
+              corner with a soft blur. */}
+          <div className="pointer-events-none absolute bottom-3 right-3 z-20 sm:static sm:z-auto sm:pointer-events-auto">
             <Button
               type="submit"
               variant="club"
               disabled={mutation.isPending}
+              className="pointer-events-auto shadow-lg shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
             >
               {mutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" /> Saving…
                 </>
               ) : (
-                "Save changes"
+                <>
+                  <Send className="h-4 w-4" /> Save changes
+                </>
               )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

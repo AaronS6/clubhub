@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { signIn } from "next-auth/react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -10,36 +10,26 @@ import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Users,
-  Clock,
-  CheckSquare,
-  Megaphone,
   Loader2,
-  Sparkles,
   ArrowRight,
-  Mail,
-  CheckCircle2,
   AlertTriangle,
-  KeyRound,
+  LifeBuoy,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
 
-/**
- * Durable, dedicated flag marking that this device has an existing account.
- * Separate from the general Zustand persisted store so it survives store
- * restructures/clears for unrelated reasons. On page load, if this flag is
- * present we default to the Sign In form (most returning users want that).
- * If absent (genuinely new device), we also default to Sign In — most new
- * visitors arrive by invitation (a shared club code) and need to make their
- * first account, so the prominent "Sign up" link is the right CTA.
- */
+// ───────────────────────────────────────────────────────────────────────────
+// First-visit / returning-visitor flag.
+//   • first visit (no flag)       → default to Sign Up
+//   • returning visitor (flag=1)  → default to Log In
+//   • manual tab switches         → never touch the flag
+//   • only a real signup/login    → sets the flag
+// The mount effect below is authoritative (overrides persisted authView).
+// ───────────────────────────────────────────────────────────────────────────
 const HAS_ACCOUNT_KEY = "clubhub_has_account_on_device"
 
 function readHasAccount(): boolean {
@@ -58,21 +48,12 @@ function writeHasAccount() {
   }
 }
 
-const VALUE_PROPS = [
-  { icon: Users, title: "Multi-club workspaces", body: "One account, every club you belong to — fully isolated." },
-  { icon: Clock, title: "Service hour tracking", body: "Submit, get approval, export official PDFs & CSV." },
-  { icon: CheckSquare, title: "Tasks & teams", body: "Kanban boards, subtasks, and team-scoped work." },
-  { icon: Megaphone, title: "Announcements & meetings", body: "Reactions, comments, RSVPs, calendar export." },
-]
-
 export function AuthScreen() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const resetToken = searchParams.get("reset")
 
-  // Reset-password mode takes over the whole screen when ?reset=TOKEN is in
-  // the URL. We render a dedicated "Set a new password" form and on success
-  // we strip the query param and return to the login form.
+  // ?reset=TOKEN → exec-generated reset link (no email involved).
   if (resetToken) {
     return <ResetPasswordScreen token={resetToken} onDone={() => router.replace("/")} />
   }
@@ -93,16 +74,13 @@ function AuthScreenInner() {
   const [signupEmail, setSignupEmail] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
 
-  // Returning-user logic: default to "login" view. The dedicated localStorage
-  // flag is a hint, but both paths land on login-first — the flag is mainly
-  // for future analytics / onboarding decisions.
+  // Mount-only: default view from the durable flag.
+  const didInit = useRef(false)
   useEffect(() => {
-    const hasAccount = readHasAccount()
-    if (!hasAccount && authView !== "signup") {
-      // New device — still default to login with a clear sign-up link.
-      setAuthView("login")
-    }
-  }, [setAuthView, authView])
+    if (didInit.current) return
+    didInit.current = true
+    setAuthView(readHasAccount() ? "login" : "signup")
+  }, [setAuthView])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -146,222 +124,188 @@ function AuthScreenInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-background">
-      {/* Left: value proposition (hidden on small screens).
-          Solid colors only — no gradients. Visual interest comes from a
-          subtle dot-grid texture + a soft accent blob (flat, blurred, not a
-          gradient). */}
-      <aside className="bg-accent-tint hidden md:flex md:w-1/2 lg:w-[55%] flex-col justify-between p-10 lg:p-14 bg-club-subtle/60 dark:bg-club-subtle/20 border-r border-border relative overflow-hidden">
-        {/* Dot-grid texture — very low opacity, barely visible. */}
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-[0.15] dark:opacity-[0.08]"
-          style={{
-            backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-            color: "var(--foreground)",
-          }}
-        />
-        {/* Soft radial gradient behind the value props — adds a gentle visual
-            centerpiece glow in the club accent color. Very low opacity so it
-            reads as ambient light, not a solid block of color. */}
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,var(--club),transparent_70%)] opacity-[0.07]"
-        />
-        {/* Soft accent blob — flat color with blur, NOT a gradient. Positioned
-            off-canvas in the top-right corner as a decorative shape. Slowly
-            floats up and down for a calm, living background. */}
-        <div
-          aria-hidden
-          className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-club/20 blur-3xl animate-[float_8s_ease-in-out_infinite]"
-        />
+    <div className="min-h-screen flex flex-col bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+      {/* ── Header (in-flow at top — never overlaps anything) ─────────────── */}
+      <header className="flex items-center px-5 sm:px-8 py-5 shrink-0">
+        <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+      </header>
 
-        <div className="relative flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground shadow-sm">
-            <Users className="h-5 w-5" />
-          </div>
-          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
-        </div>
-
-        <div className="relative max-w-md">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-club-muted px-2.5 py-1 text-caption-medium font-medium text-club mb-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <Sparkles className="h-3 w-3" />
-            For student leaders & volunteer coordinators
-          </div>
-          <h2 className="text-3xl lg:text-[2.5rem] lg:leading-[1.15] font-semibold tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-500 delay-75">
-            Run your clubs like a team.
-          </h2>
-          <p className="text-body text-muted-foreground mt-4 max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
-            A lightweight workspace for school clubs, volunteer orgs, and
-            community groups.
-          </p>
-
-          <ul className="mt-8 space-y-3.5">
-            {VALUE_PROPS.map((v, i) => {
-              const Icon = v.icon
-              return (
-                <li
-                  key={v.title}
-                  className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500"
-                  style={{ animationDelay: `${200 + i * 80}ms` }}
-                >
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-club-muted text-club">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-base font-semibold">{v.title}</div>
-                    <div className="text-sm text-muted-foreground mt-0.5">{v.body}</div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-
-        <p className="relative text-caption text-muted-foreground">
-          Built for student leaders & volunteer coordinators.
-        </p>
-      </aside>
-
-      {/* Right: auth form */}
-      <main className="flex-1 flex flex-col justify-center px-5 py-10 sm:px-8 md:max-w-md md:mx-auto">
-        {/* Mobile brand header */}
-        <div className="md:hidden flex items-center justify-center gap-2 mb-8">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
-            <Users className="h-5 w-5" />
-          </div>
-          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
-        </div>
-
-        <div className="w-full max-w-sm mx-auto">
-          <div className="mb-6">
-            <h1 className="text-page-title">
-              {authView === "login" ? "Welcome back" : "Create your account"}
+      {/* ── Two-column body (in-flow flex). Each column is bounded so the
+          hero can NEVER cross into the form column. Stacks on mobile. ───── */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+        {/* Left: hero typography — desktop only, in a bounded column with
+            real padding separating it from the form column on the right. */}
+        <section className="hidden md:flex md:w-[55%] lg:w-[58%] flex-col px-8 lg:px-12 xl:px-16 py-8 border-r border-[#1a1815]/10 dark:border-[#f0ebe0]/10">
+          <div className="flex-1 flex items-center">
+            <h1
+              className="font-black tracking-tighter leading-[0.92] text-[#1a1815] dark:text-[#f0ebe0] break-words"
+              style={{ fontSize: "clamp(2.75rem, 6vw, 5rem)" }}
+            >
+              For the
+              <br />
+              people who
+              <br />
+              run things.
             </h1>
-            <p className="text-body text-muted-foreground mt-1.5">
+          </div>
+          <p className="text-xs font-medium text-[#1a1815]/45 dark:text-[#f0ebe0]/45 shrink-0">
+            Built for student leaders &amp; volunteer coordinators.
+          </p>
+        </section>
+
+        {/* Right: form column — bounded, never overlapped by the hero. */}
+        <main className="flex-1 md:w-[45%] lg:w-[42%] flex items-center justify-center px-5 sm:px-8 py-6 md:py-8">
+          <div className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+          {/* Mobile tagline (in-flow, below the header — no overlap) */}
+          <div className="md:hidden mb-6">
+            <h2 className="text-2xl font-black tracking-tight leading-[1.1]">
+              For the people who run things.
+            </h2>
+            <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
+              The workspace for school clubs &amp; volunteer orgs.
+            </p>
+          </div>
+
+          {/* Desktop form heading */}
+          <div className="hidden md:block mb-6">
+            <h2 className="text-2xl font-extrabold tracking-tight">
+              {authView === "login" ? "Welcome back" : "Create your account"}
+            </h2>
+            <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
               {authView === "login"
                 ? "Sign in to manage your clubs, tasks, and service hours."
                 : "Join or create clubs to start collaborating."}
             </p>
           </div>
 
-          {authView === "login" ? (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-body-medium">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="h-10 rounded-lg"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-body-medium">Password</Label>
+          {/* Cross-fade on mode switch */}
+          <div key={authView} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {authView === "login" ? (
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm font-bold tracking-wide uppercase">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password" className="text-sm font-bold tracking-wide uppercase">Password</Label>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club hover:underline transition-colors"
+                      onClick={() => setForgotOpen(true)}
+                    >
+                      Forgot?
+                    </button>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  variant="club"
+                  className="w-full h-12 rounded-none text-base font-bold tracking-wide uppercase shadow-none hover:brightness-105 active:scale-[0.99]"
+                  disabled={loading}
+                >
+                  {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                  Sign in
+                </Button>
+                <p className="text-sm text-center text-[#1a1815]/55 dark:text-[#f0ebe0]/55 pt-1">
+                  Don&apos;t have an account?{" "}
                   <button
                     type="button"
-                    className="text-caption text-muted-foreground hover:text-club hover:underline"
-                    onClick={() => setForgotOpen(true)}
+                    className="text-club hover:underline font-bold inline-flex items-center gap-0.5"
+                    onClick={() => setAuthView("signup")}
                   >
-                    Forgot password?
+                    Sign up
+                    <ArrowRight className="h-3 w-3" />
                   </button>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="h-10 rounded-lg"
-                />
-              </div>
-              <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
-                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                Sign in
-              </Button>
-              <p className="text-body text-center text-muted-foreground">
-                Don&apos;t have an account?{" "}
-                <button
-                  type="button"
-                  className="text-club hover:underline font-medium inline-flex items-center gap-0.5"
-                  onClick={() => setAuthView("signup")}
-                >
-                  Sign up
-                  <ArrowRight className="h-3 w-3" />
-                </button>
-              </p>
-            </form>
-          ) : (
-            <form onSubmit={handleSignup} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="name" className="text-body-medium">Full name</Label>
-                <Input
-                  id="name"
-                  required
-                  value={signupName}
-                  onChange={(e) => setSignupName(e.target.value)}
-                  placeholder="Jane Doe"
-                  className="h-10 rounded-lg"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="signup-email" className="text-body-medium">Email</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  required
-                  value={signupEmail}
-                  onChange={(e) => setSignupEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="h-10 rounded-lg"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="signup-password" className="text-body-medium">Password</Label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  required
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  placeholder="At least 8 chars, 1 letter & 1 number"
-                  className="h-10 rounded-lg"
-                />
-                <p className="text-caption mt-1">
-                  Minimum 8 characters with a letter and a number.
                 </p>
-              </div>
-              <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
-                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                Create account
-              </Button>
-              <p className="text-body text-center text-muted-foreground">
-                Already have an account?{" "}
-                <button
-                  type="button"
-                  className="text-club hover:underline font-medium inline-flex items-center gap-0.5"
-                  onClick={() => setAuthView("login")}
+              </form>
+            ) : (
+              <form onSubmit={handleSignup} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-bold tracking-wide uppercase">Full name</Label>
+                  <Input
+                    id="name"
+                    required
+                    value={signupName}
+                    onChange={(e) => setSignupName(e.target.value)}
+                    placeholder="Jane Doe"
+                    className="h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email" className="text-sm font-bold tracking-wide uppercase">Email</Label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    required
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password" className="text-sm font-bold tracking-wide uppercase">Password</Label>
+                  <Input
+                    id="signup-password"
+                    type="password"
+                    required
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="8+ chars, 1 letter & 1 number"
+                    className="h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  variant="club"
+                  className="w-full h-12 rounded-none text-base font-bold tracking-wide uppercase shadow-none hover:brightness-105 active:scale-[0.99]"
+                  disabled={loading}
                 >
-                  Sign in
-                  <ArrowRight className="h-3 w-3" />
-                </button>
-              </p>
-            </form>
-          )}
-        </div>
+                  {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                  Create account
+                </Button>
+                <p className="text-sm text-center text-[#1a1815]/55 dark:text-[#f0ebe0]/55 pt-1">
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    className="text-club hover:underline font-bold inline-flex items-center gap-0.5"
+                    onClick={() => setAuthView("login")}
+                  >
+                    Sign in
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                </p>
+              </form>
+            )}
+          </div>
 
-        <p className="text-caption text-center mt-10 text-muted-foreground">
-          By continuing you agree to use ClubHub responsibly.
-        </p>
+          {/* Footer note — mobile only (desktop footer is in the left column) */}
+          <p className="md:hidden text-center text-xs text-[#1a1815]/40 dark:text-[#f0ebe0]/40 mt-6">
+            By continuing you agree to use ClubHub responsibly.
+          </p>
+        </div>
       </main>
+      </div>
 
       <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
     </div>
@@ -369,11 +313,15 @@ function AuthScreenInner() {
 }
 
 /**
- * Forgot-password dialog. Asks for an email and POSTs to
- * /api/auth/forgot-password. The endpoint is anti-enumeration — it always
- * returns { ok: true } — but if email delivery fails it also returns an
- * `error` field and a `resetUrl` (so devs / no-email-provider installs can
- * still recover). We surface both in the UI.
+ * Forgot-password dialog.
+ *
+ * Email-based reset is disabled (the email provider isn't configured and
+ * shouldn't be relied on). Instead, members ask their club's executives
+ * to reset their password — execs can generate a reset link per-member
+ * from the Members view (POST /api/clubs/[clubId]/members/[userId]/reset-password)
+ * and hand it to the member via chat/text.
+ *
+ * This dialog just communicates that, in the same editorial style.
  */
 function ForgotPasswordDialog({
   open,
@@ -382,133 +330,62 @@ function ForgotPasswordDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
 }) {
-  const [email, setEmail] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [resetUrl, setResetUrl] = useState<string | null>(null)
-
-  function handleClose(v: boolean) {
-    if (!v) {
-      // Reset state when closing so the next open is fresh.
-      setEmail("")
-      setError(null)
-      setResetUrl(null)
-      // Keep `done` so the success state persists for a beat after close —
-      // but actually reset it too so reopening doesn't show stale success.
-      setDone(false)
-    }
-    onOpenChange(v)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResetUrl(null)
-    try {
-      const res = await api<{ ok: boolean; error?: string; resetUrl?: string }>(
-        "/api/auth/forgot-password",
-        { method: "POST", json: { email } },
-      )
-      setDone(true)
-      // Anti-enumeration: the endpoint returns ok:true even if the email
-      // doesn't match an account. But if it also returned an `error` (e.g.
-      // email provider not configured), surface that + the resetUrl fallback.
-      if (res.error) setError(res.error)
-      if (res.resetUrl) setResetUrl(res.resetUrl)
-    } catch (err: any) {
-      // Network / 500 — show the message.
-      setError(err.message || "Couldn't send the reset link. Try again.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-club" />
-            Reset your password
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md rounded-none border-2 border-[#1a1815] dark:border-[#f0ebe0] bg-[#f6f1e8] dark:bg-[#16130e] p-7 sm:p-8 gap-0 shadow-[6px_6px_0_0_var(--club-accent,#10b981)]">
+        <DialogHeader className="mb-5">
+          <DialogTitle className="flex items-center gap-2 text-xl font-extrabold tracking-tight">
+            <span className="flex h-8 w-8 items-center justify-center rounded-none bg-club text-club-foreground">
+              <LifeBuoy className="h-4 w-4" />
+            </span>
+            Can&apos;t log in?
           </DialogTitle>
-          <DialogDescription>
-            Enter your account email and we&apos;ll send you a link to set a new password.
-          </DialogDescription>
         </DialogHeader>
 
-        {done ? (
-          <div className="space-y-3 py-2">
-            <div className="flex items-start gap-2 rounded-lg border border-club/30 bg-club-muted/40 px-3 py-2.5 text-sm">
-              <CheckCircle2 className="h-4 w-4 text-club mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <p className="font-medium">If an account exists for <span className="font-mono">{email || "that email"}</span>, a reset link is on its way.</p>
-                <p className="text-caption text-muted-foreground mt-1">Check your inbox (and spam folder). The link expires in 1 hour.</p>
-              </div>
+        <div className="space-y-3.5 text-[#1a1815] dark:text-[#f0ebe0]">
+          <p className="text-sm leading-relaxed">
+            We don&apos;t use email-based password reset. Instead, ask a{" "}
+            <strong className="font-bold">club executive</strong> to reset it for you —
+            they can generate a fresh sign-in link from the{" "}
+            <span className="font-bold">Members</span> view and send it to you
+            directly (via chat or text).
+          </p>
+
+          <div className="flex items-start gap-2.5 rounded-none border border-[#1a1815]/15 dark:border-[#f0ebe0]/15 px-3.5 py-3 text-sm">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-club" />
+            <div>
+              <p className="font-bold">No email is sent — ever.</p>
+              <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-0.5">
+                Execs hand-deliver the reset link. If you&apos;re an exec and
+                locked out of your own account, ask another exec.
+              </p>
             </div>
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className="font-medium">Email couldn&apos;t be sent</p>
-                  <p className="text-caption mt-0.5 break-words">{error}</p>
-                  {resetUrl && (
-                    <p className="text-caption mt-1.5 break-all">
-                      Recovery link:{" "}
-                      <a href={resetUrl} className="font-mono text-club underline break-all">
-                        {resetUrl}
-                      </a>
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-            <DialogFooter>
-              <Button variant="club" onClick={() => handleClose(false)} className="w-full rounded-lg">
-                Done
-              </Button>
-            </DialogFooter>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="forgot-email" className="text-body-medium">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="forgot-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="h-10 pl-9 rounded-lg"
-                  autoFocus
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="club" className="rounded-lg" disabled={loading || !email}>
-                {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-                Send reset link
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+
+          <Button
+            variant="club"
+            onClick={() => onOpenChange(false)}
+            className="w-full h-11 rounded-none font-bold tracking-wide uppercase shadow-none hover:brightness-105"
+          >
+            Got it
+          </Button>
+          <button
+            type="button"
+            className="w-full text-center text-sm text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club hover:underline transition-colors"
+            onClick={() => onOpenChange(false)}
+          >
+            Back to sign in
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   )
 }
 
 /**
- * Reset-password screen — shown when the URL contains ?reset=TOKEN. Renders
- * a simple "Set a new password" form. On success, calls onDone() which
- * strips the query param and returns to the normal login screen.
+ * Reset-password screen — shown when the URL contains ?reset=TOKEN
+ * (a link an exec generated and handed to the member). Same editorial
+ * treatment as the auth screen.
  */
 function ResetPasswordScreen({
   token,
@@ -552,76 +429,83 @@ function ResetPasswordScreen({
     }
   }
 
+  const inputCls =
+    "h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-5 py-10 bg-background">
-      <div className="w-full max-w-sm">
-        <div className="md:hidden flex items-center justify-center gap-2 mb-8">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-club text-club-foreground">
-            <Users className="h-5 w-5" />
-          </div>
-          <span className="text-2xl font-extrabold tracking-tight">ClubHub</span>
-        </div>
+    <div className="relative min-h-screen overflow-hidden bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+      {/* Wordmark */}
+      <header className="absolute top-0 left-0 z-10 p-6 sm:p-8 flex items-center">
+        <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+      </header>
 
-        <div className="mb-6">
-          <h1 className="text-page-title">Set a new password</h1>
-          <p className="text-body text-muted-foreground mt-1.5">
-            Choose a new password for your ClubHub account.
-          </p>
-        </div>
+      <main className="relative min-h-screen flex items-center justify-center px-5 py-10">
+        <div className="relative w-full max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="mb-6">
+            <h1 className="text-3xl font-black tracking-tight leading-[1.05]">
+              Set a new password.
+            </h1>
+            <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-2">
+              Your exec sent you this link. Choose a new password to sign back in.
+            </p>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="reset-password" className="text-body-medium">New password</Label>
-            <Input
-              id="reset-password"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 chars, 1 letter & 1 number"
-              className="h-10 rounded-lg"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="reset-confirm" className="text-body-medium">Confirm new password</Label>
-            <Input
-              id="reset-confirm"
-              type="password"
-              required
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Re-enter the new password"
-              className="h-10 rounded-lg"
-            />
-          </div>
-          <p className="text-caption text-muted-foreground">
-            Minimum 8 characters with a letter and a number.
-          </p>
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2.5 text-sm text-red-700 dark:text-red-300">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="reset-password" className="text-sm font-bold tracking-wide uppercase">New password</Label>
+              <Input
+                id="reset-password"
+                type="password"
+                required
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="8+ chars, 1 letter & 1 number"
+                className={inputCls}
+                autoFocus
+              />
             </div>
-          )}
-          <Button type="submit" variant="club" className="w-full h-10 rounded-lg" disabled={loading}>
-            {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-            Update password
-          </Button>
-        </form>
+            <div className="space-y-2">
+              <Label htmlFor="reset-confirm" className="text-sm font-bold tracking-wide uppercase">Confirm password</Label>
+              <Input
+                id="reset-confirm"
+                type="password"
+                required
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Re-enter the new password"
+                className={inputCls}
+              />
+            </div>
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-none border-2 border-red-500/60 bg-red-50 dark:bg-red-950/30 px-3.5 py-3 text-sm text-red-800 dark:text-red-200">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            <Button
+              type="submit"
+              variant="club"
+              className="w-full h-12 rounded-none text-base font-bold tracking-wide uppercase shadow-none hover:brightness-105 active:scale-[0.99]"
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Update password
+            </Button>
+          </form>
 
-        <p className="text-caption text-center mt-6 text-muted-foreground">
-          <button
-            type="button"
-            className="text-club hover:underline font-medium"
-            onClick={onDone}
-          >
-            Back to sign in
-          </button>
-        </p>
-      </div>
+          <p className="text-center mt-6">
+            <button
+              type="button"
+              className="text-sm font-bold text-club hover:underline"
+              onClick={onDone}
+            >
+              Back to sign in
+            </button>
+          </p>
+        </div>
+      </main>
     </div>
   )
 }

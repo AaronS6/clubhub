@@ -1,13 +1,20 @@
-// Multi-Club Management Platform — Prisma schema
-// PostgreSQL datasource (production). SQLite was used for local dev; the
-// swap to Postgres only required changing the datasource provider + url.
+// Multi-Club Management Platform — Prisma schema.
+//
+// LOCAL DEV uses SQLite (matches the file:// DATABASE_URL in .env). The
+// schema has NO Postgres-only features (no scalar lists, no @db.* native
+// types), so it is portable between SQLite and Postgres.
+//
+// PRODUCTION uses PostgreSQL (Supabase). The Dockerfile flips the provider
+// to "postgresql" with sed before `prisma generate` / `next build`, so the
+// generated Prisma client targets Postgres while the committed schema
+// stays SQLite-friendly for local dev. See Dockerfile (build stage).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

@@ -230,7 +230,7 @@ export function TeamsView() {
 
       {/* Team detail sheet */}
       <Sheet open={!!selectedTeamId} onOpenChange={(o) => !o && setSelectedTeamId(null)}>
-        <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col" side="right">
+        <SheetContent className="w-full sm:max-w-lg p-0 flex flex-col" side="right" showCloseButton={false}>
           {selectedTeam ? (
             <TeamDetailSheet
               clubId={clubId}

@@ -451,8 +451,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            <div className="max-w-7xl mx-auto" key={`${currentClubId}-${view}`}>
+          {/* No top padding so view headers (e.g. the Announcements
+              sticky bar) connect flush to the app top bar above. Views
+              that need internal top spacing add it themselves. */}
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4 md:pb-6">
+            <div className="max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
               {children}
             </div>
           </div>
