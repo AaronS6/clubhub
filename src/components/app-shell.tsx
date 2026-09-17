@@ -53,6 +53,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
+import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { useRealtimeSync } from "@/lib/use-realtime-sync"
@@ -1157,36 +1158,32 @@ function SettingsDialog({
   const [avatarUploading, setAvatarUploading] = useState(false)
   // §44 — Drag-and-drop state for the avatar upload drop zone.
   const [avatarDragging, setAvatarDragging] = useState(false)
+  // Selected file awaiting crop confirmation. When set, the CropAvatarDialog
+  // opens; on confirm the cropped blob is uploaded to /api/me/avatar.
+  const [cropFile, setCropFile] = useState<File | null>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const setClubs = useAppStore((s) => s.setClubs)
   const avatarFileRef = useRef<HTMLInputElement>(null)
 
-  // Avatar upload — POSTs a multipart form to /api/me/avatar. The endpoint
-  // resizes with sharp and stores a base64 data URL in User.avatarUrl. After
-  // upload we update local state + call session.update() so the header avatar
-  // refreshes without a full page reload.
-  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
+  // Avatar upload — opens the crop dialog with the chosen file. The actual
+  // upload happens in handleCropConfirm once the user positions the crop and
+  // presses Confirm. The endpoint resizes the cropped image with sharp and
+  // stores a base64 data URL in User.avatarUrl. After upload we update local
+  // state + call session.update() so the header avatar refreshes without a
+  // full page reload.
+  function openCropFromFile(f: File) {
     if (!f.type.startsWith("image/")) {
       toast.error("Please choose an image file")
       return
     }
-    setAvatarUploading(true)
-    try {
-      const fd = new FormData()
-      fd.append("file", f)
-      const res = await apiUpload<{ avatarUrl: string }>("/api/me/avatar", fd)
-      setAvatarUrl(res.avatarUrl)
-      await update({ image: res.avatarUrl })
-      toast.success("Avatar updated")
-    } catch (err: any) {
-      toast.error(err.message || "Couldn't upload avatar")
-    } finally {
-      setAvatarUploading(false)
-      if (avatarFileRef.current) avatarFileRef.current.value = ""
-    }
+    setCropFile(f)
+  }
+  function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f) return
+    openCropFromFile(f)
+    if (avatarFileRef.current) avatarFileRef.current.value = ""
   }
 
   // §44 — Drag-and-drop handlers for the avatar upload area. Allow dropping
@@ -1205,14 +1202,16 @@ function SettingsDialog({
     e.preventDefault()
     setAvatarDragging(false)
     const f = e.dataTransfer.files[0]
-    if (!f.type.startsWith("image/")) {
-      toast.error("Please drop an image file")
-      return
-    }
+    openCropFromFile(f)
+  }
+
+  // Crop confirmed — upload the cropped JPEG blob to /api/me/avatar, then
+  // refresh local state + the session so the header avatar updates live.
+  async function handleCropConfirm(blob: Blob) {
     setAvatarUploading(true)
     try {
       const fd = new FormData()
-      fd.append("file", f)
+      fd.append("file", blob, "avatar.jpg")
       const res = await apiUpload<{ avatarUrl: string }>("/api/me/avatar", fd)
       setAvatarUrl(res.avatarUrl)
       await update({ image: res.avatarUrl })
@@ -1221,6 +1220,7 @@ function SettingsDialog({
       toast.error(err.message || "Couldn't upload avatar")
     } finally {
       setAvatarUploading(false)
+      setCropFile(null)
     }
   }
 
@@ -1350,7 +1350,7 @@ function SettingsDialog({
                   </div>
                 </div>
                 <p className="text-caption text-muted-foreground">
-                  PNG, JPG, or WebP. We&apos;ll resize it to 256×256.
+                  PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
                 </p>
               </div>
               <div className="space-y-2">
@@ -1385,6 +1385,16 @@ function SettingsDialog({
           )}
         </Tabs>
       </DialogContent>
+      {/* Crop-then-upload dialog: opens when a file is picked/dropped. The
+          user positions the square crop + zoom/rotate, then confirms to
+          upload the cropped JPEG to /api/me/avatar. */}
+      <CropAvatarDialog
+        file={cropFile}
+        open={!!cropFile}
+        uploading={avatarUploading}
+        onConfirm={handleCropConfirm}
+        onCancel={() => setCropFile(null)}
+      />
     </Dialog>
   )
 }

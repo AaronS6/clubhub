@@ -21,7 +21,14 @@ export const authOptions: NextAuthOptions = {
           if (!user) return null
           const ok = await verifyPassword(credentials.password, user.passwordHash)
           if (!ok) return null
-          return { id: user.id, name: user.name, email: user.email, image: user.avatarUrl ?? undefined }
+          // ⚠️ Do NOT include `image`/`avatarUrl` here — NextAuth merges every
+          // field of this returned object into the JWT, which is stored as a
+          // browser cookie. Avatars are stored as base64 data URLs (~15KB),
+          // so including one here balloons the session cookie past the HTTP
+          // header limit and every subsequent request 431s. The session
+          // callback below re-fetches the avatar from the DB at read time, so
+          // the client still receives it via /api/auth/session.
+          return { id: user.id, name: user.name, email: user.email }
         } catch (e) {
           console.error("[auth] authorize error:", e)
           return null
@@ -34,6 +41,11 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
       }
+      // Defensive: strip any avatar/image data that NextAuth may have
+      // auto-merged from a prior token or default mapping. Never persist
+      // the base64 avatar data URL in the JWT cookie (would cause HTTP 431).
+      if ("picture" in token) delete (token as Record<string, unknown>).picture
+      if ("image" in token) delete (token as Record<string, unknown>).image
       return token
     },
     async session({ session, token }) {
