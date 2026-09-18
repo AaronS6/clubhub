@@ -56,27 +56,51 @@ export function CropAvatarDialog({
   }
 
   // Render the crop region to a 512×512 canvas → JPEG blob.
+  //
+  // Uses the canonical react-easy-crop approach so the output exactly
+  // matches the on-screen preview (no offset / white-space, even when the
+  // image is rotated):
+  //   1. Draw the original image rotated onto a canvas sized to the rotated
+  //      bounding box. `croppedAreaPixels` is in this rotated canvas's
+  //      coordinate space.
+  //   2. Copy the crop region from that rotated canvas to the 512×512
+  //      output canvas.
   async function produceCroppedBlob(): Promise<Blob | null> {
     const area = croppedAreaRef.current
     if (!area || !imgSrc) return null
     const img = await loadImage(imgSrc)
     const rot = ((rotation % 360) + 360) % 360
+    const rad = (rot * Math.PI) / 180
+    const sin = Math.abs(Math.sin(rad))
+    const cos = Math.abs(Math.cos(rad))
+    // Rotated bounding-box dimensions.
+    const bBoxW = Math.round(img.width * cos + img.height * sin)
+    const bBoxH = Math.round(img.height * cos + img.width * sin)
+
+    // Step 1 — rotated bounding-box canvas with the full image drawn on it.
+    const bb = document.createElement("canvas")
+    bb.width = bBoxW
+    bb.height = bBoxH
+    const bbCtx = bb.getContext("2d")
+    if (!bbCtx) return null
+    bbCtx.translate(bBoxW / 2, bBoxH / 2)
+    bbCtx.rotate(rad)
+    bbCtx.translate(-img.width / 2, -img.height / 2)
+    bbCtx.drawImage(img, 0, 0)
+
+    // Step 2 — 512×512 output canvas; copy the crop region from the rotated
+    // bounding-box canvas and scale it to fill the output.
     const out = 512
     const canvas = document.createElement("canvas")
     canvas.width = out
     canvas.height = out
     const ctx = canvas.getContext("2d")
     if (!ctx) return null
-    // Fill with white first (JPEG has no alpha) so transparent PNGs don't get
-    // a black background when flattened to JPEG.
+    // White background so transparent PNGs don't go black on JPEG flatten.
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, out, out)
-    ctx.save()
-    ctx.translate(out / 2, out / 2)
-    ctx.rotate((rot * Math.PI) / 180)
-    ctx.translate(-out / 2, -out / 2)
     ctx.drawImage(
-      img,
+      bb,
       area.x,
       area.y,
       area.width,
@@ -86,7 +110,6 @@ export function CropAvatarDialog({
       out,
       out,
     )
-    ctx.restore()
     return new Promise((resolve) => {
       canvas.toBlob(
         (b) => resolve(b ?? null),

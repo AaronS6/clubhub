@@ -78,6 +78,7 @@ import {
   initials,
   relativeTime,
 } from "@/components/shared/page-header"
+import { UnreadDot, UnreadBadge } from "@/components/shared/unread-indicator"
 
 /* =========================================================================
    Types
@@ -666,16 +667,12 @@ function ConversationRow({
           </span>
           {conversation.unreadCount > 0 && (
             <span className="shrink-0 inline-flex items-center gap-1.5">
-              {/* Small unread dot — iMessage/Telegram-style presence indicator */}
-              <span
-                aria-label={`${conversation.unreadCount} unread`}
-                className="size-2 rounded-full bg-club"
-              />
-              {/* Numeric count for >1 unread */}
-              {conversation.unreadCount > 1 && (
-                <span className="inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-club text-club-foreground text-[10px] font-semibold tabular-nums">
-                  {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
-                </span>
+              {/* Unread indicator — dot when count=1, badge with number when >1.
+                  Same UnreadDot/UnreadBadge the rest of the app uses. */}
+              {conversation.unreadCount === 1 ? (
+                <UnreadDot aria-label="1 unread" />
+              ) : (
+                <UnreadBadge count={conversation.unreadCount} />
               )}
             </span>
           )}
@@ -1671,7 +1668,10 @@ function MessageBubble({
                 size="icon"
                 variant="ghost"
                 className="size-7"
-                onClick={() => onEdit(message.body)}
+                onClick={() => {
+                  setDraft(message.body)
+                  setEditing(true)
+                }}
                 aria-label="Edit message"
                 disabled={!message.isMine}
               >

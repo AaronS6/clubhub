@@ -9,6 +9,7 @@ import dynamic from "next/dynamic"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { initials, relativeTime } from "@/components/shared/page-header"
+import { UnreadDot, UnreadBadge } from "@/components/shared/unread-indicator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -337,10 +338,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {item.view === "announcements" &&
                     hasUnreadAnnouncements &&
                     !active && (
-                      <span
-                        aria-label="New announcements"
-                        className="ml-auto inline-block size-1.5 shrink-0 rounded-full bg-club"
-                      />
+                      <UnreadDot pulse className="ml-auto" aria-label="New announcements" />
                     )}
                   {item.execOnly && <ShieldCheck className="ml-auto h-3 w-3 text-muted-foreground/50" />}
                 </button>
@@ -1852,12 +1850,11 @@ function NotificationBell() {
     <Button variant="ghost" size="icon" className="relative" aria-label={triggerLabel}>
       <Bell className="h-4 w-4" />
       {unread > 0 && (
-        <span
-          className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+        <UnreadBadge
+          count={unread}
+          className="absolute -top-0.5 -right-0.5"
           aria-hidden="true"
-        >
-          {unread > 9 ? "9+" : unread}
-        </span>
+        />
       )}
     </Button>
   )
@@ -1952,11 +1949,7 @@ function BellBody({
       <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-semibold truncate">Notifications</span>
-          {unread > 0 && (
-            <span className="inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
-              {unread > 9 ? "9+" : unread}
-            </span>
-          )}
+          {unread > 0 && <UnreadBadge count={unread} />}
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {unread > 0 && (
@@ -2121,10 +2114,7 @@ function NotifRow({
             {n.message}
           </p>
           {!n.isRead && (
-            <span
-              className="mt-1.5 h-1.5 w-1.5 rounded-full bg-club shrink-0"
-              aria-label="Unread"
-            />
+            <UnreadDot className="mt-1.5" aria-label="Unread" />
           )}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5">

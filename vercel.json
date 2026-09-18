@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://clubhub-0rir.onrender.com/:path*",
+      "permanent": false
+    }
+  ],
+  "buildCommand": "echo redirect-only",
+  "outputDirectory": "public"
+}

@@ -17,6 +17,7 @@ import {
 import {
   PageHeader, EmptyState, relativeTime,
 } from "@/components/shared/page-header"
+import { UnreadDot } from "@/components/shared/unread-indicator"
 import { toast } from "sonner"
 import {
   Bell, CheckCheck, ChevronRight, Loader2, Filter,
@@ -386,10 +387,7 @@ function NotifListItem({
             {n.message}
           </p>
           {!n.isRead && (
-            <span
-              className="mt-1.5 h-2 w-2 rounded-full bg-club shrink-0"
-              aria-label="Unread"
-            />
+            <UnreadDot className="mt-1.5" aria-label="Unread" />
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-caption text-muted-foreground">
