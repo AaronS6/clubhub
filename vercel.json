@@ -1,11 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "prisma generate && next build",
-  "redirects": [
-    {
-      "source": "/:path*",
-      "destination": "https://clubhub-0rir.onrender.com/:path*",
-      "permanent": false
-    }
-  ]
+  "buildCommand": "prisma generate && next build"
 }
