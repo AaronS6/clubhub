@@ -53,7 +53,11 @@ ENV HOSTNAME=0.0.0.0
 ENV WEB_CONCURRENCY=1
 # Give Node more memory headroom — the default heap can grow too large and
 # trigger OOM kills on the 512MB free tier.
-ENV NODE_OPTIONS="--max-old-space-size=384"
+# Also raise the max HTTP header size so a temporarily-bloated Cookie header
+# (e.g. stale chunked session cookies before the middleware clears them) is
+# accepted by Node instead of returning HTTP 431 before the app can clean
+# it up. See src/middleware.ts.
+ENV NODE_OPTIONS="--max-old-space-size=384 --max-http-header-size=65536"
 
 # Start the server immediately. Tables are created manually via Supabase SQL
 # Editor (the pooler doesn't support prisma db push's prepared statements).
