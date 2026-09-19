@@ -17,7 +17,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { Plus, MoreVertical, Pencil, Trash2, Loader2, ArrowUpRight, ArrowDownRight, Wallet, Calendar } from "lucide-react"
+import { Plus, MoreVertical, Pencil, Trash2, Loader2, ArrowUpRight, ArrowDownRight, Wallet } from "lucide-react"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 interface Transaction {
@@ -104,13 +104,6 @@ export function FinancialsView() {
       {/* ═══ BIG BALANCE HERO ═══════════════════════════════════════════ */}
       <BalanceHero balance={balance} revenue={revenue} expense={expense} mRev={mRev} mExp={mExp} />
 
-      {/* ═══ STAT CARDS ═══════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard label="Total Revenue" value={revenue} type="revenue" icon={<ArrowUpRight className="h-5 w-5" />} animated />
-        <StatCard label="Total Expenses" value={expense} type="expense" icon={<ArrowDownRight className="h-5 w-5" />} animated />
-        <StatCard label="This Month Net" value={mRev - mExp} type={mRev - mExp >= 0 ? "revenue" : "expense"} icon={<Calendar className="h-5 w-5" />} animated />
-      </div>
-
       {/* ═══ DONUT CHART + CATEGORY BREAKDOWN ══════════════════════════════ */}
       {transactions.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -170,7 +163,13 @@ function BalanceHero({ balance, revenue, expense, mRev, mExp }: { balance: numbe
   const animated = useCountUp(balance)
   const isPositive = balance >= 0
   return (
-    <div className="relative overflow-hidden rounded-xl border border-club/20 p-6 sm:p-8" style={{ background: "linear-gradient(135deg, var(--club-subtle) 0%, var(--card) 100%)" }}>
+    <div
+      className="relative overflow-hidden rounded-2xl border border-club/20 p-6 sm:p-8 transition-transform duration-300 hover:-translate-y-0.5"
+      style={{
+        background: "linear-gradient(135deg, var(--club-subtle) 0%, var(--card) 60%, var(--club-subtle) 100%)",
+        boxShadow: "0 20px 40px -12px rgba(0,0,0,0.18), 0 8px 16px -8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.04)",
+      }}
+    >
       <div aria-hidden className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-club/10 blur-3xl" />
       <div className="relative">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Club Balance</p>
@@ -198,24 +197,6 @@ function BalanceHero({ balance, revenue, expense, mRev, mExp }: { balance: numbe
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// ═══ STAT CARD ═══════════════════════════════════════════════════════════════
-function StatCard({ label, value, type, icon, animated }: { label: string; value: number; type: "revenue" | "expense"; icon: React.ReactNode; animated?: boolean }) {
-  const v = useCountUp(value)
-  const isRev = type === "revenue"
-  return (
-    <div className={cn("rounded-xl border p-5 transition-transform hover:scale-[1.02]", isRev ? "border-success/20 bg-success-subtle" : value >= 0 ? "border-success/20 bg-success-subtle" : "border-danger/20 bg-danger-subtle")}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-background/60">{icon}</span>
-        <span className={cn("text-xs font-medium", isRev || value >= 0 ? "text-success-foreground" : "text-danger-foreground")}>{isRev || value >= 0 ? "+" : "-"}</span>
-      </div>
-      <p className="text-2xl font-bold tabular-nums" style={{ fontFamily: "var(--font-display)" }}>
-        {value < 0 ? "-" : ""}${fmtMoney(Math.abs(animated ? v : value))}
-      </p>
-      <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
     </div>
   )
 }
