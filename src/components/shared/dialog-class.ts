@@ -12,5 +12,5 @@
  * overflow-y-auto body, and a floating/absolute action button.
  */
 export const DIALOG_CLASS =
-  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col " +
+  "top-0 left-0 translate-x-0 translate-y-0 h-[100dvh] max-w-full rounded-none p-0 gap-0 flex flex-col overflow-y-auto " +
   "sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-[85dvh] sm:max-w-xl sm:rounded-lg sm:p-6 sm:gap-4"

@@ -744,10 +744,29 @@ function ConversationPane({
     return [...older, ...latestMessages]
   }, [olderMessages, latestIds, latestMessages])
 
-  // Auto-scroll to bottom on new messages (if user was already at the bottom).
+  // Track the previous conversation id so we can force-scroll on switch
+  // (otherwise the user lands at the top of a freshly-opened thread, not
+  // the latest messages — the pinnedBottomRef guard skips the scroll).
+  const prevConvIdRef = useRef<string | null>(null)
+
+  // Auto-scroll to bottom on new messages (if user was already at the bottom),
+  // AND force-scroll to bottom when the conversation changes.
   useEffect(() => {
     const el = scrollContainerRef.current
     if (!el) return
+    const convChanged = prevConvIdRef.current !== conversation.id
+    if (convChanged) {
+      // New conversation opened — always pin to the bottom (latest messages),
+      // regardless of where the scroll was in the previous thread.
+      prevConvIdRef.current = conversation.id
+      pinnedBottomRef.current = true
+      // Defer one frame so the freshly-rendered messages have their height.
+      requestAnimationFrame(() => {
+        const e = scrollContainerRef.current
+        if (e) e.scrollTop = e.scrollHeight
+      })
+      return
+    }
     if (pinnedBottomRef.current) {
       el.scrollTop = el.scrollHeight
     }

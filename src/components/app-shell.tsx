@@ -394,11 +394,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       <UrgentBanner />
       {topBar}
-      <div className="flex flex-1 min-h-0">
-        {/* Flat sidebar — surface color, single right border, no floating card.
-            232px on md+ (was a floating rounded-xl shadowed panel). */}
-        <aside className="hidden md:flex md:w-[232px] flex-col border-r border-border bg-sidebar overflow-hidden shrink-0">
-          {/* Club switcher pinned to the TOP of the sidebar */}
+      <div className="flex flex-1 min-h-0 p-3 gap-3">
+        {/* Floating sidebar card — ~240px, inset from the left edge + below
+            the top bar, 16px radius (rounded-2xl), 1px border. Club-switcher
+            card pinned at the top, nav in the scrollable middle, theme toggle
+            at the bottom. */}
+        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border bg-card overflow-hidden shrink-0">
+          {/* Club switcher — bordered card at the top: accent logo, name,
+              role, chevron. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
@@ -414,7 +417,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
           {/* No top padding so view headers connect flush to the app top bar.
               Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */}
-          <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-16 md:pb-6">
+          <div className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
             <div className="max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
               {children}
             </div>
@@ -435,6 +438,45 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Footer() {
   // Footer removed per user request
+}
+
+/**
+ * SwipeDownToClose — a grab-handle bar at the top of a bottom sheet /
+ * dropdown. A small rounded pill visualizes "grab here", and dragging it
+ * down past 80px (or a click) closes the parent. Used by the mobile "More"
+ * bottom sheet and the notification bell dropdown so users can swipe down
+ * from the top to dismiss on mobile.
+ */
+function SwipeDownToClose({ onClose }: { onClose: () => void }) {
+  const startY = useRef<number | null>(null)
+  const [dragY, setDragY] = useState(0)
+  function onPointerDown(e: React.PointerEvent) {
+    startY.current = e.clientY
+    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (startY.current == null) return
+    const dy = e.clientY - startY.current
+    if (dy > 0) setDragY(dy)
+  }
+  function onPointerUp() {
+    if (dragY > 80) onClose()
+    setDragY(0)
+    startY.current = null
+  }
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      className="shrink-0 flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing touch-none select-none"
+      style={{ transform: dragY ? `translateY(${Math.min(dragY, 120)}px)` : undefined, transition: dragY ? "none" : "transform 200ms ease" }}
+      aria-label="Swipe down to close"
+    >
+      <span className="h-1.5 w-10 rounded-full bg-muted-foreground/40" />
+    </div>
+  )
 }
 
 /**
@@ -475,7 +517,7 @@ function MobileTabBar() {
               )}
               aria-current={active ? "page" : undefined}
             >
-              <Icon className={cn("h-5 w-5", active && "text-club-ink")} />
+              <Icon className={cn("h-5 w-5 transition-transform", active && "text-club-ink scale-110")} />
               <span>{t.label}</span>
               {t.view === "announcements" && hasUnreadAnnouncements && !active && (
                 <UnreadDot className="absolute top-1 right-1/4" />
@@ -495,6 +537,7 @@ function MobileTabBar() {
             </button>
           </SheetTrigger>
           <SheetContent side="bottom" className="rounded-t-xl p-0 flex flex-col max-h-[80dvh]">
+            <SwipeDownToClose onClose={() => setMobileNavOpen(false)} />
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
             </div>
@@ -1329,7 +1372,7 @@ function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg overflow-y-auto sm:max-h-[85dvh]">
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
           <DialogDescription>Update your profile, notification preferences, and password.</DialogDescription>
