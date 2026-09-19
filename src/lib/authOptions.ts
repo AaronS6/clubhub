@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
           const email = credentials.email.toLowerCase().trim()
           const user = await db.user.findUnique({ where: { email } })
           if (!user) return null
-          const ok = await verifyPassword(credentials.password, user.passwordHash)
+          const ok = await verifyPassword(credentials.password, user.passwordHash ?? "")
           if (!ok) return null
           // ⚠️ Do NOT include `image`/`avatarUrl` here — NextAuth merges every
           // field of this returned object into the JWT, which is stored as a

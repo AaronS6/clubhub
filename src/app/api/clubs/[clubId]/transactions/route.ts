@@ -44,6 +44,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     },
     include: { creator: { select: { name: true } } },
   })
-  await logActivity(clubId, c.user.id, "finance_recorded", `Recorded ${type} of $${amount} (${category})`)
+  await logActivity({ clubId, actorUserId: c.user.id, actionType: "finance_recorded", targetType: "transaction", description: `Recorded ${type} of $${amount} (${category})` })
   return json({ transaction: tx })
 }
