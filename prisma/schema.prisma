@@ -26,7 +26,7 @@ model User {
   id            String   @id @default(cuid())
   email         String   @unique
   name          String
-  passwordHash  String
+  passwordHash  String?
   avatarUrl     String?
   bio           String?
   emailVerified Boolean  @default(false)
@@ -55,6 +55,7 @@ model User {
   badgesCreated   Badge[]       @relation("BadgeCreator")
   badgesAwarded    MemberBadge[] @relation("BadgeAwarder")
   receivedBadges   MemberBadge[]
+  createdTransactions ClubTransaction[]
 }
 
 model Session {
@@ -103,6 +104,7 @@ model Club {
   conversations   Conversation[]
   badges          Badge[]
   memberBadges    MemberBadge[]
+  transactions    ClubTransaction[]
 }
 
 model ClubMember {
@@ -473,4 +475,29 @@ model MemberBadge {
 
   @@unique([badgeId, userId])
   @@index([clubId, userId])
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Financials — club budget / revenue / expense tracking.
+//   type: "revenue" (money in) | "expense" (money out)
+//   category: free-text (e.g. "Bake sale", "Supplies", "Transportation")
+//   amount: always positive; revenue adds to balance, expense subtracts.
+//   createdBy: the executive who recorded it.
+// ───────────────────────────────────────────────────────────────────────────
+model ClubTransaction {
+  id          String   @id @default(cuid())
+  clubId      String
+  type        String   // "revenue" | "expense"
+  amount      Float
+  category    String
+  description String?
+  date        DateTime @default(now())
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club      Club       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([clubId, date])
 }

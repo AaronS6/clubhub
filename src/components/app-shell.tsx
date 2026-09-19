@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { initials, relativeTime } from "@/components/shared/page-header"
 import { UnreadDot, UnreadBadge } from "@/components/shared/unread-indicator"
+import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,7 +45,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   LayoutDashboard, Megaphone, Clock, CheckSquare, CalendarDays, Users,
-  ScrollText, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
+  ScrollText, Wallet, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, RefreshCw,
   Upload, Trash2,
@@ -128,6 +129,7 @@ const NAV_TIERS: NavTier[] = [
     items: [
       { view: "teams", label: "Teams", icon: Users },
       { view: "members", label: "Members", icon: UserCog },
+      { view: "financials", label: "Financials", icon: Wallet },
       { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
       { view: "activity", label: "Activity Log", icon: ScrollText, execOnly: true },
     ],
@@ -306,10 +308,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  <Icon className={cn(
-                    "shrink-0 h-4 w-4 transition-colors",
-                    active ? "text-club-ink" : "text-muted-foreground/80 group-hover:text-foreground"
-                  )} />
+                  <div className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-md shrink-0 transition-colors",
+                    active ? "bg-club/15 text-club-ink" : "bg-muted/60 text-muted-foreground/80 group-hover:bg-accent group-hover:text-foreground"
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </div>
                   <span className="flex-1 truncate">{item.label}</span>
                   {item.view === "announcements" &&
                     hasUnreadAnnouncements &&
@@ -1372,7 +1376,7 @@ function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg overflow-y-auto sm:max-h-[85dvh]">
+      <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-lg")} showCloseButton>
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
           <DialogDescription>Update your profile, notification preferences, and password.</DialogDescription>
@@ -1997,10 +2001,8 @@ function NotificationBell() {
           className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl"
           aria-label="Recent notifications"
         >
-          {/* Drag handle */}
-          <div className="pt-3 pb-1 flex justify-center shrink-0">
-            <span className="h-1.5 w-10 rounded-full bg-muted" aria-hidden />
-          </div>
+          {/* Swipe-down-to-close grab handle (real gesture, not just visual) */}
+          <SwipeDownToClose onClose={() => setOpen(false)} />
           {body}
         </SheetContent>
       </Sheet>

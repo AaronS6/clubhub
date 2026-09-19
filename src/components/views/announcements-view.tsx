@@ -250,14 +250,12 @@ export function AnnouncementsView() {
   }
 
   return (
-    <div className="space-y-6 flow-root">
-      {/* §37 — Sticky page header on desktop. Hidden on mobile to avoid
-          double-stacking with the mobile nav. Negative top margin pulls
-          it flush to the top bar (cancelling the scroll container's
-          p-4/md:p-6 top padding); negative horizontal margins make it
-          span full width. The flow-root wrapper stops the negative
-          margin from collapsing into ancestors so it applies here. */}
-      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 md:-mx-6 -mt-4 md:-mt-6 px-4 md:px-6 py-4 border-b border-border/60">
+    <div className="space-y-6 overflow-x-hidden">
+      {/* Sticky page header on desktop. Full-width via negative horizontal
+          margins (contained by the outer flow-root). No negative TOP margin —
+          that caused the scroll container to miscalculate content height and
+          left scrollable empty space past the last item. */}
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Announcements"
           description="Stay up to date with club news, pinned notices, and discussions."

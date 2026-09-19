@@ -73,6 +73,10 @@ const ActivityView = dynamic(
   () => import("@/components/views/activity-view").then((m) => m.ActivityView),
   { loading: () => <ViewLoader />, ssr: false },
 )
+const FinancialsView = dynamic(
+  () => import("@/components/views/financials-view").then((m) => m.FinancialsView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
 const ChatView = dynamic(
   () => import("@/components/views/chat-view").then((m) => m.ChatView),
   { loading: () => <ViewLoader />, ssr: false },
@@ -96,6 +100,7 @@ export default function Home() {
       {view === "members" && <MembersView />}
       {view === "activity" && <ActivityView />}
       {view === "chat" && <ChatView />}
+      {view === "financials" && <FinancialsView />}
       {view === "notifications" && <NotificationsView />}
     </AppShell>
   )

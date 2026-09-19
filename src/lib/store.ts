@@ -14,6 +14,7 @@ export type View =
   | "members"
   | "activity"
   | "chat"
+  | "financials"
   | "notifications"
   | "settings"
 

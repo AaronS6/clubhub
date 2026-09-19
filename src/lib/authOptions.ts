@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
+import GoogleProvider from "next-auth/providers/google"
 import { db } from "@/lib/db"
 import { verifyPassword } from "@/lib/auth"
 
@@ -7,6 +8,12 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days
   pages: { signIn: "/" },
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      // Only enabled if the env vars are set (avoids errors if Google isn't configured).
+      ...(process.env.GOOGLE_CLIENT_ID ? {} : { id: "google-disabled", name: "Google (not configured)" }),
+    }),
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -37,9 +44,29 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
-        token.id = user.id
+        if (account?.provider === "google") {
+          // Google sign-in: the `user.id` here is a NextAuth-generated ID,
+          // NOT our DB user ID. Look up (or auto-create) the DB user by email
+          // and store the DB ID in the token so the session callback can
+          // fetch the real profile.
+          const dbUser = await db.user.upsert({
+            where: { email: user.email! },
+            create: {
+              name: user.name ?? "",
+              email: user.email!,
+              passwordHash: null, // Google users have no password
+              emailVerified: true,
+              avatarUrl: user.image ?? undefined,
+            },
+            update: {}, // don't overwrite existing user's data
+          })
+          token.id = dbUser.id
+        } else {
+          // Credentials provider: user.id is already the DB user ID.
+          token.id = user.id
+        }
       }
       // Defensive: strip any avatar/image data that NextAuth may have
       // auto-merged from a prior token or default mapping. Never persist
