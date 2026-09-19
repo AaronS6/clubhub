@@ -579,6 +579,7 @@ function ApprovalRow({
       0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
   goal?: number
 }) {
+  const [expanded, setExpanded] = useState(false)
   const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow data-state={checked ? "selected" : undefined} className="hover:bg-muted/30 transition-colors">
@@ -616,8 +617,26 @@ function ApprovalRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="max-w-xs">
-        <div className="line-clamp-2 text-sm">{item.reasonText}</div>
+      <TableCell className="max-w-xs align-top">
+        <div
+          className={cn("text-sm cursor-pointer", !expanded && "line-clamp-2")}
+          onClick={() => setExpanded(v => !v)}
+          role="button"
+          tabIndex={0}
+        >
+          {item.reasonText}
+        </div>
+        {item.reasonText.length > 80 && (
+          <button type="button" className="text-xs font-medium text-club hover:underline mt-1" onClick={() => setExpanded(v => !v)}>
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+        {expanded && (
+          <div className="mt-3 space-y-2 pb-2">
+            {item.proofFileUrl && <ProofPreview url={item.proofFileUrl} />}
+            <p className="text-xs text-muted-foreground">Submitted {relativeTime(item.submittedAt)} · {fmtDate(item.dateOfService)}</p>
+          </div>
+        )}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
         {item.category?.name ?? <span className="text-muted-foreground/60">—</span>}
@@ -669,6 +688,7 @@ function ApprovalCard({
   onReject: () => void
   reviewing: boolean
 }) {
+  const [expanded, setExpanded] = useState(false)
   return (
     <div
       data-state={checked ? "selected" : undefined}
@@ -699,7 +719,27 @@ function ApprovalCard({
           </div>
         </div>
       </div>
-      <div className="text-body">{item.reasonText}</div>
+      <div>
+        <div
+          className={cn("text-body cursor-pointer", !expanded && "line-clamp-2")}
+          onClick={() => setExpanded(v => !v)}
+          role="button"
+          tabIndex={0}
+        >
+          {item.reasonText}
+        </div>
+        {item.reasonText.length > 80 && (
+          <button type="button" className="text-xs font-medium text-club hover:underline mt-1" onClick={() => setExpanded(v => !v)}>
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+        {expanded && (
+          <div className="mt-3 space-y-2">
+            {item.proofFileUrl && <ProofPreview url={item.proofFileUrl} />}
+            <p className="text-xs text-muted-foreground">Submitted {relativeTime(item.submittedAt)} · {fmtDate(item.dateOfService)}</p>
+          </div>
+        )}
+      </div>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <ProofThumb url={item.proofFileUrl} />
@@ -943,6 +983,40 @@ function ProofThumb({ url }: { url: string | null }) {
           }
         }}
       />
+    </a>
+  )
+}
+
+/** Larger proof preview — shown when an approval row/card is expanded.
+ *  Shows the image at full width, or a file-type icon + "View proof" link
+ *  for PDFs and documents. */
+function ProofPreview({ url }: { url: string | null }) {
+  if (!url) return null
+  const lower = url.toLowerCase()
+  const isImage = lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") || lower.startsWith("data:image/")
+  const isPdf = lower.endsWith(".pdf")
+  const isDoc = lower.endsWith(".doc") || lower.endsWith(".docx")
+  const label = isPdf ? "PDF" : isDoc ? "Document" : "File"
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block rounded-lg border border-border overflow-hidden hover:border-club/30 transition-colors"
+    >
+      {isImage ? (
+        <img src={url} alt="Proof of service" className="w-full max-h-48 object-cover" loading="lazy" />
+      ) : (
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+            <FileText className="h-5 w-5 text-muted-foreground" />
+          </span>
+          <div>
+            <p className="text-sm font-medium">{label} proof</p>
+            <p className="text-xs text-muted-foreground">Click to open</p>
+          </div>
+        </div>
+      )}
     </a>
   )
 }
