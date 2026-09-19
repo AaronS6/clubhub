@@ -173,9 +173,9 @@ export function MentionableTextarea({
         <div
           role="listbox"
           aria-label={listLabel}
-          className="absolute bottom-full left-0 right-0 min-w-[240px] max-w-[400px] mb-1 rounded-md border border-border bg-popover p-1 shadow-md z-30 animate-fade-in"
+          className="absolute bottom-full left-0 right-0 min-w-[240px] max-w-[400px] mb-1 rounded-md border border-border bg-popover p-1 shadow-md z-30"
         >
-          <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <div className="px-2 py-1 text-xs  text-muted-foreground">
             {query ? `Matching “${query}”` : "Mention a member"}
           </div>
           <div className="max-h-[132px] overflow-y-auto">
@@ -198,7 +198,7 @@ export function MentionableTextarea({
               >
                 <Avatar className="size-6 shrink-0">
                   <AvatarImage src={m.avatarUrl ?? undefined} alt={m.name} />
-                  <AvatarFallback className="text-[10px]">{initials(m.name)}</AvatarFallback>
+                  <AvatarFallback className="text-xs">{initials(m.name)}</AvatarFallback>
                 </Avatar>
                 <span className="whitespace-nowrap">{m.name}</span>
               </button>

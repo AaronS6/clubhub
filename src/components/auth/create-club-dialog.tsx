@@ -106,10 +106,10 @@ export function CreateClubDialog({
                 placeholder="e.g. Robotics Club"
                 maxLength={80}
                 aria-invalid={!!nameError}
-                className={nameError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={nameError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               {nameError && (
-                <p className="text-xs text-red-500 mt-1">{nameError}</p>
+                <p className="text-xs text-danger mt-1">{nameError}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -146,10 +146,10 @@ export function CreateClubDialog({
                 placeholder="Members need this to join"
                 minLength={4}
                 aria-invalid={!!passwordError}
-                className={passwordError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={passwordError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               {passwordError ? (
-                <p className="text-xs text-red-500 mt-1">{passwordError}</p>
+                <p className="text-xs text-danger mt-1">{passwordError}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">A 6-character club code will be auto-generated.</p>
               )}
@@ -169,10 +169,10 @@ export function CreateClubDialog({
                 placeholder="Enter the admin passcode"
                 autoComplete="off"
                 aria-invalid={!!passcodeError}
-                className={passcodeError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={passcodeError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               {passcodeError ? (
-                <p className="text-xs text-red-500 mt-1">{passcodeError}</p>
+                <p className="text-xs text-danger mt-1">{passcodeError}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Required to create a new club. Ask your ClubHub admin if you don&apos;t have it.

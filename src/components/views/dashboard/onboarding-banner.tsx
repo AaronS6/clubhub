@@ -39,7 +39,7 @@ export function OnboardingBanner({
     },
   ]
   return (
-    <div className="card-quiet p-5 bg-club-muted/40 border-club/30 animate-fade-in relative">
+    <div className="card-quiet p-5 bg-club-muted/40 border-club/30 relative">
       <button
         type="button"
         onClick={onDismiss}

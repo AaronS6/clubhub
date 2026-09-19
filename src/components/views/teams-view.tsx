@@ -187,7 +187,7 @@ export function TeamsView() {
       />
 
       {isError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">
+        <div className="rounded-lg border border-danger/30 bg-danger-subtle dark:border-danger/40 dark:bg-danger-subtle p-4 text-sm text-danger-foreground dark:text-danger-foreground">
           Failed to load teams.{" "}
           <button className="underline" onClick={() => refetch()}>
             Try again
@@ -213,7 +213,7 @@ export function TeamsView() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-1">
           {data.teams.map((team, i) => (
             <TeamCard
               key={team.id}
@@ -258,7 +258,7 @@ export function TeamsView() {
 
 function TeamsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="space-y-1">
       {Array.from({ length: 6 }).map((_, i) => (
         <CardSkeleton key={i} />
       ))}
@@ -315,97 +315,61 @@ function TeamCard({
         }
       }}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-border bg-card p-5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-club animate-fade-in",
-        flash && "ring-2 ring-club/50 shadow-md"
+        "group relative flex items-center gap-3 w-full text-left rounded-md px-3 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        flash && "ring-2 ring-club/50"
       )}
     >
-      {/* Colored accent strip across the top edge — gives each team identity. */}
-      <div
+      {/* Accent dot — gives each team identity without a full strip/halo. */}
+      <span
         aria-hidden
-        className="absolute inset-x-0 top-0 h-1.5"
-        style={{ backgroundColor: accent }}
-      />
-      {/* Soft tinted halo in the top-right corner — picks up the accent color
-          without overwhelming the card content. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full opacity-[0.08] blur-2xl transition-opacity group-hover:opacity-[0.14]"
+        className="inline-block h-2 w-2 shrink-0 rounded-full"
         style={{ backgroundColor: accent }}
       />
 
-      <div className="relative pt-2 pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className="inline-block h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: accent }}
-              />
-              <h3 className="text-card-title truncate">{team.name}</h3>
-            </div>
-            {team.description ? (
-              <p className="text-caption mt-1 line-clamp-2 text-muted-foreground">
-                {team.description}
-              </p>
-            ) : (
-              <p className="text-caption text-muted-foreground/70 mt-1 italic">No description</p>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-medium truncate">{team.name}</h3>
+        {team.description ? (
+          <p className="text-xs text-muted-foreground truncate">{team.description}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground/60 italic">No description</p>
+        )}
+      </div>
+
+      {/* Member avatar stack (max 4 + count) */}
+      <div className="flex items-center gap-2 shrink-0">
+        {team.members.length === 0 ? (
+          <span className="text-xs text-muted-foreground/60">No members</span>
+        ) : (
+          <div className="flex items-center -space-x-2">
+            {visibleMembers.map((m) => (
+              <Avatar key={m.id} className="h-7 w-7 border-2 border-background" title={m.user.name}>
+                <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+                <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
+                {online.has(m.userId) && (
+                  <span aria-label="Online" className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-background" />
+                )}
+              </Avatar>
+            ))}
+            {overflow > 0 && (
+              <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
+                +{overflow}
+              </div>
             )}
           </div>
-          {isExec && <TeamCardMenu clubId={clubId} team={team} />}
-        </div>
+        )}
       </div>
-      <div className="relative space-y-3">
-        <div className="flex items-center gap-2 min-h-[32px]">
-          {team.members.length === 0 ? (
-            <span className="text-caption text-muted-foreground/70">No members yet</span>
-          ) : (
-            <div className="flex items-center -space-x-2">
-              {visibleMembers.map((m) => (
-                <Avatar
-                  key={m.id}
-                  className="h-7 w-7 border-2 border-background"
-                  title={m.user.name}
-                >
-                  <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                  <AvatarFallback className="text-[10px]">{initials(m.user.name)}</AvatarFallback>
-                  {online.has(m.userId) && (
-                    <span
-                      aria-label="Online"
-                      className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-background"
-                    />
-                  )}
-                </Avatar>
-              ))}
-              {overflow > 0 && (
-                <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-[10px] font-medium text-muted-foreground">
-                  +{overflow}
-                </div>
-              )}
-              {overflow > 0 && (
-                <span className="ml-2.5 text-caption text-muted-foreground">
-                  +{overflow} more
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        <Separator />
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5" />
-            {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <CheckSquare className="h-3.5 w-3.5" />
-            {team.taskCount} {team.taskCount === 1 ? "task" : "tasks"}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarDays className="h-3.5 w-3.5" />
-            {team.upcomingMeetingCount} upcoming
-          </span>
-        </div>
+
+      {/* Stats — compact, hidden on mobile */}
+      <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+        <span className="inline-flex items-center gap-1.5">
+          <Users className="h-3.5 w-3.5" />{team.memberCount}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <CheckSquare className="h-3.5 w-3.5" />{team.taskCount}
+        </span>
       </div>
+
+      {isExec && <TeamCardMenu clubId={clubId} team={team} />}
     </div>
   )
 }
@@ -443,7 +407,7 @@ function TeamCardMenu({ clubId, team }: { clubId: string; team: Team }) {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-red-600 focus:text-red-700"
+              className="text-danger-foreground focus:text-danger-foreground"
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -571,7 +535,7 @@ function TeamDetailSheet({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-red-600 shrink-0"
+                        className="h-9 w-9 text-muted-foreground hover:text-danger-foreground shrink-0"
                         aria-label={`Remove ${m.user.name} from team`}
                         onClick={() => setRemoveTarget(m)}
                       >
@@ -611,7 +575,7 @@ function TeamDetailSheet({
                           <span className="inline-flex items-center gap-1">
                             <Avatar className="h-4 w-4">
                               <AvatarImage src={t.assignee.avatarUrl ?? undefined} alt={t.assignee.name} />
-                              <AvatarFallback className="text-[8px]">{initials(t.assignee.name)}</AvatarFallback>
+                              <AvatarFallback className="text-xs">{initials(t.assignee.name)}</AvatarFallback>
                             </Avatar>
                             {t.assignee.name}
                           </span>
@@ -1082,7 +1046,7 @@ function AddMembersDialog({
                           <div className="text-xs text-muted-foreground truncate">{m.user.email}</div>
                         </div>
                         {m.role === "executive" && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 shrink-0">
                             exec
                           </Badge>
                         )}

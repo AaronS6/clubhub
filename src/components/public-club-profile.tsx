@@ -147,10 +147,10 @@ function ProfileCard({
   isAuthenticated: boolean
 }) {
   return (
-    <article className="animate-fade-in">
+    <article className="">
       {/* Hero header — accent-colored band with logo + name */}
       <div
-        className="relative overflow-hidden rounded-2xl border"
+        className="relative overflow-hidden rounded-xl border"
         style={{
           background: `linear-gradient(135deg, ${hexToRgba(
             club.accentColor,
@@ -166,7 +166,7 @@ function ProfileCard({
         <div className="p-6 sm:p-8 pl-7 sm:pl-9">
           <div className="flex items-start gap-4">
             <Avatar
-              className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl border-2 shadow-sm shrink-0"
+              className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl border-2 shadow-sm shrink-0"
               style={{ backgroundColor: club.accentColor }}
             >
               <AvatarImage
@@ -175,7 +175,7 @@ function ProfileCard({
                 className="object-cover"
               />
               <AvatarFallback
-                className="rounded-2xl text-lg sm:text-xl font-bold"
+                className="rounded-xl text-lg sm:text-xl font-bold"
                 style={{
                   backgroundColor: club.accentColor,
                   color: readableForeground(club.accentColor),
@@ -293,7 +293,7 @@ function StatTile({
         {icon}
       </div>
       <div className="text-xl sm:text-2xl font-semibold tabular-nums">{value}</div>
-      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground mt-0.5">
+      <div className="text-xs sm:text-xs  text-muted-foreground mt-0.5">
         {label}
       </div>
     </div>
@@ -303,7 +303,7 @@ function StatTile({
 function ProfileSkeleton() {
   return (
     <div className="space-y-4">
-      <Skeleton className="h-40 rounded-2xl" />
+      <Skeleton className="h-40 rounded-xl" />
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-24 rounded-xl" />
@@ -316,7 +316,7 @@ function ProfileSkeleton() {
 
 function ProfileError({ message, code }: { message: string; code: string }) {
   return (
-    <div className="text-center py-12 px-4 animate-fade-in">
+    <div className="text-center py-12 px-4">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <AlertCircle className="h-6 w-6" />
       </div>

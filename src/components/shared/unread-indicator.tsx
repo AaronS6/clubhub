@@ -64,7 +64,7 @@ export function UnreadBadge({
       role="status"
       aria-label={`${count} unread`}
       className={cn(
-        "inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-club px-1 text-[10px] font-semibold leading-none text-club-foreground tabular-nums",
+        "inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-club px-1 text-xs font-semibold leading-none text-club-foreground tabular-nums",
         className,
       )}
       {...rest}

@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
+import { APP_VERSION } from "@/lib/version"
 
 // ───────────────────────────────────────────────────────────────────────────
 // First-visit / returning-visitor flag.
@@ -307,6 +308,11 @@ function AuthScreenInner() {
       </main>
       </div>
 
+      {/* Version marker — small, bottom-right. Bumped on each update. */}
+      <span className="absolute bottom-3 right-4 text-xs font-medium text-[#1a1815]/35 dark:text-[#f0ebe0]/35 select-none pointer-events-none">
+        v{APP_VERSION}
+      </span>
+
       <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
     </div>
   )
@@ -479,7 +485,7 @@ function ResetPasswordScreen({
               />
             </div>
             {error && (
-              <div className="flex items-start gap-2.5 rounded-none border-2 border-red-500/60 bg-red-50 dark:bg-red-950/30 px-3.5 py-3 text-sm text-red-800 dark:text-red-200">
+              <div className="flex items-start gap-2.5 rounded-none border border-danger/30 bg-danger-subtle px-3.5 py-3 text-sm text-danger-foreground">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>{error}</span>
               </div>

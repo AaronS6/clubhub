@@ -49,20 +49,20 @@ const statusChipClass: Record<StatusKind, string> = {
 }
 
 const dotClass: Record<StatusKind, string> = {
-  pending: "bg-amber-500",
-  approved: "bg-emerald-500",
-  rejected: "bg-red-500",
-  in_progress: "bg-sky-500",
-  done: "bg-emerald-500",
-  not_started: "bg-amber-500",
-  neutral: "bg-gray-400",
+  pending: "bg-warning",
+  approved: "bg-success",
+  rejected: "bg-danger",
+  in_progress: "bg-info",
+  done: "bg-success",
+  not_started: "bg-muted-foreground",
+  neutral: "bg-muted-foreground",
 }
 
 export function StatusBadge({ status, label }: { status: StatusKind; label?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
         statusChipClass[status]
       )}
     >
@@ -84,12 +84,13 @@ export function StatusDot({ status }: { status: StatusKind }) {
 
 export function RoleBadge({ role }: { role: "member" | "executive" }) {
   return role === "executive" ? (
-    <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
-      <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-club-subtle px-2 py-0.5 text-xs font-medium text-club-ink">
+      <span className="h-1.5 w-1.5 rounded-full bg-club" />
       Executive
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-md chip-neutral px-2 py-0.5 text-xs font-medium">
+    <span className="inline-flex items-center gap-1.5 rounded-full chip-neutral px-2 py-0.5 text-xs font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
       Member
     </span>
   )
@@ -116,7 +117,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center animate-fade-in",
+        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center",
         className
       )}
     >
@@ -414,12 +415,12 @@ export function avatarColor(name?: string | null) {
   if (!name) return "bg-muted text-muted-foreground"
   const palette = [
     "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
-    "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300",
-    "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+    "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground",
+    "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle/50 dark:text-warning-foreground",
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
     "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300",
     "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
-    "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
+    "bg-club-subtle text-club-ink dark:bg-club-subtle/50 dark:text-club-ink",
     "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950/50 dark:text-fuchsia-300",
   ]
   let h = 0

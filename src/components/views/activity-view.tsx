@@ -64,7 +64,7 @@ const PAGE_SIZE = 50
 type ActionMeta = { label: string; icon: React.ReactNode; color: string }
 
 const ACTION_META: Record<string, ActionMeta> = {
-  club_created: { label: "Club created", icon: <Crown className="h-3 w-3" />, color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200 border-violet-200 dark:border-violet-900" },
+  club_created: { label: "Club created", icon: <Crown className="h-3 w-3" />, color: "bg-club-subtle text-club-ink dark:bg-club-subtle dark:text-club-ink border-club/20" },
   new_member: { label: "New member", icon: <UserPlus className="h-3 w-3" />, color: "chip-approved" },
   promote: { label: "Promoted", icon: <ArrowUpCircle className="h-3 w-3" />, color: "chip-progress" },
   demote: { label: "Demoted", icon: <ArrowDownCircle className="h-3 w-3" />, color: "chip-pending" },
@@ -78,7 +78,7 @@ const ACTION_META: Record<string, ActionMeta> = {
   task_completed: { label: "Task completed", icon: <CheckCircle2 className="h-3 w-3" />, color: "chip-approved" },
   meeting_created: { label: "Meeting scheduled", icon: <CalendarDays className="h-3 w-3" />, color: "chip-progress" },
   meeting_cancelled: { label: "Meeting cancelled", icon: <CalendarDays className="h-3 w-3" />, color: "chip-rejected" },
-  team_created: { label: "Team created", icon: <Users className="h-3 w-3" />, color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200 border-violet-200 dark:border-violet-900" },
+  team_created: { label: "Team created", icon: <Users className="h-3 w-3" />, color: "bg-club-subtle text-club-ink dark:bg-club-subtle dark:text-club-ink border-club/20" },
   club_updated: { label: "Club updated", icon: <UserCog className="h-3 w-3" />, color: "chip-neutral" },
   code_regenerated: { label: "Code regenerated", icon: <KeyRound className="h-3 w-3" />, color: "chip-pending" },
 }
@@ -270,7 +270,7 @@ export function ActivityView() {
                 return (
                   <li
                     key={item.id}
-                    className="relative flex gap-3 px-1 py-2 rounded-md hover:bg-muted/40 transition-colors animate-fade-in"
+                    className="relative flex gap-3 px-1 py-2 rounded-md hover:bg-muted/40 transition-colors"
                   >
                     <div className="relative shrink-0">
                       <Avatar className="h-10 w-10 border-2 border-background">

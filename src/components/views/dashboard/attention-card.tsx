@@ -29,7 +29,7 @@ export function AttentionCard({
       onClick={onClick}
       style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
       className={cn(
-        "card-quiet p-4 text-left border-l-2 border-l-club animate-fade-in transition-colors",
+        "card-quiet p-4 text-left border-l-2 border-l-club transition-colors",
         onClick &&
           "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         urgent && "border-l-red-500"
@@ -37,7 +37,7 @@ export function AttentionCard({
     >
       <div className="flex items-start gap-3">
         <span
-          className={cn("mt-0.5 shrink-0", urgent ? "text-red-500" : "text-club")}
+          className={cn("mt-0.5 shrink-0", urgent ? "text-danger" : "text-club")}
         >
           {icon}
         </span>
@@ -54,7 +54,7 @@ export function AttentionCard({
 /** "You're all caught up" positive empty state for the Tier 1 strip. */
 export function AllCaughtUpCard() {
   return (
-    <div className="card-quiet p-5 flex items-center gap-4 animate-fade-in">
+    <div className="card-quiet p-5 flex items-center gap-4">
       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-club-muted text-club shrink-0">
         <CheckCircle2 className="h-5 w-5" />
       </div>

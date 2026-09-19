@@ -104,20 +104,13 @@ interface DashboardData {
   } | null
 }
 
-/** Inline style for staggered fade-in cascade. */
-function stagger(i: number): CSSProperties {
-  return {
-    animationDelay: `${i * 50}ms`,
-    animationFillMode: "backwards",
-  }
-}
 
 // Bento tile — hairline border, card surface, larger radius, hover lift.
 // Used for every top-level tile in the new asymmetric grid. NO `card-quiet`.
 const TILE =
-  "border border-border bg-card rounded-2xl p-5 hover:shadow-sm transition-all duration-200"
+  "border border-border bg-card rounded-xl p-5 transition-all duration-200"
 const TILE_COMPACT =
-  "border border-border bg-card rounded-2xl p-4 hover:shadow-sm transition-all duration-200"
+  "border border-border bg-card rounded-xl p-4 transition-all duration-200"
 
 // =========================================================================
 // Main component
@@ -287,7 +280,7 @@ export function DashboardView() {
               <li key={t.id} className="flex items-center gap-2 text-body">
                 {isOverdue ? (
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0"
+                    className="h-1.5 w-1.5 rounded-full bg-danger-subtle0 shrink-0"
                     aria-label="Overdue"
                   />
                 ) : (
@@ -301,7 +294,7 @@ export function DashboardView() {
                   <span
                     className={cn(
                       "ml-auto text-caption shrink-0 tabular-nums",
-                      isOverdue && "text-red-600 dark:text-red-400 font-medium"
+                      isOverdue && "text-danger-foreground dark:text-danger-foreground font-medium"
                     )}
                   >
                     {format(t.due, "MMM d")}
@@ -447,7 +440,7 @@ export function DashboardView() {
     <>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Trophy className="h-4 w-4 text-amber-500" />
+          <Trophy className="h-4 w-4 text-warning" />
           <h2 className="text-card-title">Leaderboard</h2>
         </div>
         <Button
@@ -527,7 +520,7 @@ export function DashboardView() {
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="text-body-medium">Approved hours</span>
           </div>
-          <span className="text-card-title tabular-nums">
+          <span className="text-numeral">
             {fmtHours(data.myStats.approvedHours)}h
           </span>
         </div>
@@ -626,7 +619,7 @@ export function DashboardView() {
             >
               <div className="flex items-start gap-2">
                 {a.isPinned && (
-                  <Pin className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                  <Pin className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-body-medium truncate">{a.title}</p>
@@ -692,38 +685,35 @@ export function DashboardView() {
   )
 
   const clubStatsBody = (
-    <>
-      <div className="flex items-center gap-2 mb-3">
-        <BarChart3 className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-card-title">Club at a glance</h2>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <ClubStat
-          label="Members"
-          value={String(data.clubStats.totalMembers)}
-          icon={<Users className="h-3.5 w-3.5" />}
-          onClick={() => setView("members")}
-        />
-        <ClubStat
-          label="Total hours"
-          value={fmtHours(data.clubStats.totalApprovedHours)}
-          icon={<Clock className="h-3.5 w-3.5" />}
-          onClick={() => setView("hours")}
-        />
-        <ClubStat
-          label="Open tasks"
-          value={String(data.clubStats.openTasks)}
-          icon={<ClipboardList className="h-3.5 w-3.5" />}
-          onClick={() => setView("tasks")}
-        />
-        <ClubStat
-          label="Upcoming meetings"
-          value={String(data.clubStats.upcomingMeetingsCount)}
-          icon={<CalendarDays className="h-3.5 w-3.5" />}
-          onClick={() => setView("meetings")}
-        />
-      </div>
-    </>
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      <span className="inline-flex items-center gap-1.5">
+        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-semibold tabular-nums">{data.clubStats.totalMembers}</span>
+        <span className="text-muted-foreground">members</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-semibold tabular-nums">{fmtHours(data.clubStats.totalApprovedHours)}h</span>
+        <span className="text-muted-foreground">approved</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <ClipboardList className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-semibold tabular-nums">{data.clubStats.openTasks}</span>
+        <span className="text-muted-foreground">open tasks</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-semibold tabular-nums">{data.clubStats.upcomingMeetingsCount}</span>
+        <span className="text-muted-foreground">meetings</span>
+      </span>
+      {isExec && data.clubStats.pendingApprovals > 0 && (
+        <span className="inline-flex items-center gap-1.5">
+          <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-semibold tabular-nums">{data.clubStats.pendingApprovals}</span>
+          <span className="text-muted-foreground">pending</span>
+        </span>
+      )}
+    </div>
   )
 
   return (
@@ -783,36 +773,36 @@ export function DashboardView() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Your snapshot — first */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-1 lg:order-1 animate-fade-in")}
-            style={stagger(0)}
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-1")}
+           
           >
             {snapshotBody}
           </section>
           {/* Announcements — second */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-2 lg:order-2 animate-fade-in")}
-            style={stagger(1)}
+            className={cn(TILE, "lg:col-span-4 order-2 lg:order-2")}
+           
           >
             {announcementsBody}
           </section>
           {/* Upcoming meetings — third */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-3 lg:order-3 animate-fade-in")}
-            style={stagger(2)}
+            className={cn(TILE, "lg:col-span-4 order-3 lg:order-3")}
+           
           >
             {meetingsBody}
           </section>
           {/* Hours trend chart — fourth (wide) */}
           <section
-            className={cn(TILE, "lg:col-span-8 order-4 lg:order-4 animate-fade-in")}
-            style={stagger(3)}
+            className={cn(TILE, "lg:col-span-8 order-4 lg:order-4")}
+           
           >
             {chartBody}
           </section>
           {/* Leaderboard — fifth (narrow, tall) */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5 animate-fade-in")}
-            style={stagger(4)}
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5")}
+           
           >
             {leaderboardBody}
           </section>
@@ -821,40 +811,40 @@ export function DashboardView() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 (wide) */}
           <section
-            className={cn(TILE, "lg:col-span-8 order-2 lg:order-1 animate-fade-in")}
-            style={stagger(2)}
+            className={cn(TILE, "lg:col-span-8 order-2 lg:order-1")}
+           
           >
             {chartBody}
           </section>
 
           {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 (narrow, tall) */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-3 lg:order-2 animate-fade-in")}
-            style={stagger(3)}
+            className={cn(TILE, "lg:col-span-4 order-3 lg:order-2")}
+           
           >
             {leaderboardBody}
           </section>
 
           {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-1 lg:order-3 animate-fade-in")}
-            style={stagger(0)}
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-3")}
+           
           >
             {snapshotBody}
           </section>
 
           {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-4 lg:order-4 animate-fade-in")}
-            style={stagger(4)}
+            className={cn(TILE, "lg:col-span-4 order-4 lg:order-4")}
+           
           >
             {announcementsBody}
           </section>
 
           {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5 animate-fade-in")}
-            style={stagger(5)}
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5")}
+           
           >
             {meetingsBody}
           </section>
@@ -864,8 +854,8 @@ export function DashboardView() {
       {/* Row 5 — Club-wide stats mini-strip (exec only) --------------------- */}
       {isExec && (
         <section
-          className={cn(TILE_COMPACT, "animate-fade-in")}
-          style={stagger(6)}
+          className={cn(TILE_COMPACT, "")}
+         
         >
           {clubStatsBody}
         </section>
@@ -874,11 +864,11 @@ export function DashboardView() {
       {/* Row 6 (execs only) — Executive insights wide strip ---------------- */}
       {isExec && data.execStats && (
         <section
-          className={cn(TILE_COMPACT, "animate-fade-in")}
-          style={stagger(7)}
+          className={cn(TILE_COMPACT, "")}
+         
         >
           <div className="flex items-center gap-2 mb-3">
-            <ShieldCheck className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+            <ShieldCheck className="h-4 w-4 text-club-ink" />
             <h2 className="text-card-title">Executive insights</h2>
             <span className="text-caption ml-1">This week</span>
           </div>
@@ -1077,7 +1067,7 @@ function HoursMilestoneCelebration({
       </div>
 
       {/* Center card */}
-      <div className="relative pointer-events-auto rounded-2xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
+      <div className="relative pointer-events-auto rounded-xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
         <div className="flex justify-center mb-2" aria-hidden>
           <PartyPopper className="h-10 w-10 text-club" />
         </div>
@@ -1123,9 +1113,9 @@ function HeroPanel({
   return (
     <section
       className={cn(
-        "bg-accent-tint relative overflow-hidden rounded-2xl border border-border animate-fade-in",
-        "bg-gradient-to-br from-club-muted/60 to-transparent",
-        "lg:col-span-7 p-5 sm:p-6 hover:shadow-sm transition-all duration-200"
+        "bg-accent-tint relative overflow-hidden rounded-xl border border-border",
+        "",
+        "lg:col-span-7 p-5 sm:p-6 transition-all duration-200"
       )}
     >
       {/* §38 — Club cover identity. A subtle accent gradient strip pinned
@@ -1135,7 +1125,7 @@ function HeroPanel({
           so it reads cleanly. */}
       <div
         aria-hidden
-        className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-club via-club/50 to-transparent"
+        className="absolute left-0 top-0 h-1 w-full from-club via-club/50 to-transparent"
       />
       {/* Barely-visible dot-grid texture overlay (matches the auth-screen
           pattern but at opacity 0.05 for an even quieter feel). */}
@@ -1241,7 +1231,7 @@ function ProgressRingTile({
       onClick={onViewHours}
       className={cn(
         TILE,
-        "lg:col-span-5 text-left flex flex-col animate-fade-in",
+        "lg:col-span-5 text-left flex flex-col",
         onViewHours &&
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
@@ -1283,7 +1273,7 @@ function ProgressRingTile({
         </div>
       ) : (
         <div className="flex-1 flex flex-col justify-center">
-          <div className="text-4xl font-bold tabular-nums leading-tight">
+          <div className="text-numeral">
             {fmtHours(approvedHours)}h
           </div>
           <p className="text-caption mt-1 mb-3">Approved · last 30 days</p>
@@ -1299,7 +1289,7 @@ function ProgressRingTile({
 function RoleBadgePill({ role }: { role: "member" | "executive" }) {
   if (role === "executive") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+      <span className="inline-flex items-center gap-1 rounded-full border bg-club-subtle border-club/20 px-2 py-0.5 text-xs font-medium text-club-ink">
         <ShieldCheck className="h-3 w-3" /> Executive
       </span>
     )
@@ -1335,7 +1325,7 @@ function AttentionCard({
       onClick={onClick}
       style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
       className={cn(
-        "border border-border bg-card rounded-2xl p-4 text-left border-l-2 border-l-club animate-fade-in hover:shadow-sm transition-all duration-200",
+        "border border-border bg-card rounded-xl p-4 text-left border-l-2 border-l-club transition-all duration-200",
         onClick &&
           "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         urgent && "border-l-red-500"
@@ -1343,7 +1333,7 @@ function AttentionCard({
     >
       <div className="flex items-start gap-3">
         <span
-          className={cn("mt-0.5 shrink-0", urgent ? "text-red-500" : "text-club")}
+          className={cn("mt-0.5 shrink-0", urgent ? "text-danger" : "text-club")}
         >
           {icon}
         </span>
@@ -1359,17 +1349,9 @@ function AttentionCard({
 
 function AllCaughtUpCard() {
   return (
-    <div className="border border-border bg-card rounded-2xl p-5 flex items-center gap-4 animate-fade-in hover:shadow-sm transition-all duration-200">
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-club-muted text-club shrink-0">
-        <CheckCircle2 className="h-5 w-5" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-card-title">You&apos;re all caught up</p>
-        <p className="text-caption mt-0.5">
-          Nothing needs your attention right now.
-        </p>
-      </div>
-    </div>
+    <p className="text-sm text-muted-foreground py-2">
+      Nothing needs your attention right now.
+    </p>
   )
 }
 
@@ -1409,7 +1391,7 @@ function OnboardingBanner({
     },
   ]
   return (
-    <div className="border border-club/30 bg-club-muted/40 rounded-2xl p-5 animate-fade-in relative hover:shadow-sm transition-all duration-200">
+    <div className="border border-club/30 bg-club-muted/40 rounded-xl p-5 relative transition-all duration-200">
       <button
         type="button"
         onClick={onDismiss}
@@ -1470,7 +1452,7 @@ function MemberOnboardingCard({
   onDismiss: () => void
 }) {
   return (
-    <div className="bg-club-muted/40 rounded-2xl p-5 animate-fade-in relative hover:shadow-sm transition-all duration-200">
+    <div className="bg-club-muted/40 rounded-xl p-5 relative transition-all duration-200">
       <button
         type="button"
         onClick={onDismiss}
@@ -1510,11 +1492,11 @@ function MemberOnboardingCard({
 function RankBadge({ rank }: { rank: number }) {
   const styles =
     rank === 1
-      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 border-amber-200 dark:border-amber-900"
+      ? "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground border-warning/30 dark:border-amber-900"
       : rank === 2
-      ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700"
+      ? "bg-muted bg-muted text-muted-foreground border-border"
       : rank === 3
-      ? "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200 border-orange-200 dark:border-orange-900"
+      ? "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground border-orange-200 dark:border-orange-900"
       : "bg-muted text-muted-foreground border-border"
   return (
     <span
@@ -1538,7 +1520,7 @@ function RsvpBadge({ status }: { status: "going" | "not_going" | "maybe" }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0",
         s.className
       )}
     >
@@ -1565,7 +1547,7 @@ function ClubStat({
       className="text-left rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 hover:border-club/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-center justify-between">
-        <span className="text-caption-medium uppercase tracking-wide">
+        <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
         <span className="text-muted-foreground">{icon}</span>
@@ -1597,10 +1579,10 @@ function ExecMetric({
         "text-left rounded-lg border bg-card/40 px-3 py-2 transition-colors w-full",
         onClick &&
           "hover:bg-accent/40 hover:border-club/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        urgent && "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20"
+        urgent && "border-amber-300 dark:border-amber-800 bg-warning-subtle/50 dark:bg-warning-subtle"
       )}
     >
-      <p className="text-caption uppercase tracking-wide">{label}</p>
+      <p className="text-caption ">{label}</p>
       <p className="mt-0.5 text-base font-semibold tabular-nums">{value}</p>
       {hint && <p className="text-caption mt-0.5">{hint}</p>}
     </Comp>
@@ -1795,7 +1777,7 @@ function ProgressRing({
             {label ?? `${Math.round(clamped)}%`}
           </div>
           {sublabel && (
-            <div className="text-[10px] text-muted-foreground mt-1 tabular-nums">
+            <div className="text-xs text-muted-foreground mt-1 tabular-nums">
               {sublabel}
             </div>
           )}
@@ -1810,7 +1792,7 @@ function ProgressRing({
 // =========================================================================
 function DashboardSkeleton() {
   const tile =
-    "border border-border bg-card rounded-2xl animate-pulse"
+    "border border-border bg-card rounded-xl animate-pulse"
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* Row 1 — Hero panel + Progress ring tile */}

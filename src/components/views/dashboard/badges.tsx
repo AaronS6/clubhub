@@ -6,7 +6,7 @@ import { ShieldCheck, Users } from "lucide-react"
 export function RoleBadgePill({ role }: { role: "member" | "executive" }) {
   if (role === "executive") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-900 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+      <span className="inline-flex items-center gap-1 rounded-full border bg-club-subtle border-club/20 px-2 py-0.5 text-xs font-medium text-club-ink">
         <ShieldCheck className="h-3 w-3" /> Executive
       </span>
     )
@@ -22,11 +22,11 @@ export function RoleBadgePill({ role }: { role: "member" | "executive" }) {
 export function RankBadge({ rank }: { rank: number }) {
   const styles =
     rank === 1
-      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 border-amber-200 dark:border-amber-900"
+      ? "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground border-warning/30 dark:border-amber-900"
       : rank === 2
-      ? "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700"
+      ? "bg-muted bg-muted text-muted-foreground border-border"
       : rank === 3
-      ? "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200 border-orange-200 dark:border-orange-900"
+      ? "bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground border-orange-200 dark:border-orange-900"
       : "bg-muted text-muted-foreground border-border"
   return (
     <span
@@ -51,7 +51,7 @@ export function RsvpBadge({ status }: { status: "going" | "not_going" | "maybe" 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium shrink-0",
         s.className
       )}
     >

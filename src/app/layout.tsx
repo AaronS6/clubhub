@@ -1,18 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 import { Suspense } from "react";
 import { ClubAccentProvider } from "@/components/club-accent-provider";
 
-// Plus Jakarta Sans — slightly more distinctive geometric warmth than Geist,
-// still very readable at small sizes (tables, badges, chat timestamps).
-// Pairs with Geist Mono for code/mono. Wired into --font-sans.
-const jakarta = Plus_Jakarta_Sans({
+// Bricolage Grotesque — the display face. Used only for .text-page-title and
+// .text-numeral (the big hours number). 600/700 only — keeps the bundle small.
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  weight: ["600", "700"],
+  display: "swap",
+});
+
+// Geist Sans — the body face. Everything else (labels, body, captions, tables).
+const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -32,7 +38,7 @@ export const metadata: Metadata = {
 // Explicit viewport config — critical for mobile:
 // - viewportFit: "cover" lets content extend under the notch/home indicator
 //   on iPhones (combined with safe-area-inset padding on fixed elements).
-// - themeColor matches the actual light/dark backgrounds.
+// - themeColor matches the actual light/dark canvas.
 // - We do NOT set maximumScale/userScalable — pinch-zoom is an accessibility
 //   requirement, not just a preference.
 export const viewport: Viewport = {
@@ -40,8 +46,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F6F8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0F1216" },
   ],
 };
 
@@ -53,7 +59,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${jakarta.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
+        className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
       >
         <Providers>
           <ClubAccentProvider>

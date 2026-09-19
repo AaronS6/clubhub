@@ -285,7 +285,7 @@ export function MembersView() {
 
       {/* Body */}
       {isError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300">
+        <div className="rounded-lg border border-danger/30 bg-danger-subtle dark:border-danger/40 dark:bg-danger-subtle p-4 text-sm text-danger-foreground dark:text-danger-foreground">
           Failed to load members.{" "}
           <button className="underline" onClick={() => refetch()}>
             Try again
@@ -316,7 +316,7 @@ export function MembersView() {
                 <section aria-labelledby="leadership-heading" className="space-y-3">
                   <h2
                     id="leadership-heading"
-                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    className="text-xs font-medium text-muted-foreground"
                   >
                     Leadership
                   </h2>
@@ -347,7 +347,7 @@ export function MembersView() {
                 <section aria-labelledby="all-members-heading" className="space-y-3">
                   <h2
                     id="all-members-heading"
-                    className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                    className="text-xs font-medium text-muted-foreground"
                   >
                     All Members
                   </h2>
@@ -922,18 +922,18 @@ function ChangePasswordDialog({
               </Button>
             </div>
             {tooShort && newPassword.length > 0 && (
-              <p className="text-xs text-red-600 dark:text-red-400">
+              <p className="text-xs text-danger-foreground dark:text-danger-foreground">
                 Password must be at least 4 characters.
               </p>
             )}
             {tooLong && (
-              <p className="text-xs text-red-600 dark:text-red-400">
+              <p className="text-xs text-danger-foreground dark:text-danger-foreground">
                 Password must be 60 characters or fewer.
               </p>
             )}
           </div>
 
-          <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-200 flex gap-2">
+          <div className="rounded-md border border-warning/30 bg-warning-subtle dark:border-amber-900/60 dark:bg-warning-subtle px-3 py-2.5 text-xs text-warning-foreground flex gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
               Anyone with the old password will no longer be able to join. Make
@@ -994,7 +994,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
         <AlertDialogTrigger asChild>
           <button
             type="button"
-            className="text-xs text-muted-foreground/50 hover:text-red-500 transition-colors underline-offset-2 hover:underline"
+            className="text-xs text-muted-foreground/50 hover:text-danger transition-colors underline-offset-2 hover:underline"
           >
             Delete this club
           </button>
@@ -1002,7 +1002,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
+              <AlertTriangle className="h-4 w-4 text-danger-foreground" />
               Delete "{clubName}"?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -1024,7 +1024,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); handleDelete() }}
               disabled={loading || !password.trim()}
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-danger text-white hover:bg-danger"
             >
               {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
               Delete permanently
@@ -1087,7 +1087,7 @@ function MemberCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-club/30 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in border-t-2",
+        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:border-club/30 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border-t-2",
         member.role === "executive" ? "border-t-violet-400" : "border-t-club/30",
         flash && "ring-1 ring-inset ring-club/30 bg-club/5"
       )}
@@ -1123,7 +1123,7 @@ function MemberCard({
               {member.user.name}
             </span>
             {isSelf && (
-              <span className="text-[10px] uppercase font-semibold text-muted-foreground shrink-0">
+              <span className="text-xs uppercase font-semibold text-muted-foreground shrink-0">
                 (you)
               </span>
             )}
@@ -1176,7 +1176,7 @@ function MemberCard({
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  className="text-red-600 focus:text-red-700"
+                  className="text-danger-foreground focus:text-danger-foreground"
                   onClick={onRemove}
                 >
                   <UserMinus className="mr-2 h-4 w-4" /> Remove from club
@@ -1225,7 +1225,7 @@ function MemberCard({
               <Badge
                 key={t.id}
                 variant="secondary"
-                className="text-[10px] px-2 py-0 font-normal rounded-full"
+                className="text-xs px-2 py-0 font-normal rounded-full"
               >
                 {t.name}
               </Badge>
@@ -1305,22 +1305,22 @@ function MemberDetailSheet({
         <ScrollArea className="flex-1">
           <div className="p-5 space-y-5">
             {/* Stats row — prominent, mirrors the dashboard tile styling.
-                Uses rounded-2xl border bg-card p-3 with icon + value + label,
+                Uses rounded-xl border bg-card p-3 with icon + value + label,
                 sized to fit a 2-col grid on the narrow sheet. */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border bg-card p-3">
+              <div className="rounded-xl border bg-card p-3">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <Clock className="h-4 w-4" />
-                  <span className="text-[11px] uppercase tracking-wide font-medium">Hours logged</span>
+                  <span className="text-xs  font-medium">Hours logged</span>
                 </div>
                 <div className="text-xl font-semibold tabular-nums">
                   {member.approvedHours.toFixed(1)}
                 </div>
               </div>
-              <div className="rounded-2xl border bg-card p-3">
+              <div className="rounded-xl border bg-card p-3">
                 <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
                   <UsersIcon className="h-4 w-4" />
-                  <span className="text-[11px] uppercase tracking-wide font-medium">Teams</span>
+                  <span className="text-xs  font-medium">Teams</span>
                 </div>
                 <div className="text-xl font-semibold tabular-nums">
                   {String(member.teams.length)}
@@ -1330,7 +1330,7 @@ function MemberDetailSheet({
 
             {member.user.bio && (
               <div>
-                <h3 className="text-caption-medium uppercase tracking-wide mb-1">Bio</h3>
+                <h3 className="text-xs font-medium text-muted-foreground mb-1">Bio</h3>
                 <p className="text-sm text-foreground whitespace-pre-wrap">
                   {member.user.bio}
                 </p>
@@ -1339,7 +1339,7 @@ function MemberDetailSheet({
 
             {/* Teams pills — surfaces the teams they belong to. */}
             <div>
-              <h3 className="text-caption-medium uppercase tracking-wide mb-2">Teams</h3>
+              <h3 className="text-xs font-medium text-muted-foreground mb-2">Teams</h3>
               {member.teams.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {member.teams.map((t) => (
@@ -1376,7 +1376,7 @@ function StatBox({
     <div className="rounded-lg border bg-card p-3">
       <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
         {icon}
-        <span className="text-[11px] uppercase tracking-wide font-medium">{label}</span>
+        <span className="text-xs  font-medium">{label}</span>
       </div>
       <div className="text-sm font-semibold truncate">{value}</div>
     </div>
@@ -1487,7 +1487,7 @@ function BadgesSection({ clubId, userId }: { clubId: string; userId: string }) {
                       <span className="mr-2 text-base leading-none">{b.emoji}</span>
                       <span className="flex-1 truncate">{b.name}</span>
                       {b.awarded && (
-                        <span className="ml-2 text-[10px] uppercase font-semibold text-muted-foreground">
+                        <span className="ml-2 text-xs uppercase font-semibold text-muted-foreground">
                           Awarded
                         </span>
                       )}
@@ -1645,7 +1645,7 @@ function CreateBadgeDialog({
               maxLength={60}
               autoFocus
             />
-            <p className="text-[11px] text-muted-foreground">{name.length}/60</p>
+            <p className="text-xs text-muted-foreground">{name.length}/60</p>
           </div>
 
           <div className="space-y-2">
@@ -1678,7 +1678,7 @@ function CreateBadgeDialog({
                 maxLength={8}
                 aria-label="Custom emoji"
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Or paste your own emoji.
               </p>
             </div>
@@ -1694,7 +1694,7 @@ function CreateBadgeDialog({
               rows={3}
               maxLength={280}
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {description.length}/280
             </p>
           </div>
@@ -1893,7 +1893,7 @@ function ImportCsvDialog({
               </div>
 
               {error && (
-                <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                <div className="rounded-md border border-danger/30 bg-danger-subtle dark:border-danger/40 dark:bg-danger-subtle px-3 py-2 text-xs text-danger-foreground dark:text-danger-foreground">
                   {error}
                 </div>
               )}
@@ -1955,12 +1955,12 @@ function ImportResults({
           value={result.alreadyMembers.length}
         />
         <ResultStat
-          icon={<UserPlus className="h-4 w-4 text-amber-600" />}
+          icon={<UserPlus className="h-4 w-4 text-warning-foreground" />}
           label="Pending invites"
           value={result.pendingInvites.length}
         />
         <ResultStat
-          icon={<AlertTriangle className="h-4 w-4 text-red-600" />}
+          icon={<AlertTriangle className="h-4 w-4 text-danger-foreground" />}
           label="Invalid"
           value={result.invalid.length}
         />
@@ -1968,7 +1968,7 @@ function ImportResults({
 
       {result.added.length > 0 && (
         <div>
-          <h4 className="text-caption-medium uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+          <h4 className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5 text-club" /> Added ({result.added.length})
           </h4>
           <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin">
@@ -1983,13 +1983,13 @@ function ImportResults({
       )}
 
       {result.pendingInvites.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3">
+        <div className="rounded-md border border-warning/30 bg-warning-subtle dark:border-amber-900 dark:bg-warning-subtle/30 p-3">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h4 className="text-sm font-medium text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+              <h4 className="text-sm font-medium text-warning-foreground dark:text-warning-foreground flex items-center gap-1.5">
                 <UserPlus className="h-3.5 w-3.5" /> Pending invites ({result.pendingInvites.length})
               </h4>
-              <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+              <p className="text-xs text-warning-foreground dark:text-warning-foreground mt-1">
                 These people need to create an account first. Share your club code with them so they
                 can sign up and join.
               </p>
@@ -2008,9 +2008,9 @@ function ImportResults({
           </div>
           <div className="mt-3 space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
             {result.pendingInvites.map((p, i) => (
-              <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-amber-200/40 dark:border-amber-800/40 last:border-0">
-                <span className="truncate text-amber-900 dark:text-amber-200">{p.name}</span>
-                <span className="text-amber-700 dark:text-amber-300 truncate ml-2">{p.email}</span>
+              <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-warning/30/40 dark:border-amber-800/40 last:border-0">
+                <span className="truncate text-warning-foreground dark:text-warning-foreground">{p.name}</span>
+                <span className="text-warning-foreground dark:text-warning-foreground truncate ml-2">{p.email}</span>
               </div>
             ))}
           </div>
@@ -2019,7 +2019,7 @@ function ImportResults({
 
       {result.alreadyMembers.length > 0 && (
         <div>
-          <h4 className="text-caption-medium uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+          <h4 className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
             <UsersIcon className="h-3.5 w-3.5 text-muted-foreground" /> Already members ({result.alreadyMembers.length})
           </h4>
           <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
@@ -2034,7 +2034,7 @@ function ImportResults({
 
       {result.invalid.length > 0 && (
         <div>
-          <h4 className="text-caption-medium uppercase tracking-wide mb-1.5 flex items-center gap-1.5 text-red-600">
+          <h4 className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5 text-danger-foreground">
             <AlertTriangle className="h-3.5 w-3.5" /> Invalid rows ({result.invalid.length})
           </h4>
           <div className="space-y-1 max-h-32 overflow-y-auto scrollbar-thin">
@@ -2049,7 +2049,7 @@ function ImportResults({
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground text-center">
+      <p className="text-xs text-muted-foreground text-center">
         Processed {total} row{total === 1 ? "" : "s"} in total.
       </p>
 
@@ -2077,7 +2077,7 @@ function ResultStat({
     <div className="rounded-md border bg-card p-2.5">
       <div className="flex items-center gap-1.5 mb-1">
         {icon}
-        <span className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground">
+        <span className="text-xs  font-medium text-muted-foreground">
           {label}
         </span>
       </div>

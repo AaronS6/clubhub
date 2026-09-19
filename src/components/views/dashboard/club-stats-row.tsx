@@ -20,7 +20,7 @@ export function ClubStat({
       className="text-left rounded-lg border bg-card/50 px-3 py-2 hover:bg-accent/40 hover:border-club/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-center justify-between">
-        <span className="text-caption-medium uppercase tracking-wide">
+        <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
         <span className="text-muted-foreground">{icon}</span>
@@ -53,10 +53,10 @@ export function ExecMetric({
         "text-left rounded-lg border bg-card/40 px-3 py-2 transition-colors w-full",
         onClick &&
           "hover:bg-accent/40 hover:border-club/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        urgent && "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20"
+        urgent && "border-amber-300 dark:border-amber-800 bg-warning-subtle/50 dark:bg-warning-subtle"
       )}
     >
-      <p className="text-caption uppercase tracking-wide">{label}</p>
+      <p className="text-caption ">{label}</p>
       <p className="mt-0.5 text-base font-semibold tabular-nums">{value}</p>
       {hint && <p className="text-caption mt-0.5">{hint}</p>}
     </Comp>

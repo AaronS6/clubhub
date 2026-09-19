@@ -4,15 +4,16 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =========================================================================
-   ClubHub Design System
-   Philosophy: Notion / Linear — restraint over decoration. Typography and
-   spacing create hierarchy; color is used sparingly and intentionally.
+   ClubHub Design System — see DESIGN.md
+   Restraint over decoration. 1px borders, not shadows. Sentence case.
+   The member's hours number + the club accent carry the personality.
    ========================================================================= */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --color-sidebar-ring: var(--sidebar-ring);
@@ -48,132 +49,163 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  /* Per-club accent color — set dynamically by ClubAccentProvider.
-     Falls back to a warm emerald. Use bg-club / text-club-foreground / ring-club. */
-  --color-club: var(--club-accent, #10b981);
+  /* Per-club accent — set dynamically by ClubAccentProvider.
+     --club-ink is the accent darkened for readable TEXT on surfaces. */
+  --color-club: var(--club-accent, #0B8A5F);
   --color-club-foreground: var(--club-accent-foreground, #ffffff);
-  --color-club-muted: var(--club-accent-muted, rgba(16, 185, 129, 0.12));
-  --color-club-subtle: var(--club-accent-subtle, rgba(16, 185, 129, 0.08));
+  --color-club-ink: var(--club-ink, #0B8A5F);
+  --color-club-muted: var(--club-accent-muted, rgba(11, 138, 95, 0.12));
+  --color-club-subtle: var(--club-accent-subtle, rgba(11, 138, 95, 0.08));
 
-  /* Semantic status colors — soft tinted backgrounds with readable text */
-  --color-status-pending: var(--status-pending);
-  --color-status-pending-fg: var(--status-pending-fg);
-  --color-status-approved: var(--status-approved);
-  --color-status-approved-fg: var(--status-approved-fg);
-  --color-status-rejected: var(--status-rejected);
-  --color-status-rejected-fg: var(--status-rejected-fg);
-  --color-status-progress: var(--status-progress);
-  --color-status-progress-fg: var(--status-progress-fg);
+  /* Semantic status — soft tinted backgrounds + readable foreground text.
+     Success is deliberately NOT the club accent (which varies per club). */
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-subtle: var(--info-subtle);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+
+  /* Legacy status aliases (map to the new semantic tokens so existing
+     chip-* classes keep working until the views are rebuilt in later phases). */
+  --color-status-pending: var(--warning-subtle);
+  --color-status-pending-fg: var(--warning-foreground);
+  --color-status-approved: var(--success-subtle);
+  --color-status-approved-fg: var(--success-foreground);
+  --color-status-rejected: var(--danger-subtle);
+  --color-status-rejected-fg: var(--danger-foreground);
+  --color-status-progress: var(--info-subtle);
+  --color-status-progress-fg: var(--info-foreground);
 
   --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0.5rem; /* 8px — drives rounded-md. Cards/dialogs use rounded-xl (12px). */
 
-  /* Neutral scale — warm-tinted grays (very slight warm shift, Notion-like) */
-  --background: oklch(0.992 0.002 95);
-  --foreground: oklch(0.18 0.005 95);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.005 95);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.005 95);
+  /* Neutral scale */
+  --background: #F5F6F8;   /* canvas */
+  --foreground: #12161C;   /* ink */
+  --card: #FFFFFF;         /* surface */
+  --card-foreground: #12161C;
+  --popover: #FFFFFF;
+  --popover-foreground: #12161C;
 
-  /* Primary = the default club accent (warm emerald). Overridden per-club. */
-  --primary: oklch(0.62 0.15 160);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.965 0.003 95);
-  --secondary-foreground: oklch(0.28 0.006 95);
-  --muted: oklch(0.965 0.003 95);
-  --muted-foreground: oklch(0.52 0.008 95);
-  --accent: oklch(0.955 0.004 95);
-  --accent-foreground: oklch(0.28 0.006 95);
-  --destructive: oklch(0.58 0.22 27);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.91 0.004 95);
-  --input: oklch(0.91 0.004 95);
-  --ring: oklch(0.62 0.15 160);
+  --primary: #0B8A5F;       /* default club accent (overridden per-club) */
+  --primary-foreground: #ffffff;
+  --secondary: #EEF0F3;    /* subtle fill */
+  --secondary-foreground: #12161C;
+  --muted: #EEF0F3;        /* subtle fill */
+  --muted-foreground: #5B6470; /* muted ink */
+  --accent: #EEF0F3;
+  --accent-foreground: #12161C;
+  --destructive: #C2362E;
+  --destructive-foreground: #ffffff;
+  --border: #E3E6EB;       /* line */
+  --input: #E3E6EB;
+  --ring: #0B8A5F;
 
   /* Default club accent (overridden at runtime) */
-  --club-accent: #10b981;
+  --club-accent: #0B8A5F;
   --club-accent-foreground: #ffffff;
-  --club-accent-muted: rgba(16, 185, 129, 0.12);
-  --club-accent-subtle: rgba(16, 185, 129, 0.06);
+  --club-ink: #0B8A5F;     /* darkened-for-text version; for the default green this is itself */
+  --club-accent-muted: rgba(11, 138, 95, 0.12);
+  --club-accent-subtle: rgba(11, 138, 95, 0.07);
 
-  /* Status palette — confident, saturated tints (immediately legible at a glance) */
-  --status-pending: oklch(0.9 0.14 85);
-  --status-pending-fg: oklch(0.4 0.15 65);
-  --status-approved: oklch(0.88 0.16 155);
-  --status-approved-fg: oklch(0.35 0.15 155);
-  --status-rejected: oklch(0.88 0.14 22);
-  --status-rejected-fg: oklch(0.42 0.19 25);
-  --status-progress: oklch(0.88 0.15 240);
-  --status-progress-fg: oklch(0.38 0.16 245);
+  /* Semantic status — tinted background + readable foreground */
+  --danger: #C2362E;
+  --danger-foreground: #9E2A23;
+  --danger-subtle: #FBE9E7;
+  --warning: #B26A00;
+  --warning-foreground: #8A5200;
+  --warning-subtle: #FBEEE0;
+  --info: #2563A8;
+  --info-foreground: #1C4F87;
+  --info-subtle: #E6EEF7;
+  --success: #1F7A4D;
+  --success-foreground: #166039;
+  --success-subtle: #E4F3EC;
 
-  --chart-1: oklch(0.62 0.15 160);
-  --chart-2: oklch(0.6 0.12 240);
-  --chart-3: oklch(0.65 0.15 50);
-  --chart-4: oklch(0.6 0.18 300);
-  --chart-5: oklch(0.68 0.15 0);
+  --chart-1: #0B8A5F;
+  --chart-2: #2563A8;
+  --chart-3: #B26A00;
+  --chart-4: #7C3AED;
+  --chart-5: #C2362E;
 
-  --sidebar: oklch(0.985 0.002 95);
-  --sidebar-foreground: oklch(0.28 0.006 95);
-  --sidebar-primary: oklch(0.62 0.15 160);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.95 0.004 95);
-  --sidebar-accent-foreground: oklch(0.28 0.006 95);
-  --sidebar-border: oklch(0.92 0.004 95);
-  --sidebar-ring: oklch(0.62 0.15 160);
+  --sidebar: #FFFFFF;       /* surface */
+  --sidebar-foreground: #12161C;
+  --sidebar-primary: #0B8A5F;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #EEF0F3;
+  --sidebar-accent-foreground: #12161C;
+  --sidebar-border: #E3E6EB;
+  --sidebar-ring: #0B8A5F;
 }
 
 .dark {
-  --background: oklch(0.16 0.004 95);
-  --foreground: oklch(0.93 0.004 95);
-  --card: oklch(0.205 0.005 95);
-  --card-foreground: oklch(0.93 0.004 95);
-  --popover: oklch(0.205 0.005 95);
-  --popover-foreground: oklch(0.93 0.004 95);
+  --background: #0F1216;    /* canvas */
+  --foreground: #ECEEF1;   /* ink */
+  --card: #171B21;         /* surface */
+  --card-foreground: #ECEEF1;
+  --popover: #171B21;
+  --popover-foreground: #ECEEF1;
 
-  --primary: oklch(0.7 0.15 160);
-  --primary-foreground: oklch(0.16 0.004 95);
-  --secondary: oklch(0.255 0.006 95);
-  --secondary-foreground: oklch(0.93 0.004 95);
-  --muted: oklch(0.255 0.006 95);
-  --muted-foreground: oklch(0.66 0.008 95);
-  --accent: oklch(0.28 0.006 95);
-  --accent-foreground: oklch(0.93 0.004 95);
-  --destructive: oklch(0.68 0.19 22);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.7 0.15 160);
+  --primary: #0B8A5F;
+  --primary-foreground: #ffffff;
+  --secondary: #1F242C;    /* subtle fill */
+  --secondary-foreground: #ECEEF1;
+  --muted: #1F242C;
+  --muted-foreground: #98A1AE; /* muted ink */
+  --accent: #1F242C;
+  --accent-foreground: #ECEEF1;
+  --destructive: #E0554A;
+  --destructive-foreground: #F4B8B2;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #0B8A5F;
 
-  --status-pending: oklch(0.28 0.1 85);
-  --status-pending-fg: oklch(0.82 0.14 85);
-  --status-approved: oklch(0.26 0.12 155);
-  --status-approved-fg: oklch(0.82 0.16 155);
-  --status-rejected: oklch(0.28 0.1 22);
-  --status-rejected-fg: oklch(0.8 0.18 22);
-  --status-progress: oklch(0.26 0.11 240);
-  --status-progress-fg: oklch(0.82 0.16 240);
+  --club-accent: #0B8A5F;
+  --club-accent-foreground: #ffffff;
+  --club-ink: #2BB67E;
+  --club-accent-muted: rgba(11, 138, 95, 0.18);
+  --club-accent-subtle: rgba(11, 138, 95, 0.12);
 
-  --chart-1: oklch(0.7 0.15 160);
-  --chart-2: oklch(0.65 0.13 240);
-  --chart-3: oklch(0.7 0.15 50);
-  --chart-4: oklch(0.65 0.18 300);
-  --chart-5: oklch(0.72 0.15 0);
+  --danger: #E0554A;
+  --danger-foreground: #F4B8B2;
+  --danger-subtle: rgba(224, 85, 74, 0.16);
+  --warning: #D4892E;
+  --warning-foreground: #F0C896;
+  --warning-subtle: rgba(212, 137, 46, 0.16);
+  --info: #5B9BD5;
+  --info-foreground: #B4D2EE;
+  --info-subtle: rgba(91, 155, 213, 0.16);
+  --success: #3CB377;
+  --success-foreground: #A8E0C2;
+  --success-subtle: rgba(60, 179, 119, 0.16);
 
-  --sidebar: oklch(0.2 0.005 95);
-  --sidebar-foreground: oklch(0.9 0.004 95);
-  --sidebar-primary: oklch(0.7 0.15 160);
-  --sidebar-primary-foreground: oklch(0.16 0.004 95);
-  --sidebar-accent: oklch(0.27 0.006 95);
-  --sidebar-accent-foreground: oklch(0.93 0.004 95);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.7 0.15 160);
+  --chart-1: #2BB67E;
+  --chart-2: #5B9BD5;
+  --chart-3: #D4892E;
+  --chart-4: #A78BFA;
+  --chart-5: #E0554A;
+
+  --sidebar: #171B21;
+  --sidebar-foreground: #ECEEF1;
+  --sidebar-primary: #2BB67E;
+  --sidebar-primary-foreground: #0F1216;
+  --sidebar-accent: #1F242C;
+  --sidebar-accent-foreground: #ECEEF1;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #2BB67E;
 }
 
 @layer base {
@@ -185,75 +217,61 @@
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     text-rendering: optimizeLegibility;
   }
-  /* Smooth cross-fade when toggling dark/light mode.
-     The `html.dark` class swap re-paints backgrounds and borders across the
-     whole tree. Without this rule the change is a hard flash; with it, the
-     transition is a 150ms ease that reads as a gentle cross-fade. Scope is
-     global because theme variables affect every element. The transition
-     only covers background-color and border-color so it doesn't interfere
-     with hover transforms or opacity animations. */
-  html *,
-  html *::before,
-  html *::after {
-    transition: background-color 150ms ease, border-color 150ms ease;
-  }
-  /* Smooth transitions on interactive elements — subtle, not jarring */
-  button,
-  a,
-  [role="button"],
-  input,
-  textarea,
-  select {
-    transition: background-color 150ms ease, border-color 150ms ease,
-      color 150ms ease, opacity 150ms ease, box-shadow 150ms ease, transform 150ms ease;
-  }
-  /* Active-state press: a snappier transform timing so the scale-down
-     feels immediate (press feedback). 100ms vs the default 150ms. */
-  button:active {
-    transition: transform 100ms ease;
-  }
-  /* Refined focus rings — visible but not heavy */
+  /* One consistent focus ring: 2px at full opacity, 2px offset. */
   :focus-visible {
-    @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background;
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
   /* Tabular numbers for counts/tables — keeps layouts stable */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+  /* Respect reduced motion: disable all non-essential animation. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
-  /* Type scale — weight does the heavy lifting, not size jumps */
+  /* Type scale — 12 / 14 / 16 / 20 / 28 / 44. Body is 14px @ 1.5 line height.
+     Display face (Bricolage) only for page titles + numerals. */
   .text-page-title {
-    font-size: 1.625rem;
-    line-height: 2rem;
+    font-family: var(--font-display);
+    font-size: 1.75rem;   /* 28px */
+    line-height: 2.25rem;
     font-weight: 600;
-    letter-spacing: -0.022em;
+    letter-spacing: -0.02em;
   }
   .text-section-title {
-    font-size: 1.0625rem;
-    line-height: 1.5rem;
+    font-size: 1.25rem;   /* 20px */
+    line-height: 1.75rem;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .text-card-title {
-    font-size: 0.9375rem;
-    line-height: 1.375rem;
+    font-size: 1rem;      /* 16px */
+    line-height: 1.5rem;
     font-weight: 600;
     letter-spacing: -0.005em;
   }
   .text-body {
-    font-size: 0.875rem;
-    line-height: 1.375rem;
+    font-size: 0.875rem;  /* 14px */
+    line-height: 1.5rem;
     font-weight: 400;
   }
   .text-body-medium {
     font-size: 0.875rem;
-    line-height: 1.375rem;
+    line-height: 1.5rem;
     font-weight: 500;
   }
   .text-caption {
-    font-size: 0.75rem;
+    font-size: 0.75rem;   /* 12px */
     line-height: 1rem;
     font-weight: 400;
     color: var(--muted-foreground);
@@ -264,39 +282,32 @@
     font-weight: 500;
     color: var(--muted-foreground);
   }
-
-  /* Status chips — soft, Notion-style */
-  .chip-pending {
-    background: var(--status-pending);
-    color: var(--status-pending-fg);
-  }
-  .chip-approved {
-    background: var(--status-approved);
-    color: var(--status-approved-fg);
-  }
-  .chip-rejected {
-    background: var(--status-rejected);
-    color: var(--status-rejected-fg);
-  }
-  .chip-progress {
-    background: var(--status-progress);
-    color: var(--status-progress-fg);
-  }
-  .chip-neutral {
-    background: var(--muted);
-    color: var(--muted-foreground);
+  /* The big numeral — display face, 44px, tabular-nums. Used for the hours
+     hero and any large stat that should feel like the "memorable" number. */
+  .text-numeral {
+    font-family: var(--font-display);
+    font-size: 2.75rem;   /* 44px */
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Card refinement — thin border, very subtle shadow only on hover for cards */
+  /* Status chips — soft tinted background (not saturated fills),
+     12px medium text. See DESIGN.md. */
+  .chip-pending   { background: var(--warning-subtle);  color: var(--warning-foreground); }
+  .chip-approved  { background: var(--success-subtle);  color: var(--success-foreground); }
+  .chip-rejected  { background: var(--danger-subtle);   color: var(--danger-foreground); }
+  .chip-progress  { background: var(--info-subtle);     color: var(--info-foreground); }
+  .chip-neutral   { background: var(--muted);           color: var(--muted-foreground); }
+
+  /* Card — 1px border, no shadow. Shadows appear only on popovers/dialogs/drag. */
   .card-quiet {
     @apply border border-border bg-card rounded-xl;
-    transition: box-shadow 180ms ease, border-color 180ms ease;
-  }
-  .card-quiet:hover {
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
   }
 
-  /* Fade-in for newly loaded content */
+  /* Fade-in for newly loaded content (still used by views pending rebuild —
+     removed globally in Phase 7 once all views drop it). */
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(2px); }
     to { opacity: 1; transform: translateY(0); }
@@ -305,28 +316,17 @@
     animation: fade-in 200ms ease-out;
   }
 
-  /* Gentle float — used by the auth screen's accent blob. Very slow (8s) so
-     it reads as ambient motion, not a distraction. */
+  /* Gentle float — still used by the auth screen until Phase 6 rebuilds it. */
   @keyframes float {
     0%, 100% { transform: translateY(0); }
     50%      { transform: translateY(-20px); }
   }
 
-  /* Confetti popup — used when a member earns a new badge. Each piece is an
-     absolutely-positioned div with a random color + horizontal offset +
-     rotation. They fall from the top of the popup container and fade out. */
+  /* Confetti popup — used when a member earns a new badge. */
   @keyframes badge-confetti-fall {
-    0% {
-      transform: translate3d(0, -10px, 0) rotate(0deg);
-      opacity: 1;
-    }
-    80% {
-      opacity: 1;
-    }
-    100% {
-      transform: translate3d(var(--confetti-x, 0), 320px, 0) rotate(720deg);
-      opacity: 0;
-    }
+    0%   { transform: translate3d(0, -10px, 0) rotate(0deg); opacity: 1; }
+    80%  { opacity: 1; }
+    100% { transform: translate3d(var(--confetti-x, 0), 320px, 0) rotate(720deg); opacity: 0; }
   }
   .badge-confetti-piece {
     position: absolute;
@@ -338,47 +338,21 @@
     animation: badge-confetti-fall 2.4s ease-in forwards;
   }
   @keyframes badge-pop-in {
-    0% {
-      transform: scale(0.85);
-      opacity: 0;
-    }
-    60% {
-      transform: scale(1.02);
-    }
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
+    0%   { transform: scale(0.85); opacity: 0; }
+    60%  { transform: scale(1.02); }
+    100% { transform: scale(1); opacity: 1; }
   }
   .animate-badge-pop {
     animation: badge-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  /* §31 — Dialog entrance animation for centered modals.
-     The shadcn Dialog primitive already ships a `zoom-in-95` Tailwind
-     animation. This keyframe is a more pronounced, snappier variant
-     (96% → 100% over 150ms) that we layer on top via the [role=dialog]
-     selector for any dialog that doesn't already use the Tailwind
-     `animate-in` utilities. Sheet (side panel) dialogs keep their own
-     slide-in/out animations from the shadcn Sheet primitive. */
+  /* Dialog entrance — only for centered modals that don't use animate-in. */
   @keyframes dialog-scale-in {
-    from {
-      opacity: 0;
-      transform: scale(0.96);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
   }
 }
 
-/* §31 — Apply the centered-modal scale-in animation. Only targets dialogs
-   that are NOT side sheets (Sheet uses its own slide animation) and that
-   don't already have the Tailwind `animate-in` class (which would set the
-   animation property with higher specificity). The :not() guard keeps this
-   rule inert for shadcn DialogContent (which already zoom-in-95's) but
-   active for any future custom dialogs built without animate-in. */
 [role="dialog"]:not(.animate-in):not([data-slot="sheet-content"]) {
   animation: dialog-scale-in 150ms ease-out;
 }
@@ -389,33 +363,13 @@
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
   }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: var(--border);
     border-radius: 3px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
-  }
-
-  /* Subtle SVG noise texture — apply to hero / marketing surfaces for a tiny
-     bit of grain that breaks up flat color fields. Tiled at 200px. */
-  .bg-noise {
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
-    background-size: 200px;
-  }
-
-  /* Accent-tinted ambient background — a soft radial gradient from the club
-     accent color at the top-center, fading to transparent. Intended for hero
-     panels and the auth screen's left panel. Use color-mix so the tint
-     follows the active club accent without overpowering the surface. */
-  .bg-accent-tint {
-    background: radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--club) 3%, transparent), transparent 50%);
   }
 }

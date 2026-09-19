@@ -535,7 +535,7 @@ function HoursRow({
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>
         {item.status === "rejected" && item.reviewComment && (
-          <div className="text-xs text-red-600 dark:text-red-400 mt-1 line-clamp-2">
+          <div className="text-xs text-danger-foreground dark:text-danger-foreground mt-1 line-clamp-2">
             "{item.reviewComment}"
           </div>
         )}
@@ -555,7 +555,7 @@ function HoursRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+            className="h-9 w-9 text-muted-foreground hover:text-danger-foreground hover:bg-danger-subtle dark:hover:bg-danger-subtle"
             onClick={onDelete}
             disabled={deleting}
             aria-label="Delete entry"
@@ -594,7 +594,7 @@ function HoursCard({
       </div>
       <div className="text-body">{item.reasonText}</div>
       {item.status === "rejected" && item.reviewComment && (
-        <div className="text-caption text-red-600 dark:text-red-400">
+        <div className="text-caption text-danger-foreground dark:text-danger-foreground">
           <span className="font-medium">Reason:</span> {item.reviewComment}
         </div>
       )}
@@ -606,7 +606,7 @@ function HoursCard({
           {item.reviewer && item.reviewedAt && (
             <span className="truncate inline-flex items-center gap-1.5">
               <Avatar className="h-4 w-4">
-                <AvatarFallback className={cn("text-[8px]", avatarColor(item.reviewer.name))}>
+                <AvatarFallback className={cn("text-xs", avatarColor(item.reviewer.name))}>
                   {initials(item.reviewer.name)}
                 </AvatarFallback>
               </Avatar>
@@ -620,7 +620,7 @@ function HoursCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+              className="h-9 w-9 text-muted-foreground hover:text-danger-foreground hover:bg-danger-subtle dark:hover:bg-danger-subtle"
               onClick={onDelete}
               disabled={deleting}
               aria-label="Delete entry"
@@ -795,10 +795,10 @@ function SubmitHoursDialog({
                   }}
                   required
                   aria-invalid={!!dateError}
-                  className={dateError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  className={dateError ? "border-danger focus-visible:ring-red-500" : ""}
                 />
                 {dateError && (
-                  <p className="text-xs text-red-500 mt-1">{dateError}</p>
+                  <p className="text-xs text-danger mt-1">{dateError}</p>
                 )}
               </div>
               <div className="space-y-2">
@@ -818,10 +818,10 @@ function SubmitHoursDialog({
                   }}
                   required
                   aria-invalid={!!hoursError}
-                  className={hoursError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  className={hoursError ? "border-danger focus-visible:ring-red-500" : ""}
                 />
                 {hoursError && (
-                  <p className="text-xs text-red-500 mt-1">{hoursError}</p>
+                  <p className="text-xs text-danger mt-1">{hoursError}</p>
                 )}
               </div>
             </div>
@@ -840,11 +840,11 @@ function SubmitHoursDialog({
                 maxLength={2000}
                 required
                 aria-invalid={!!reasonError}
-                className={reasonError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={reasonError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               <div className="text-right text-xs text-muted-foreground">{reason.length}/2000</div>
               {reasonError && (
-                <p className="text-xs text-red-500 mt-1">{reasonError}</p>
+                <p className="text-xs text-danger mt-1">{reasonError}</p>
               )}
             </div>
 

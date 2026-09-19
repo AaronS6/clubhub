@@ -33,6 +33,7 @@ import {
   endOfWeek,
   eachDayOfInterval,
   addMonths,
+  addWeeks,
   subMonths,
 } from "date-fns"
 
@@ -436,17 +437,39 @@ function MeetingsList({
       />
     )
   }
+  // Group upcoming meetings by week: This week / Next week / Later.
+  const now = new Date()
+  const thisWeekStart = startOfWeek(now, { weekStartsOn: 0 })
+  const nextWeekStart = addWeeks(thisWeekStart, 1) // addWeeks imported below
+  const buckets: { label: string; items: MeetingItem[] }[] = [
+    { label: "This week", items: [] },
+    { label: "Next week", items: [] },
+    { label: "Later", items: [] },
+  ]
+  for (const m of meetings) {
+    const s = parseISO(m.startTime)
+    if (s < nextWeekStart) buckets[0].items.push(m)
+    else if (s < addWeeks(nextWeekStart, 1)) buckets[1].items.push(m)
+    else buckets[2].items.push(m)
+  }
   return (
-    <div className="grid gap-3">
-      {meetings.map((m) => (
-        <MeetingCard
-          key={m.id}
-          meeting={m}
-          isExec={isExec}
-          readOnly={readOnly}
-          onEdit={() => onEdit(m)}
-          onOpenDetail={() => onOpenDetail(m)}
-        />
+    <div className="space-y-6">
+      {buckets.filter((b) => b.items.length > 0).map((b) => (
+        <div key={b.label}>
+          <h3 className="text-xs font-medium text-muted-foreground mb-2">{b.label}</h3>
+          <div className="grid gap-3">
+            {b.items.map((m) => (
+              <MeetingCard
+                key={m.id}
+                meeting={m}
+                isExec={isExec}
+                readOnly={readOnly}
+                onEdit={() => onEdit(m)}
+                onOpenDetail={() => onOpenDetail(m)}
+              />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -471,8 +494,8 @@ function MeetingCard({
   const flash = useRemoteChange("meeting", meeting.id)
   return (
     <div className={cn(
-      "rounded-2xl border border-border bg-card p-4 sm:p-5 animate-fade-in transition-all duration-200 hover:shadow-sm",
-      flash && "ring-2 ring-club/50 shadow-md"
+      "rounded-xl border border-border bg-card p-4 sm:p-5 transition-all duration-200",
+      flash && "ring-2 ring-club/50"
     )}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
@@ -486,7 +509,7 @@ function MeetingCard({
               aria-hidden
             >
               <div className="text-3xl font-bold leading-none">{format(start, "d")}</div>
-              <div className="mt-1 text-[10px] font-medium uppercase tracking-wide">{format(start, "MMM")}</div>
+              <div className="mt-1 text-xs font-medium ">{format(start, "MMM")}</div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -1402,7 +1425,7 @@ function CalendarPanel({
         {WEEKDAY_LABELS.map((d) => (
           <div
             key={`m-${d}`}
-            className="text-center text-[10px] font-medium text-muted-foreground sm:hidden"
+            className="text-center text-xs font-medium text-muted-foreground sm:hidden"
           >
             {d[0]}
           </div>
@@ -1436,7 +1459,7 @@ function CalendarPanel({
                     key={m.id}
                     onClick={() => onOpenMeeting(m)}
                     className={cn(
-                      "truncate rounded px-1.5 py-0.5 text-left text-[10px] sm:text-caption",
+                      "truncate rounded px-1.5 py-0.5 text-left text-xs sm:text-caption",
                       "bg-club-muted text-club hover:bg-club-muted/70 transition-colors"
                     )}
                     title={`${m.title} · ${format(parseISO(m.startTime), "h:mm a")}`}
@@ -1448,7 +1471,7 @@ function CalendarPanel({
                   </button>
                 ))}
                 {dayMeetings.length > 3 && (
-                  <div className="px-1 text-[10px] text-muted-foreground">
+                  <div className="px-1 text-xs text-muted-foreground">
                     +{dayMeetings.length - 3} more
                   </div>
                 )}

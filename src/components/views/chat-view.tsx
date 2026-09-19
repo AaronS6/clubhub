@@ -331,7 +331,7 @@ function ChatPane({ clubId }: { clubId: string }) {
         {/* Sidebar — conversation list */}
         <aside
           className={cn(
-            "card-quiet w-full md:w-80 lg:w-96 flex-shrink-0 overflow-hidden flex flex-col",
+            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col border-r border-border bg-sidebar",
             isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -525,7 +525,7 @@ function ConversationList({
             {clubWide.length > 0 && (
               <div>
                 <div className="px-3 pt-3 pb-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span className="text-xs font-semibold  text-muted-foreground">
                     Club-wide
                   </span>
                 </div>
@@ -643,7 +643,7 @@ function ConversationRow({
             {title}
           </span>
           {conversation.lastMessage && (
-            <span className="text-[10px] text-muted-foreground/70 shrink-0">
+            <span className="text-xs text-muted-foreground/70 shrink-0">
               {relativeTime(conversation.lastMessage.createdAt)}
             </span>
           )}
@@ -1005,7 +1005,7 @@ function ConversationPane({
           <div className="flex items-center gap-2">
             <h3 className="text-card-title truncate min-w-0">{conversationTitle(conversation)}</h3>
             {conversation.type === "group" && myMembership === "owner" && (
-              <span className="inline-flex items-center rounded-md bg-club-muted text-club px-1.5 py-0.5 text-[10px] font-semibold shrink-0">
+              <span className="inline-flex items-center rounded-md bg-club-muted text-club px-1.5 py-0.5 text-xs font-semibold shrink-0">
                 Owner
               </span>
             )}
@@ -1314,13 +1314,13 @@ function MembersDropdown({
             <DropdownMenuItem key={m.user.id} className="gap-2 py-1.5">
               <Avatar className="size-6">
                 <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                <AvatarFallback className={cn("text-[10px]", avatarColor(m.user.name))}>
+                <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
                   {initials(m.user.name)}
                 </AvatarFallback>
               </Avatar>
               <span className="text-sm truncate">{m.user.name}</span>
               {m.role === "executive" && (
-                <span className="ml-auto text-[10px] text-muted-foreground">exec</span>
+                <span className="ml-auto text-xs text-muted-foreground">exec</span>
               )}
             </DropdownMenuItem>
           ))
@@ -1364,7 +1364,7 @@ function PinnedMessagesBar({ pinned }: { pinned: PinnedMessage[] }) {
             >
               <div className="flex items-baseline gap-1.5">
                 <span className="font-medium text-foreground">{p.author.name}</span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {relativeTime(p.createdAt)}
                 </span>
               </div>
@@ -1484,7 +1484,7 @@ function MessageList({
           <div key={gi}>
             {showDateSeparator && dateLabel && (
               <div className="flex items-center justify-center my-3">
-                <span className="text-[10px] font-medium text-muted-foreground bg-muted rounded-full px-3 py-1">
+                <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-3 py-1">
                   {dateLabel}
                 </span>
               </div>
@@ -1495,7 +1495,7 @@ function MessageList({
                 {showAuthorHeader && (
                   <Avatar className="size-8 mt-1">
                     <AvatarImage src={first.author.avatarUrl ?? undefined} alt={first.author.name} />
-                    <AvatarFallback className={cn("text-[10px]", avatarColor(first.author.name))}>
+                    <AvatarFallback className={cn("text-xs", avatarColor(first.author.name))}>
                       {initials(first.author.name)}
                     </AvatarFallback>
                   </Avatar>
@@ -1503,7 +1503,7 @@ function MessageList({
               </div>
               <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
                 {showAuthorHeader && (
-                  <div className="text-[10px] text-muted-foreground px-1">
+                  <div className="text-xs text-muted-foreground px-1">
                     {first.author.name}
                   </div>
                 )}
@@ -1560,7 +1560,7 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative rounded-2xl px-3.5 py-2 max-w-full text-sm break-words",
+        "group relative rounded-xl px-3.5 py-2 max-w-full text-sm break-words",
         isMine
           ? "bg-club text-club-foreground"
           : "bg-muted text-foreground",
@@ -1624,7 +1624,7 @@ function MessageBubble({
       {!isDeleted && !editing && (
         <div
           className={cn(
-            "text-[10px] mt-1",
+            "text-xs mt-1",
             isMine ? "text-club-foreground/70" : "text-muted-foreground",
           )}
         >
@@ -1987,10 +1987,10 @@ function MessageComposer({
   }
 
   return (
-    <div className="border-t border-border p-3 md:p-4">
+    <div className="border-t border-border p-3 md:p-4 bg-background" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
       {/* Composer container — wraps textarea + send button in a substantial
           rounded panel, iMessage/Telegram-style. */}
-      <div className="rounded-2xl border border-border bg-muted/40 p-2 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
+      <div className="rounded-xl border border-border bg-muted/40 p-2 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
         <div className="flex items-end gap-2">
           <MentionableTextarea
             ref={textareaRef}
@@ -2020,7 +2020,7 @@ function MessageComposer({
               "size-11 shrink-0 rounded-full transition-all",
               (disabled || !value.trim())
                 ? "opacity-50 cursor-not-allowed"
-                : "shadow-sm hover:shadow-md hover:scale-105",
+                : "hover:scale-105",
             )}
             onClick={submit}
             disabled={disabled || !value.trim()}
@@ -2034,7 +2034,7 @@ function MessageComposer({
           </Button>
         </div>
       </div>
-      <p className="text-[10px] text-muted-foreground/60 mt-1.5 px-1 hidden sm:block">
+      <p className="text-xs text-muted-foreground/60 mt-1.5 px-1 hidden sm:block">
         Press <kbd className="rounded border border-border px-1">Enter</kbd> to send,{" "}
         <kbd className="rounded border border-border px-1">Shift+Enter</kbd> for a new line.
         Type <kbd className="rounded border border-border px-1">@</kbd> to mention someone.
@@ -2158,14 +2158,14 @@ function NewGroupChatDialog({
                       />
                       <Avatar className="size-7">
                         <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                        <AvatarFallback className={cn("text-[10px]", avatarColor(m.user.name))}>
+                        <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
                           {initials(m.user.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm truncate">{m.user.name}</div>
                         {m.role === "executive" && (
-                          <span className="text-[10px] text-muted-foreground">executive</span>
+                          <span className="text-xs text-muted-foreground">executive</span>
                         )}
                       </div>
                     </label>
@@ -2275,13 +2275,13 @@ function NewDirectChatDialog({
                 >
                   <Avatar className="size-7">
                     <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                    <AvatarFallback className={cn("text-[10px]", avatarColor(m.user.name))}>
+                    <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
                       {initials(m.user.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <div className="text-sm truncate">{m.user.name}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">{m.user.email}</div>
+                    <div className="text-xs text-muted-foreground truncate">{m.user.email}</div>
                   </div>
                 </button>
               ))
@@ -2443,14 +2443,14 @@ function AddMemberDialog({
                   <div key={m.user.id} className="flex items-center gap-3 px-3 py-2">
                     <Avatar className="size-7">
                       <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                      <AvatarFallback className={cn("text-[10px]", avatarColor(m.user.name))}>
+                      <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
                         {initials(m.user.name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm truncate">{m.user.name}</div>
                       {m.role === "executive" && (
-                        <span className="text-[10px] text-muted-foreground">executive</span>
+                        <span className="text-xs text-muted-foreground">executive</span>
                       )}
                     </div>
                     <Button
@@ -2504,7 +2504,7 @@ function MessagesSkeleton() {
           <Skeleton className="size-8 rounded-full" />
           <div className="space-y-1.5 max-w-[70%]">
             <Skeleton className="h-3 w-24 rounded" />
-            <Skeleton className="h-10 w-48 rounded-2xl" />
+            <Skeleton className="h-10 w-48 rounded-xl" />
           </div>
         </div>
       ))}

@@ -104,7 +104,7 @@ export function BadgesDisplay({
             <Tooltip key={b.id}>
               <TooltipTrigger asChild>
                 <span
-                  className="inline-flex items-center gap-1 rounded-full bg-club-muted px-1.5 py-0.5 text-[11px] font-medium text-club cursor-default"
+                  className="inline-flex items-center gap-1 rounded-full bg-club-muted px-1.5 py-0.5 text-xs font-medium text-club cursor-default"
                 >
                   <span aria-hidden>{b.emoji}</span>
                   <span className="hidden sm:inline">{b.name}</span>
@@ -116,7 +116,7 @@ export function BadgesDisplay({
             </Tooltip>
           ))}
           {awarded.length > 3 && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               +{awarded.length - 3} more
             </span>
           )}
@@ -165,7 +165,7 @@ export function BadgesDisplay({
 
         {!hideUnearned && notAwarded.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[11px] uppercase tracking-wide font-medium text-muted-foreground">
+            <div className="text-xs  font-medium text-muted-foreground">
               Available
             </div>
             <div className="flex flex-wrap gap-2">
@@ -178,7 +178,7 @@ export function BadgesDisplay({
                       <span aria-hidden className="text-sm leading-none grayscale">
                         {b.emoji}
                       </span>
-                      <span className="text-[11px] font-medium">{b.name}</span>
+                      <span className="text-xs font-medium">{b.name}</span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[240px]">

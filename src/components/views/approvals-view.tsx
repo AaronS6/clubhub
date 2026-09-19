@@ -372,7 +372,7 @@ export function ApprovalsView() {
           Only shown on the Pending tab (bulk-approving reviewed entries doesn't
           make sense). */}
       {tab === "pending" && selectedInScope.size > 0 && (
-        <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 shadow-md max-w-full">
+        <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 max-w-full">
           <span className="text-caption-medium text-muted-foreground px-2">
             {selectedInScope.size} selected
           </span>
@@ -389,7 +389,7 @@ export function ApprovalsView() {
           <Button
             size="sm"
             variant="outline"
-            className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40"
+            className="border-danger/40 text-danger-foreground hover:bg-danger-subtle hover:text-danger-foreground dark:border-danger/40 dark:text-danger-foreground dark:hover:bg-danger-subtle"
             disabled={bulkMutation.isPending}
             onClick={() => setRejectBulk(true)}
           >
@@ -592,7 +592,7 @@ function ApprovalRow({
             {item.user?.avatarUrl ? (
               <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
             ) : null}
-            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+            <AvatarFallback className={cn("text-xs", avatarColor(item.user?.name))}>
               {initials(item.user?.name)}
             </AvatarFallback>
           </Avatar>
@@ -684,7 +684,7 @@ function ApprovalCard({
                 {item.user?.avatarUrl ? (
                   <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
                 ) : null}
-                <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+                <AvatarFallback className={cn("text-xs", avatarColor(item.user?.name))}>
                   {initials(item.user?.name)}
                 </AvatarFallback>
               </Avatar>
@@ -760,7 +760,7 @@ function ReviewedRow({
             {item.user?.avatarUrl ? (
               <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
             ) : null}
-            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+            <AvatarFallback className={cn("text-xs", avatarColor(item.user?.name))}>
               {initials(item.user?.name)}
             </AvatarFallback>
           </Avatar>
@@ -800,7 +800,7 @@ function ReviewedRow({
         {item.reviewer ? (
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
-              <AvatarFallback className={cn("text-[10px]", avatarColor(item.reviewer.name))}>
+              <AvatarFallback className={cn("text-xs", avatarColor(item.reviewer.name))}>
                 {initials(item.reviewer.name)}
               </AvatarFallback>
             </Avatar>
@@ -826,7 +826,7 @@ function ReviewedRow({
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          className="h-9 w-9 text-muted-foreground hover:text-danger-foreground hover:bg-danger-subtle dark:hover:bg-danger-subtle"
           onClick={onDelete}
           disabled={deleting}
           aria-label="Delete entry"
@@ -860,7 +860,7 @@ function ReviewedCard({
             {item.user?.avatarUrl ? (
               <AvatarImage src={item.user.avatarUrl} alt={item.user.name} />
             ) : null}
-            <AvatarFallback className={cn("text-[10px]", avatarColor(item.user?.name))}>
+            <AvatarFallback className={cn("text-xs", avatarColor(item.user?.name))}>
               {initials(item.user?.name)}
             </AvatarFallback>
           </Avatar>
@@ -889,7 +889,7 @@ function ReviewedCard({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+          className="h-8 text-muted-foreground hover:text-danger-foreground hover:bg-danger-subtle dark:hover:bg-danger-subtle"
           onClick={onDelete}
           disabled={deleting}
           aria-label="Delete entry"
@@ -993,7 +993,7 @@ function RejectDialog({
             maxLength={1000}
           />
           {!comment.trim() && (
-            <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-start gap-2 text-xs text-warning-foreground dark:text-warning-foreground">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>Without a comment, the member won&apos;t know what to fix. You can still reject.</span>
             </div>

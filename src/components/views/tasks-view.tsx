@@ -188,7 +188,7 @@ const STATUSES: { id: TaskStatus; label: string; badge: "not_started" | "in_prog
 // in-progress, emerald for done. The opacity is kept low so the column
 // background stays calm and the status dot/badge carries the signal.
 const COLUMN_ACCENT: Record<TaskStatus, string> = {
-  not_started: "bg-amber-500/20 dark:bg-amber-500/25",
+  not_started: "bg-warning-subtle0/20 dark:bg-warning-subtle0/25",
   in_progress: "bg-sky-500/20 dark:bg-sky-500/25",
   done: "bg-emerald-500/20 dark:bg-emerald-500/25",
 }
@@ -255,7 +255,7 @@ function UserAvatar({
         className={cn(
           "inline-flex items-center justify-center rounded-full border border-dashed border-muted-foreground/40 bg-muted text-muted-foreground",
           sz,
-          "text-[10px] font-medium"
+          "text-xs font-medium"
         )}
         title="Unassigned"
         aria-label="Unassigned"
@@ -267,7 +267,7 @@ function UserAvatar({
   return (
     <Avatar className={sz}>
       {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.name} />}
-      <AvatarFallback className="text-[10px] font-medium">
+      <AvatarFallback className="text-xs font-medium">
         {initials(user.name)}
       </AvatarFallback>
     </Avatar>
@@ -910,11 +910,11 @@ function TaskCardContent({
       }
       {...(dragListeners ?? {})}
       className={cn(
-        "group card-quiet rounded-xl cursor-grab p-3 text-left transition-all duration-150 hover:shadow-sm hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet rounded-xl cursor-grab p-3 text-left transition-all duration-150 hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         CARD_ACCENT[task.status],
         dragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
         isDragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
-        flash && "ring-2 ring-club/50 shadow-md animate-in fade-in-50 zoom-in-95 duration-300"
+        flash && "ring-2 ring-club/50 animate-in fade-in-50 zoom-in-95 duration-300"
       )}
     >
       <div className="flex items-start gap-2">
@@ -962,41 +962,37 @@ function TaskCardContent({
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {/* Meta — single row: assignee, due date, subtasks, comments. 12px muted. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <UserAvatar user={task.assignee} />
+        {task.dueDate && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1",
+              overdue && "text-danger-foreground font-medium"
+            )}
+          >
+            <Calendar className="size-3" />
+            {formatDueDate(task.dueDate)}
+          </span>
+        )}
         {task.team && (
-          <Badge variant="outline" className="text-[10px]">
+          <span className="inline-flex items-center gap-1">
             {task.team.name}
-          </Badge>
+          </span>
         )}
         {task.subtasks.length > 0 && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
             <CheckCircle2 className="size-3" />
             {subtaskProgress(task.subtasks)}
           </span>
         )}
         {task.commentCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
             <MessageSquare className="size-3" />
             {task.commentCount}
           </span>
         )}
-      </div>
-
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <UserAvatar user={task.assignee} />
-        <div className="flex items-center gap-2">
-          {task.dueDate && (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 text-[11px]",
-                overdue ? "text-red-600 font-medium dark:text-red-400" : "text-muted-foreground"
-              )}
-            >
-              <Calendar className="size-3" />
-              {formatDueDate(task.dueDate)}
-            </span>
-          )}
-        </div>
       </div>
 
       {/* Mobile-only status dropdown — a foolproof fallback to drag-and-drop
@@ -1070,7 +1066,7 @@ function ListView({
                     <div className="flex flex-col">
                       <span className="truncate">{t.title}</span>
                       {t.subtasks.length > 0 && (
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {subtaskProgress(t.subtasks)} subtasks
                         </span>
                       )}
@@ -1103,7 +1099,7 @@ function ListView({
                         className={cn(
                           "inline-flex items-center gap-1 text-sm",
                           overdue
-                            ? "text-red-600 font-medium dark:text-red-400"
+                            ? "text-danger-foreground font-medium dark:text-danger-foreground"
                             : "text-muted-foreground"
                         )}
                       >
@@ -1286,10 +1282,10 @@ function NewTaskDialog({
                 maxLength={200}
                 required
                 aria-invalid={!!titleError}
-                className={titleError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={titleError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               {titleError && (
-                <p className="text-xs text-red-500 mt-1">{titleError}</p>
+                <p className="text-xs text-danger mt-1">{titleError}</p>
               )}
             </div>
 
@@ -1715,7 +1711,7 @@ function TaskDetailBody({
                   className={cn(
                     "inline-flex items-center gap-1",
                     isOverdue(task.dueDate) && task.status !== "done"
-                      ? "text-red-600 font-medium dark:text-red-400"
+                      ? "text-danger-foreground font-medium dark:text-danger-foreground"
                       : "text-muted-foreground"
                   )}
                 >
@@ -2017,7 +2013,7 @@ function CommentsSection({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{c.author.name}</span>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {relativeTime(c.createdAt)}
                     </span>
                     {canDelete && (
@@ -2062,7 +2058,7 @@ function CommentsSection({
             onClick={handlePostClick}
             className={cn(
               "transition-all duration-150",
-              body.trim() && !addMutation.isPending && "shadow-sm hover:shadow-md hover:brightness-95"
+              body.trim() && !addMutation.isPending && "hover:brightness-95"
             )}
           >
             {addMutation.isPending && (

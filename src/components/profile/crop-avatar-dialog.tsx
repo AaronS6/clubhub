@@ -130,7 +130,7 @@ export function CropAvatarDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="sm:max-w-md rounded-2xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
+      <DialogContent className="sm:max-w-md rounded-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogHeader className="px-5 pt-5 pb-3 shrink-0">
           <DialogTitle>Crop your photo</DialogTitle>
           <DialogDescription>Drag to reposition. Use the slider to zoom.</DialogDescription>

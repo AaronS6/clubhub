@@ -282,15 +282,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   const navList = (
-    <nav className="flex flex-col gap-3 px-2.5 py-3" aria-label="Primary">
+    <nav className="flex flex-col gap-4 px-2.5 py-3" aria-label="Primary">
       {NAV_TIERS.map((tier) => {
         const items = tier.items.filter((n) => !n.execOnly || isExec)
         if (items.length === 0) return null
-        // Visual weight per tier: Home is most prominent, Manage is muted.
-        const weight = tier.id === "home" ? "home" : tier.id === "work" ? "work" : "manage"
         return (
           <div key={tier.id} className="space-y-0.5">
-            <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            <div className="px-3 pt-1 pb-0.5 text-xs font-medium text-muted-foreground/70">
               {tier.label}
             </div>
             {items.map((item) => {
@@ -301,40 +299,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-md w-full text-left transition-colors min-h-[44px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    weight === "home" && "px-3 py-2 text-sm font-semibold",
-                    weight === "work" && "px-3 py-1.5 text-sm font-medium",
-                    weight === "manage" && "px-3 py-1.5 text-[13px] font-medium text-muted-foreground",
+                    "group flex items-center gap-2.5 rounded-md w-full h-9 px-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active
-                      ? "bg-club-muted/60 text-club"
-                      : weight === "manage"
-                        ? "hover:bg-accent hover:text-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      ? "bg-club-subtle text-club-ink"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  {/* Active indicator — Discord/Linear-style centered accent
-                      pill pinned to the left edge of the row. A short 20px bar
-                      vertically centered, rather than a full-height line, so
-                      it reads as a selected-channel marker. Hidden when
-                      inactive. The button has `relative` so this anchors. */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club transition-opacity",
-                      active ? "opacity-100" : "opacity-0"
-                    )}
-                  />
                   <Icon className={cn(
-                    "shrink-0 transition-colors",
-                    weight === "home" ? "h-[18px] w-[18px]" : "h-4 w-4",
-                    active ? "text-club" : "text-muted-foreground/80 group-hover:text-foreground"
+                    "shrink-0 h-4 w-4 transition-colors",
+                    active ? "text-club-ink" : "text-muted-foreground/80 group-hover:text-foreground"
                   )} />
                   <span className="flex-1 truncate">{item.label}</span>
-                  {/* §45 — Unread indicator. Shows a small accent dot when
-                      there are unseen announcements on the Announcements
-                      nav item. Hidden for other nav items and when the
-                      item itself is the active view. */}
                   {item.view === "announcements" &&
                     hasUnreadAnnouncements &&
                     !active && (
@@ -349,6 +325,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       })}
     </nav>
   )
+
+  // Page title for the top bar — derived from the active nav item's label.
+  const currentNavItem = NAV.find((n) => n.view === view)
+  const pageTitle = currentNavItem?.label ?? "Dashboard"
 
   // Persistent top bar — desktop + mobile.
   //   LEFT:   hamburger (mobile) + brand mark (desktop)
@@ -378,9 +358,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SheetContent>
       </Sheet>
 
-      {/* Brand text — desktop only */}
-      <div className="hidden md:flex items-center shrink-0">
-        <span className="text-lg font-extrabold tracking-tight">ClubHub</span>
+      {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
+          The wordmark competed with the club switcher in the sidebar. */}
+      <div className="hidden md:flex items-center shrink-0 min-w-0">
+        <h1 className="text-page-title truncate" style={{ fontSize: "1.25rem", lineHeight: "1.75rem" }}>{pageTitle}</h1>
       </div>
 
       {/* Search (center, desktop) — bordered trigger styled to match a real
@@ -396,14 +377,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left truncate">Search this club…</span>
-        <kbd className="inline-flex items-center gap-0.5 rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-          <span className="text-[11px]">⌘</span>K
+        <kbd className="inline-flex items-center gap-0.5 rounded border bg-background px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+          <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
-      {/* Mobile: club name fills the gap */}
+      {/* Mobile: page title fills the gap (replaces the club name) */}
       <div className="md:hidden font-semibold truncate flex-1 px-1 min-w-0">
-        {currentClub?.clubName}
+        {pageTitle}
       </div>
 
       {/* Right side: search icon (mobile), connection, bell, profile avatar */}
@@ -432,16 +413,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       <UrgentBanner />
       {topBar}
-      <div className="flex flex-1 min-h-0 gap-2 p-2">
-        <aside className="hidden md:flex md:w-60 flex-col rounded-2xl border bg-background shadow-sm overflow-hidden shrink-0">
-          {/* Club switcher pinned to the TOP of the sidebar (moved here from
-              the top bar per the user's request). No border-b — the rounded
-              panel border + the nav's own padding provides the separation. */}
+      <div className="flex flex-1 min-h-0">
+        {/* Flat sidebar — surface color, single right border, no floating card.
+            232px on md+ (was a floating rounded-xl shadowed panel). */}
+        <aside className="hidden md:flex md:w-[232px] flex-col border-r border-border bg-sidebar overflow-hidden shrink-0">
+          {/* Club switcher pinned to the TOP of the sidebar */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
           {/* Theme toggle pinned to the BOTTOM of the sidebar */}
-          <div className="p-2 shrink-0">
+          <div className="p-2 shrink-0 border-t border-border">
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="ml-2">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
@@ -450,16 +431,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
-          {/* No top padding so view headers (e.g. the Announcements
-              sticky bar) connect flush to the app top bar above. Views
-              that need internal top spacing add it themselves. */}
-          <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-4 md:pb-6">
+          {/* No top padding so view headers connect flush to the app top bar.
+              Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */}
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-16 md:pb-6">
             <div className="max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
               {children}
             </div>
           </div>
         </main>
       </div>
+
+      {/* Mobile bottom tab bar (below md) — Dashboard, Tasks, Chat, Meetings, More.
+          Safe-area padding, accent on the active tab. */}
+      <MobileTabBar />
 
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <GlobalSearch />
@@ -470,6 +454,105 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function Footer() {
   // Footer removed per user request
+}
+
+/**
+ * Mobile bottom tab bar (below md) — Dashboard, Tasks, Chat, Meetings, More.
+ * "More" opens the existing mobile drawer (Sheet). Safe-area padding, accent on
+ * the active tab, unread dots. Hidden below md (the sidebar takes over at md+).
+ */
+function MobileTabBar() {
+  const view = useAppStore((s) => s.view)
+  const setView = useAppStore((s) => s.setView)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const hasUnreadAnnouncements = useUnreadAnnouncements(useAppStore((s) => s.currentClubId) ?? undefined)
+
+  const tabs: { view: View; label: string; icon: any }[] = [
+    { view: "dashboard", label: "Home", icon: LayoutDashboard },
+    { view: "tasks", label: "Tasks", icon: CheckSquare },
+    { view: "chat", label: "Chat", icon: MessageSquare },
+    { view: "meetings", label: "Meetings", icon: CalendarDays },
+  ]
+
+  return (
+    <>
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border bg-background/95 backdrop-blur"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-label="Mobile primary"
+      >
+        {tabs.map((t) => {
+          const active = view === t.view
+          const Icon = t.icon
+          return (
+            <button
+              key={t.view}
+              onClick={() => setView(t.view)}
+              className={cn(
+                "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-colors",
+                active ? "text-club-ink" : "text-muted-foreground"
+              )}
+              aria-current={active ? "page" : undefined}
+            >
+              <Icon className={cn("h-5 w-5", active && "text-club-ink")} />
+              <span>{t.label}</span>
+              {t.view === "announcements" && hasUnreadAnnouncements && !active && (
+                <UnreadDot className="absolute top-1 right-1/4" />
+              )}
+            </button>
+          )
+        })}
+        {/* More — opens the mobile drawer (full nav + club switcher + theme) */}
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetTrigger asChild>
+            <button
+              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground"
+              aria-label="More"
+            >
+              <Menu className="h-5 w-5" />
+              <span>More</span>
+            </button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="rounded-t-xl p-0 flex flex-col max-h-[80dvh]">
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </nav>
+    </>
+  )
+}
+
+/** Compact nav used inside the mobile "More" bottom-sheet. */
+function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
+  const view = useAppStore((s) => s.view)
+  return (
+    <nav className="flex flex-col gap-4 px-2.5 py-4" aria-label="More">
+      {NAV_TIERS.map((tier) => (
+        <div key={tier.id} className="space-y-0.5">
+          <div className="px-3 pb-0.5 text-xs font-medium text-muted-foreground/70">{tier.label}</div>
+          {tier.items.map((item) => {
+            const Icon = item.icon
+            const active = view === item.view
+            return (
+              <button
+                key={item.view}
+                onClick={() => onPick(item.view)}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm font-medium transition-colors",
+                  active ? "bg-club-subtle text-club-ink" : "text-foreground hover:bg-accent"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="flex-1 truncate">{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </nav>
+  )
 }
 
 /**
@@ -710,7 +793,7 @@ function BadgeConfettiPopup() {
       </div>
 
       {/* Center card */}
-      <div className="relative pointer-events-auto rounded-2xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
+      <div className="relative pointer-events-auto rounded-xl border bg-background shadow-2xl px-6 py-6 max-w-sm w-full text-center animate-badge-pop">
         <div className="text-5xl leading-none mb-2" aria-hidden>
           {activeAward.badge.emoji}
         </div>
@@ -844,15 +927,15 @@ function UrgentBanner() {
   return (
     <div
       role="alert"
-      className="flex items-center gap-3 px-3 sm:px-4 py-2 border-b border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-100 animate-fade-in"
+      className="flex items-center gap-3 px-3 sm:px-4 py-2 border-b border-danger/30 bg-danger-subtle text-danger-foreground"
     >
-      <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+      <AlertTriangle className="h-4 w-4 shrink-0 text-danger-foreground dark:text-danger-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-sm font-semibold truncate">
             {announcement.title}
           </span>
-          <span className="text-[10px] uppercase tracking-wide opacity-70 shrink-0">
+          <span className="text-xs  opacity-70 shrink-0">
             Urgent · {relativeTime(announcement.createdAt)} · {announcement.author.name}
           </span>
         </div>
@@ -871,7 +954,7 @@ function UrgentBanner() {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss urgent banner"
-        className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+        className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-danger-subtle dark:hover:bg-danger transition-colors"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -902,7 +985,7 @@ function ClubSwitcher({
               </div>
               <div className="min-w-0 text-left">
                 <div className="text-sm font-semibold truncate">{currentClub?.clubName ?? "Select club"}</div>
-                <div className="text-[11px] text-muted-foreground capitalize truncate">
+                <div className="text-xs text-muted-foreground capitalize truncate">
                   {currentClub ? currentClub.role : "No club selected"}
                 </div>
               </div>
@@ -911,12 +994,12 @@ function ClubSwitcher({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel className="text-caption-medium uppercase tracking-wide">Clubs</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Clubs</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {clubs.map((c) => (
             <DropdownMenuItem key={c.clubId} onClick={() => onSelect(c.clubId)} className="cursor-pointer gap-2.5 py-2">
               <div
-                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-[10px] font-bold shrink-0"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0"
                 style={{ backgroundColor: c.accentColor }}
               >
                 {initials(c.clubName)}
@@ -1034,7 +1117,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer">
             <Plus className="mr-2 h-4 w-4" /> Create a club
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-red-600 focus:text-red-600">
+          <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-danger-foreground focus:text-danger-foreground">
             <LogOut className="mr-2 h-4 w-4" /> Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -1067,7 +1150,7 @@ function ConnectionIndicator() {
   }
   return (
     <span
-      className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0 animate-pulse"
+      className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-warning shrink-0 animate-pulse"
       title="Reconnecting…"
       aria-label="Reconnecting"
     />
@@ -1454,10 +1537,10 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
   }
 
   return (
-    <div className="border border-red-200 dark:border-red-900/50 rounded-xl p-4 mt-4">
+    <div className="border border-danger/30 dark:border-danger/40/50 rounded-xl p-4 mt-4">
       <div className="flex items-center gap-2 mb-1">
-        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-        <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">
+        <AlertTriangle className="h-4 w-4 text-danger-foreground dark:text-danger-foreground" />
+        <h3 className="text-sm font-semibold text-danger-foreground dark:text-danger-foreground">
           Danger Zone
         </h3>
       </div>
@@ -1476,7 +1559,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
           type="button"
           variant="outline"
           size="sm"
-          className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/40 shrink-0"
+          className="border-danger/40 text-danger-foreground hover:bg-danger-subtle dark:border-danger/30 dark:text-danger-foreground dark:hover:bg-danger-subtle shrink-0"
           onClick={() => setLeaveOpen(true)}
         >
           <LogOut className="mr-1.5 h-4 w-4" /> Leave club
@@ -1484,7 +1567,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
       </div>
 
       {isExec && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-t border-red-200/60 dark:border-red-900/40 mt-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-t border-danger/30/60 dark:border-danger/40/40 mt-1">
           <div className="min-w-0">
             <p className="text-sm font-medium">Delete this club</p>
             <p className="text-xs text-muted-foreground">
@@ -1495,7 +1578,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
             <AlertDialogTrigger asChild>
               <button
                 type="button"
-                className="text-xs text-muted-foreground/70 hover:text-red-600 dark:hover:text-red-400 transition-colors underline-offset-2 hover:underline shrink-0"
+                className="text-xs text-muted-foreground/70 hover:text-danger-foreground dark:hover:text-danger-foreground transition-colors underline-offset-2 hover:underline shrink-0"
               >
                 Delete this club
               </button>
@@ -1503,7 +1586,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                  <AlertTriangle className="h-4 w-4 text-danger-foreground" />
                   Delete &quot;{clubName}&quot;?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
@@ -1668,7 +1751,7 @@ function NotificationsTab({ userEmail }: { userEmail: string }) {
         <Label className="text-sm font-semibold">Per type</Label>
         <div className="rounded-md border overflow-hidden">
           {/* Header row */}
-          <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1.5 bg-muted/40 border-b text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1.5 bg-muted/40 border-b text-xs font-semibold  text-muted-foreground">
             <span>Type</span>
             <span className="w-14 text-center">In-app</span>
             <span className="w-14 text-center">Email</span>
@@ -1683,7 +1766,7 @@ function NotificationsTab({ userEmail }: { userEmail: string }) {
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{meta.label}</div>
-                  <div className="text-[11px] text-muted-foreground truncate">{meta.description}</div>
+                  <div className="text-xs text-muted-foreground truncate">{meta.description}</div>
                 </div>
                 <div className="w-14 flex justify-center">
                   <Switch
@@ -2057,7 +2140,7 @@ function NotifSection({
 }) {
   return (
     <section>
-      <div className="px-3 pt-2.5 pb-1 text-caption-medium uppercase tracking-wide text-muted-foreground">
+      <div className="px-3 pt-2.5 pb-1 text-xs font-medium text-muted-foreground text-muted-foreground">
         {label}
       </div>
       <div className="divide-y">{children}</div>

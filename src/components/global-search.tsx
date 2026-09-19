@@ -243,7 +243,7 @@ export function GlobalSearch() {
                   >
                     <Avatar className="h-7 w-7">
                       <AvatarImage src={m.avatarUrl ?? undefined} alt={m.name} />
-                      <AvatarFallback className="text-[10px]">
+                      <AvatarFallback className="text-xs">
                         {initials(m.name)}
                       </AvatarFallback>
                     </Avatar>
@@ -254,11 +254,11 @@ export function GlobalSearch() {
                       </div>
                     </div>
                     {m.role === "executive" ? (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-club-subtle px-1.5 py-0.5 text-xs font-medium text-club-ink dark:bg-club-subtle dark:text-club-ink">
                         <ShieldCheck className="h-3 w-3" /> Exec
                       </span>
                     ) : (
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span className="text-xs  text-muted-foreground">
                         Member
                       </span>
                     )}
@@ -357,7 +357,7 @@ export function GlobalSearch() {
       </CommandList>
 
       {/* Footer hint */}
-      <div className="border-t px-3 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
+      <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
         <span className="flex items-center gap-1.5">
           <span className="flex items-center gap-1">
             {results.members.length > 0 && (
@@ -387,9 +387,9 @@ export function GlobalSearch() {
           </span>
         </span>
         <span className="flex items-center gap-1.5">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">↵</kbd>
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">↵</kbd>
           <span>to open</span>
-          <kbd className="ml-2 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">esc</kbd>
+          <kbd className="ml-2 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">esc</kbd>
           <span>to close</span>
         </span>
       </div>

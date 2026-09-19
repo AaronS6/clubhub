@@ -305,7 +305,7 @@ export function AnnouncementsView() {
           }
         />
       ) : (
-        <div className="space-y-4">
+        <div className="max-w-[720px] mx-auto space-y-4">
           {items.map((a) => (
             <AnnouncementCard
               key={a.id}
@@ -370,6 +370,7 @@ function AnnouncementCard({
   const queryClient = useQueryClient()
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const isAuthor = !!currentUserId && announcement.authorId === currentUserId
   const canEdit = isExec || isAuthor
@@ -457,8 +458,8 @@ function AnnouncementCard({
 
   return (
     <div className={cn(
-      "rounded-2xl border border-border bg-card overflow-hidden animate-fade-in hover:shadow-sm transition-all duration-200",
-      announcement.isPinned && "border-l-4 border-l-amber-400 bg-amber-50/30 dark:bg-amber-950/10"
+      "rounded-xl border border-border bg-card overflow-hidden transition-all duration-200",
+      announcement.isPinned && "border-l-4 border-l-amber-400 bg-warning-subtle/30 dark:bg-warning-subtle/10"
     )}>
       <div className="p-4 md:p-5 space-y-3">
         {/* Header — avatar + name + relative time + pills in one inline row */}
@@ -477,12 +478,12 @@ function AnnouncementCard({
                   <span className="text-caption text-muted-foreground italic">(edited)</span>
                 )}
                 {announcement.isUrgent && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200 px-2 py-0.5 text-[10px] font-semibold">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-danger-subtle text-danger-foreground dark:bg-danger-subtle dark:text-danger-foreground px-2 py-0.5 text-xs font-semibold">
                     <AlertTriangle className="h-3 w-3" /> Urgent
                   </span>
                 )}
                 {announcement.isPinned && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 px-2 py-0.5 text-[10px] font-semibold">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground px-2 py-0.5 text-xs font-semibold">
                     <Pin className="h-3 w-3" /> Pinned
                   </span>
                 )}
@@ -507,7 +508,12 @@ function AnnouncementCard({
         {announcement.title && (
           <h3 className="text-card-title leading-tight">{announcement.title}</h3>
         )}
-        <RichText className="text-body">{announcement.body}</RichText>
+        <RichText className={cn("text-body", !expanded && "[display:-webkit-box] [-webkit-line-clamp:4] [-webkit-box-orient:vertical] overflow-hidden")}>{announcement.body}</RichText>
+        {(announcement.body.match(/\n/g)?.length ?? 0) > 4 || announcement.body.length > 280 ? (
+          <button type="button" className="text-xs font-medium text-club hover:underline" onClick={() => setExpanded(v => !v)}>
+            {expanded ? "Show less" : "Read more"}
+          </button>
+        ) : null}
 
         {/* Reaction bar */}
         <ReactionBar
@@ -614,7 +620,7 @@ function AnnouncementMenu({
             <DropdownMenuItem
               onClick={onDelete}
               disabled={deleteLoading}
-              className="cursor-pointer text-red-600 focus:text-red-600"
+              className="cursor-pointer text-danger-foreground focus:text-danger-foreground"
             >
               <Trash2 className="h-4 w-4" /> Delete
             </DropdownMenuItem>
@@ -674,12 +680,12 @@ function ReactionBar({
                   {entry.count} {entry.count === 1 ? "person" : "people"} reacted with {entry.emoji}
                 </div>
                 {users.length > 0 && (
-                  <div className="text-[11px] space-y-0.5">
+                  <div className="text-xs space-y-0.5">
                     {users.slice(0, 6).map((u) => (
                       <div key={u.id} className="flex items-center gap-1.5">
                         <Avatar className="h-4 w-4">
                           <AvatarImage src={u.avatarUrl ?? undefined} alt={u.name} />
-                          <AvatarFallback className="text-[8px]">{initials(u.name)}</AvatarFallback>
+                          <AvatarFallback className="text-xs">{initials(u.name)}</AvatarFallback>
                         </Avatar>
                         <span className="truncate">{u.name}{u.id === currentUserId ? " (you)" : ""}</span>
                       </div>
@@ -690,9 +696,9 @@ function ReactionBar({
                   </div>
                 )}
                 {isMine ? (
-                  <div className="mt-1 text-[10px] text-muted-foreground">Click to remove your reaction</div>
+                  <div className="mt-1 text-xs text-muted-foreground">Click to remove your reaction</div>
                 ) : (
-                  <div className="mt-1 text-[10px] text-muted-foreground">Click to switch your reaction</div>
+                  <div className="mt-1 text-xs text-muted-foreground">Click to switch your reaction</div>
                 )}
               </div>
             </TooltipContent>
@@ -737,7 +743,7 @@ function ReactionBar({
                 )
               })}
             </div>
-            <p className="text-[11px] text-muted-foreground leading-snug">
+            <p className="text-xs text-muted-foreground leading-snug">
               You can pick one reaction — picking another swaps it.
             </p>
           </div>
@@ -926,7 +932,7 @@ function CommentRow({
     <li className="flex gap-2 group">
       <Avatar className="h-8 w-8 mt-0.5 shrink-0">
         <AvatarImage src={comment.author?.avatarUrl ?? undefined} alt={comment.author?.name} />
-        <AvatarFallback className="text-[10px]">{initials(comment.author?.name)}</AvatarFallback>
+        <AvatarFallback className="text-xs">{initials(comment.author?.name)}</AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
@@ -938,7 +944,7 @@ function CommentRow({
               disabled={deleting}
               aria-label="Delete comment"
               // Always visible on touch (no hover); hover-reveal on md+.
-              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-muted/60 disabled:opacity-50 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 -mr-1.5"
+              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-danger-foreground hover:bg-muted/60 disabled:opacity-50 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 -mr-1.5"
             >
               {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             </button>
@@ -1027,10 +1033,10 @@ function ComposeAnnouncementDialog({
                 maxLength={200}
                 required
                 aria-invalid={!!titleError}
-                className={titleError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={titleError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               {titleError && (
-                <p className="text-xs text-red-500 mt-1">{titleError}</p>
+                <p className="text-xs text-danger mt-1">{titleError}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -1058,13 +1064,13 @@ function ComposeAnnouncementDialog({
                 maxLength={8000}
                 required
                 aria-invalid={!!bodyError}
-                className={bodyError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                className={bodyError ? "border-danger focus-visible:ring-red-500" : ""}
               />
               <p className="text-xs text-muted-foreground">
                 {body.length}/8000 characters · markdown supported
               </p>
               {bodyError && (
-                <p className="text-xs text-red-500 mt-1">{bodyError}</p>
+                <p className="text-xs text-danger mt-1">{bodyError}</p>
               )}
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
@@ -1076,7 +1082,7 @@ function ComposeAnnouncementDialog({
                 </div>
               </Label>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+            <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-subtle/60 dark:bg-danger-subtle p-3">
               <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="ann-urgent" />
               <Label htmlFor="ann-urgent" className="cursor-pointer">
                 <div className="text-sm font-medium flex items-center gap-1.5">
@@ -1096,7 +1102,7 @@ function ComposeAnnouncementDialog({
               type="submit"
               variant="club"
               disabled={mutation.isPending || !title.trim() || !body.trim()}
-              className="pointer-events-auto shadow-lg shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
+              className="pointer-events-auto shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
             >
               {mutation.isPending ? (
                 <>
@@ -1205,7 +1211,7 @@ function EditAnnouncementDialog({
               </div>
             )}
             {isExec && (
-              <div className="flex items-start gap-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/20 p-3">
+              <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-subtle/60 dark:bg-danger-subtle p-3">
                 <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="edit-urgent" />
                 <Label htmlFor="edit-urgent" className="cursor-pointer">
                   <div className="text-sm font-medium flex items-center gap-1.5">
@@ -1225,7 +1231,7 @@ function EditAnnouncementDialog({
               type="submit"
               variant="club"
               disabled={mutation.isPending}
-              className="pointer-events-auto shadow-lg shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
+              className="pointer-events-auto shadow-club/30 backdrop-blur-md rounded-full sm:rounded-md"
             >
               {mutation.isPending ? (
                 <>
