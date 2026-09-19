@@ -116,7 +116,7 @@ export function HoursView() {
   const isExec = useAppStore((s) => s.currentClub?.role) === "executive"
   const qc = useQueryClient()
   const [submitOpen, setSubmitOpen] = useState(false)
-  const [period, setPeriod] = useState<string>("this_month")
+  const [period, setPeriod] = useState<string>("all_time")
 
   const hoursQuery = useQuery<HoursResponse>({
     queryKey: ["hours", clubId],
