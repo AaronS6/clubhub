@@ -337,29 +337,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // The club switcher + theme toggle live in the sidebar (top + bottom).
   const topBar = (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
-      {/* Mobile hamburger */}
-      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-72 p-0 flex flex-col rounded-r-2xl overflow-hidden">
-          {/* Nav at the top */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
-          {/* Club switcher + theme toggle at the BOTTOM of the mobile drawer */}
-          <div className="border-t p-3 shrink-0">{clubSwitcher}</div>
-          <div className="border-t p-2 shrink-0">
-            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="ml-2">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
-          The wordmark competed with the club switcher in the sidebar. */}
+          The wordmark competed with the club switcher in the sidebar.
+          Mobile nav is via the bottom tab bar's "More" button — no hamburger
+          in the top bar (it was redundant). */}
       <div className="hidden md:flex items-center shrink-0 min-w-0">
         <h1 className="text-page-title truncate" style={{ fontSize: "1.25rem", lineHeight: "1.75rem" }}>{pageTitle}</h1>
       </div>

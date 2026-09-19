@@ -213,7 +213,7 @@ export function TeamsView() {
           }
         />
       ) : (
-        <div className="space-y-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data.teams.map((team, i) => (
             <TeamCard
               key={team.id}
@@ -258,7 +258,7 @@ export function TeamsView() {
 
 function TeamsSkeleton() {
   return (
-    <div className="space-y-1">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {Array.from({ length: 6 }).map((_, i) => (
         <CardSkeleton key={i} />
       ))}
@@ -315,61 +315,72 @@ function TeamCard({
         }
       }}
       className={cn(
-        "group relative flex items-center gap-3 w-full text-left rounded-md px-3 py-3 transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex flex-col w-full text-left rounded-xl border border-border bg-card overflow-hidden transition-all hover:border-club/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         flash && "ring-2 ring-club/50"
       )}
     >
-      {/* Accent dot — gives each team identity without a full strip/halo. */}
-      <span
+      {/* Colored header band — uses the team's accent as a soft tinted wash with
+          a solid accent bar on top. Gives each team visual identity + room. */}
+      <div
         aria-hidden
-        className="inline-block h-2 w-2 shrink-0 rounded-full"
+        className="h-1.5 w-full"
         style={{ backgroundColor: accent }}
       />
-
-      <div className="min-w-0 flex-1">
-        <h3 className="text-sm font-medium truncate">{team.name}</h3>
-        {team.description ? (
-          <p className="text-xs text-muted-foreground truncate">{team.description}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground/60 italic">No description</p>
-        )}
-      </div>
-
-      {/* Member avatar stack (max 4 + count) */}
-      <div className="flex items-center gap-2 shrink-0">
-        {team.members.length === 0 ? (
-          <span className="text-xs text-muted-foreground/60">No members</span>
-        ) : (
-          <div className="flex items-center -space-x-2">
-            {visibleMembers.map((m) => (
-              <Avatar key={m.id} className="h-7 w-7 border-2 border-background" title={m.user.name}>
-                <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
-                {online.has(m.userId) && (
-                  <span aria-label="Online" className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-background" />
-                )}
-              </Avatar>
-            ))}
-            {overflow > 0 && (
-              <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium text-muted-foreground">
-                +{overflow}
-              </div>
+      <div className="p-5 flex flex-col gap-4 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
+              <h3 className="text-card-title truncate">{team.name}</h3>
+            </div>
+            {team.description ? (
+              <p className="text-sm text-muted-foreground line-clamp-2">{team.description}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground/60 italic">No description</p>
             )}
           </div>
-        )}
-      </div>
+          {isExec && <TeamCardMenu clubId={clubId} team={team} />}
+        </div>
 
-      {/* Stats — compact, hidden on mobile */}
-      <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground shrink-0">
-        <span className="inline-flex items-center gap-1.5">
-          <Users className="h-3.5 w-3.5" />{team.memberCount}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <CheckSquare className="h-3.5 w-3.5" />{team.taskCount}
-        </span>
-      </div>
+        {/* Member avatar stack — bigger, prominent */}
+        <div className="flex items-center gap-2 min-h-[36px]">
+          {team.members.length === 0 ? (
+            <span className="text-sm text-muted-foreground/60">No members yet</span>
+          ) : (
+            <>
+              <div className="flex items-center -space-x-2">
+                {visibleMembers.map((m) => (
+                  <Avatar key={m.id} className="h-8 w-8 border-2 border-card" title={m.user.name}>
+                    <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
+                    <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
+                    {online.has(m.userId) && (
+                      <span aria-label="Online" className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-card" />
+                    )}
+                  </Avatar>
+                ))}
+                {overflow > 0 && (
+                  <div className="h-8 w-8 rounded-full bg-muted border-2 border-card flex items-center justify-center text-xs font-medium text-muted-foreground">
+                    +{overflow}
+                  </div>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
+              </span>
+            </>
+          )}
+        </div>
 
-      {isExec && <TeamCardMenu clubId={clubId} team={team} />}
+        {/* Stats row */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-auto pt-2 border-t border-border/60">
+          <span className="inline-flex items-center gap-1.5">
+            <CheckSquare className="h-3.5 w-3.5" />{team.taskCount} {team.taskCount === 1 ? "task" : "tasks"}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <CalendarDays className="h-3.5 w-3.5" />{team.upcomingMeetingCount} upcoming
+          </span>
+        </div>
+      </div>
     </div>
   )
 }

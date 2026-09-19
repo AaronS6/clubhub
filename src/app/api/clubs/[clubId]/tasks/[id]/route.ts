@@ -21,9 +21,9 @@ export async function PATCH(
   if (!body || typeof body !== "object") return error("Invalid input", 400)
 
   const isExec = c.membership.role === "executive"
-  const isAssignee = existing.assignedToUserId === c.user.id
 
-  // Members may ONLY change status of tasks assigned to them.
+  // Members can move tasks (change status) on the board — not just the
+  // assignee. Full edits (title/description/assignee) remain exec-only.
   if (!isExec) {
     const allowedKeys = Object.keys(body as object).filter((k) => k !== "undefined")
     if (allowedKeys.length === 0) return error("No fields provided", 400)
@@ -31,9 +31,6 @@ export async function PATCH(
       allowedKeys.length === 1 && allowedKeys[0] === "status"
     if (!onlyStatus) {
       return error("Members can only change task status", 403)
-    }
-    if (!isAssignee) {
-      return error("You can only change the status of tasks assigned to you", 403)
     }
     const newStatus = (body as { status?: string }).status
     if (!newStatus || !STATUSES.has(newStatus))

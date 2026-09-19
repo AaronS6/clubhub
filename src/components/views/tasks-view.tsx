@@ -428,12 +428,10 @@ export function TasksView() {
           title="Tasks"
           description="Track club work, subtasks, and assignments."
           actions={
-            isExec ? (
-              <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
-                <Plus className="size-4" />
-                <span className="hidden sm:inline">New Task</span>
-              </Button>
-            ) : null
+            <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New Task</span>
+            </Button>
           }
         />
       </div>
@@ -443,12 +441,10 @@ export function TasksView() {
           title="Tasks"
           description="Track club work, subtasks, and assignments."
           actions={
-            isExec ? (
-              <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
-                <Plus className="size-4" />
-                <span className="hidden sm:inline">New Task</span>
-              </Button>
-            ) : null
+            <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New Task</span>
+            </Button>
           }
         />
       </div>
@@ -608,19 +604,13 @@ export function TasksView() {
       ) : filteredTasks.length === 0 ? (
         <EmptyState
           illustration={<TasksEmptyIllustration />}
-          title={isExec ? "No tasks yet" : "No tasks match your filters"}
-          description={
-            isExec
-              ? "Create one to get started."
-              : "Try clearing filters or check back later."
-          }
+          title="No tasks yet"
+          description="Create one to get started."
           action={
-            isExec ? (
-              <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
-                <Plus className="size-4" />
-                New Task
-              </Button>
-            ) : null
+            <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
+              <Plus className="size-4" />
+              New Task
+            </Button>
           }
         />
       ) : tab === "board" ? (

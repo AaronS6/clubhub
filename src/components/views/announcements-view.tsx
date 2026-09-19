@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
@@ -371,6 +371,20 @@ function AnnouncementCard({
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [canExpand, setCanExpand] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  // Measure whether the body genuinely overflows the collapsed height.
+  // Only then do we show the "Read more" toggle — never on bodies that
+  // already fit (fixes the phantom button on short announcements).
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    // When expanded, the container has no max-h, so scrollHeight ===
+    // clientHeight → canExpand stays as-is. Measure against the collapsed
+    // height by temporarily removing the cap, or just compare on collapsed.
+    if (expanded) return
+    setCanExpand(el.scrollHeight > el.clientHeight + 2)
+  }, [announcement.body, expanded])
 
   const isAuthor = !!currentUserId && announcement.authorId === currentUserId
   const canEdit = isExec || isAuthor
@@ -508,12 +522,20 @@ function AnnouncementCard({
         {announcement.title && (
           <h3 className="text-card-title leading-tight">{announcement.title}</h3>
         )}
-        <RichText className={cn("text-body", !expanded && "[display:-webkit-box] [-webkit-line-clamp:4] [-webkit-box-orient:vertical] overflow-hidden")}>{announcement.body}</RichText>
-        {(announcement.body.match(/\n/g)?.length ?? 0) > 4 || announcement.body.length > 280 ? (
+        {/* Body — collapsed to ~10 lines (max-h-[15rem]) with a fade; only
+            shows "Read more" when the content genuinely overflows (measured
+            via scrollHeight), so short bodies never get a phantom button. */}
+        <div ref={bodyRef} className={cn("relative", !expanded && "max-h-[15rem] overflow-hidden")}>
+          <RichText className="text-body">{announcement.body}</RichText>
+          {!expanded && canExpand && (
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent pointer-events-none" />
+          )}
+        </div>
+        {canExpand && (
           <button type="button" className="text-xs font-medium text-club hover:underline" onClick={() => setExpanded(v => !v)}>
             {expanded ? "Show less" : "Read more"}
           </button>
-        ) : null}
+        )}
 
         {/* Reaction bar */}
         <ReactionBar

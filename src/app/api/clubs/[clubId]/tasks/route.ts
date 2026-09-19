@@ -100,7 +100,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const { clubId } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
-  if (c.membership.role !== "executive") return error("Only executives can create tasks", 403)
+  // Any club member can create tasks (not just executives).
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== "object") return error("Invalid input", 400)
