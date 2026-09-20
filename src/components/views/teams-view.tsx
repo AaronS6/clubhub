@@ -315,70 +315,73 @@ function TeamCard({
         }
       }}
       className={cn(
-        "group relative flex flex-col w-full text-left rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex flex-col w-full text-left rounded-2xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/40 hover:shadow-lg hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         flash && "ring-2 ring-club/50"
       )}
     >
-      {/* Colored header band — uses the team's accent as a soft tinted wash with
-          a solid accent bar on top. Gives each team visual identity + room. */}
+      {/* Gradient accent header — uses the team's accent as a subtle wash */}
       <div
         aria-hidden
-        className="h-1.5 w-full"
-        style={{ backgroundColor: accent }}
+        className="h-2 w-full"
+        style={{ background: `linear-gradient(90deg, ${accent}, ${accent}40)` }}
       />
-      <div className="p-5 flex flex-col gap-4 flex-1">
+      <div className="p-5 sm:p-6 flex flex-col gap-4 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
-              <h3 className="text-card-title truncate">{team.name}</h3>
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: `${accent}20` }}>
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: accent }} />
+              </span>
+              <h3 className="text-lg font-bold truncate" style={{ fontFamily: "var(--font-display)" }}>{team.name}</h3>
             </div>
             {team.description ? (
               <p className="text-sm text-muted-foreground line-clamp-2">{team.description}</p>
             ) : (
-              <p className="text-sm text-muted-foreground/60 italic">No description</p>
+              <p className="text-sm text-muted-foreground/50 italic">No description yet</p>
             )}
           </div>
           {isExec && <TeamCardMenu clubId={clubId} team={team} />}
         </div>
 
-        {/* Member avatar stack — bigger, prominent */}
-        <div className="flex items-center gap-2 min-h-[36px]">
+        {/* Member avatar stack — prominent */}
+        <div className="flex items-center gap-2.5 min-h-[40px]">
           {team.members.length === 0 ? (
-            <span className="text-sm text-muted-foreground/60">No members yet</span>
+            <span className="text-sm text-muted-foreground/50">No members yet</span>
           ) : (
             <>
-              <div className="flex items-center -space-x-2">
+              <div className="flex items-center -space-x-2.5">
                 {visibleMembers.map((m) => (
-                  <Avatar key={m.id} className="h-8 w-8 border-2 border-card" title={m.user.name}>
+                  <Avatar key={m.id} className="h-9 w-9 border-2 border-card transition-transform group-hover:scale-105" title={m.user.name}>
                     <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                    <AvatarFallback className="text-xs">{initials(m.user.name)}</AvatarFallback>
+                    <AvatarFallback className="text-xs font-medium">{initials(m.user.name)}</AvatarFallback>
                     {online.has(m.userId) && (
-                      <span aria-label="Online" className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-club ring-2 ring-card" />
+                      <span aria-label="Online" className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-club ring-2 ring-card" />
                     )}
                   </Avatar>
                 ))}
                 {overflow > 0 && (
-                  <div className="h-8 w-8 rounded-full bg-muted border-2 border-card flex items-center justify-center text-xs font-medium text-muted-foreground">
+                  <div className="h-9 w-9 rounded-full bg-muted border-2 border-card flex items-center justify-center text-xs font-semibold text-muted-foreground">
                     +{overflow}
                   </div>
                 )}
               </div>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-sm font-medium text-muted-foreground">
                 {team.memberCount} {team.memberCount === 1 ? "member" : "members"}
               </span>
             </>
           )}
         </div>
 
-        {/* Stats row */}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-auto pt-2 border-t border-border/60">
-          <span className="inline-flex items-center gap-1.5">
-            <CheckSquare className="h-3.5 w-3.5" />{team.taskCount} {team.taskCount === 1 ? "task" : "tasks"}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <CalendarDays className="h-3.5 w-3.5" />{team.upcomingMeetingCount} upcoming
-          </span>
+        {/* Stats row — cleaner, with icons in containers */}
+        <div className="flex items-center gap-3 mt-auto pt-3 border-t border-border/50">
+          <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+            <CheckSquare className="h-3.5 w-3.5" />
+            {team.taskCount} {team.taskCount === 1 ? "task" : "tasks"}
+          </div>
+          <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+            <CalendarDays className="h-3.5 w-3.5" />
+            {team.upcomingMeetingCount} {team.upcomingMeetingCount === 1 ? "meeting" : "meetings"}
+          </div>
         </div>
       </div>
     </div>

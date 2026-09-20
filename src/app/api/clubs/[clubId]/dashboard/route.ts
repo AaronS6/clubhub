@@ -50,6 +50,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
     myTasks,
     upcomingMeetingsRaw,
     recentApproved,
+    activeMemberIds,
   ] = await Promise.all([
     db.club.findUnique({
       where: { id: clubId },
@@ -155,12 +156,20 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
       where: { clubId, status: "approved", dateOfService: { gte: since } },
       select: { dateOfService: true, hours: true },
     }),
+    // Active member IDs — used to filter the leaderboard (removed members
+    // with approved hours should NOT appear on the leaderboard).
+    db.clubMember.findMany({
+      where: { clubId, status: "active" },
+      select: { userId: true },
+    }),
   ])
 
   if (!club) return error("Club not found", 404)
 
   // ---- WAVE 2: leaderboard user names + exec stats (depend on wave 1) ----
+  const activeIds = new Set(activeMemberIds.map((m) => m.userId))
   const topUserIds = [...hoursByUser]
+    .filter((h) => activeIds.has(h.userId)) // exclude removed members
     .sort((a, b) => (b._sum.hours ?? 0) - (a._sum.hours ?? 0))
     .slice(0, 5)
     .map((h) => h.userId)
