@@ -444,6 +444,52 @@ function Footer() {
   // Footer removed per user request
 }
 
+/** PWA install hint — shows an "Install ClubHub" button when the
+ *  beforeinstallprompt event is available (Android Chrome), or iOS
+ *  instructions on iOS Safari. Hidden when already installed. */
+function InstallHint() {
+  const [promptEvent, setPromptEvent] = useState<any>(null)
+  const [isIOS, setIsIOS] = useState(false)
+  const [installed, setInstalled] = useState(false)
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true
+    if (isStandalone) { setInstalled(true); return }
+    const ua = window.navigator.userAgent
+    setIsIOS(/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream)
+    const handler = (e: Event) => { e.preventDefault(); setPromptEvent(e) }
+    window.addEventListener("beforeinstallprompt", handler as EventListener)
+    return () => window.removeEventListener("beforeinstallprompt", handler as EventListener)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  if (installed) return null
+
+  if (promptEvent) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 mb-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Install ClubHub</p>
+          <p className="text-xs text-muted-foreground">Add to your home screen for quick access.</p>
+        </div>
+        <Button size="sm" variant="club" onClick={() => { promptEvent.prompt(); setPromptEvent(null) }}>Install</Button>
+      </div>
+    )
+  }
+
+  if (isIOS) {
+    return (
+      <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 mb-4">
+        <p className="text-sm font-medium">Install ClubHub</p>
+        <p className="text-xs text-muted-foreground mt-1">Tap <span className="font-medium">Share</span> in Safari, then <span className="font-medium">Add to Home Screen</span>.</p>
+      </div>
+    )
+  }
+
+  return null
+}
+
 /**
  * SwipeDownToClose — a grab-handle bar at the top of a bottom sheet /
  * dropdown. A small rounded pill visualizes "grab here", and dragging it
@@ -1185,7 +1231,7 @@ function ConnectionIndicator() {
   }
   return (
     <span
-      className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-warning shrink-0 animate-pulse"
+      className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-warning shrink-0"
       title="Reconnecting…"
       aria-label="Reconnecting"
     />
@@ -1412,6 +1458,8 @@ function SettingsDialog({
           </TabsList>
 
           <TabsContent value="profile" className="mt-4">
+            {/* Install ClubHub hint (PWA) */}
+            <InstallHint />
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Display name</Label>

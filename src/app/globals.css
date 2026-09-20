@@ -373,3 +373,27 @@
     background-color: var(--muted-foreground);
   }
 }
+
+/* ═══ Motion system — CSS variables ════════════════════════════════════════
+   Durations and easing used everywhere. Under prefers-reduced-motion,
+   everything is instant (already handled above). */
+@layer base {
+  :root {
+    --motion-fast: 120ms;
+    --motion-normal: 180ms;
+    --motion-slow: 240ms;
+    --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --motion-ease-out: ease-out;
+  }
+}
+
+/* ═══ Performance utilities ═══════════════════════════════════════════════
+   content-visibility: auto skips rendering off-screen content, dramatically
+   improving scroll perf on long lists (chat messages, activity log, members,
+   transactions). contain-intrinsic-size reserves space so there's no CLS. */
+@layer utilities {
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+  }
+}

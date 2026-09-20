@@ -7,4 +7,4 @@
  * changes, increment the minor by .1 (1.0 → 1.1 → 1.2 → …). Major bumps
  * (2.0, 3.0) are for deliberate breaking/relaunch moments.
  */
-export const APP_VERSION = "2.3"
+export const APP_VERSION = "2.4"

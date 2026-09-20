@@ -21,13 +21,6 @@ export function formatTurnaround(hours: number | null): string {
   return `${(hours / 24).toFixed(1)}d`
 }
 
-/** Inline style for staggered fade-in cascade. */
-export function stagger(i: number): React.CSSProperties {
-  return {
-    animationDelay: `${i * 50}ms`,
-    animationFillMode: "backwards",
-  }
-}
 
 /**
  * The DashboardData interface — matches the `/api/clubs/[clubId]/dashboard`

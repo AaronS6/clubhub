@@ -470,7 +470,7 @@ function AnnouncementCard({
 
   return (
     <div className={cn(
-      "rounded-xl border border-border bg-card overflow-hidden transition-all duration-200",
+      "rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
       announcement.isPinned && "border-l-4 border-l-amber-400 bg-warning-subtle/30 dark:bg-warning-subtle/10"
     )}>
       <div className="p-4 md:p-5 space-y-3">
@@ -681,7 +681,7 @@ function ReactionBar({
                 aria-pressed={isMine}
                 aria-label={`React ${entry.emoji} · ${entry.count} ${entry.count === 1 ? "person" : "people"}`}
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-all h-8 min-h-8",
+                  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-[color,background-color,border-color,transform,box-shadow] h-8 min-h-8",
                   isMine
                     ? "bg-club-muted border-transparent text-club ring-1 ring-club"
                     : "bg-background border-border hover:bg-muted text-foreground hover:border-foreground/20"
@@ -752,7 +752,7 @@ function ReactionBar({
                     onClick={() => onReact(emoji)}
                     disabled={disabled}
                     className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-md text-xl hover:bg-muted transition-all",
+                      "flex h-10 w-10 items-center justify-center rounded-md text-xl hover:bg-muted transition-[color,background-color,border-color,transform,box-shadow]",
                       isMine && "bg-club-muted ring-1 ring-club"
                     )}
                     aria-label={`React with ${emoji}`}

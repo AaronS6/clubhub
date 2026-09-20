@@ -732,7 +732,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col card-quiet rounded-xl p-3 transition-all duration-150",
+        "flex flex-col card-quiet rounded-xl p-3 transition-[color,background-color,border-color,transform,box-shadow] duration-150",
         COLUMN_ACCENT[status.id],
         isOver && "ring-2 ring-club/40 bg-club/5"
       )}
@@ -900,7 +900,7 @@ function TaskCardContent({
       }
       {...(dragListeners ?? {})}
       className={cn(
-        "group card-quiet rounded-xl cursor-grab p-3 text-left transition-all duration-150 hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group card-quiet rounded-xl cursor-grab p-3 text-left transition-[color,background-color,border-color,transform,box-shadow] duration-150 hover:border-club/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         CARD_ACCENT[task.status],
         dragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
         isDragging && "shadow-xl -rotate-2 scale-[1.02] cursor-grabbing ring-2 ring-club/40",
@@ -2047,7 +2047,7 @@ function CommentsSection({
             disabled={!body.trim() || addMutation.isPending}
             onClick={handlePostClick}
             className={cn(
-              "transition-all duration-150",
+              "transition-[color,background-color,border-color,transform,box-shadow] duration-150",
               body.trim() && !addMutation.isPending && "hover:brightness-95"
             )}
           >

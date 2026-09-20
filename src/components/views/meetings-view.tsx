@@ -494,7 +494,7 @@ function MeetingCard({
   const flash = useRemoteChange("meeting", meeting.id)
   return (
     <div className={cn(
-      "rounded-xl border border-border bg-card p-4 sm:p-5 transition-all duration-200",
+      "rounded-xl border border-border bg-card p-4 sm:p-5 transition-[color,background-color,border-color,transform,box-shadow] duration-200",
       flash && "ring-2 ring-club/50"
     )}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

@@ -1087,7 +1087,7 @@ function MemberCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:border-club/30 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border-t-2",
+        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:border-club/30 transition-[color,background-color,border-color,transform,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border-t-2",
         member.role === "executive" ? "border-t-violet-400" : "border-t-club/30",
         flash && "ring-1 ring-inset ring-club/30 bg-club/5"
       )}

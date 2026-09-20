@@ -108,9 +108,9 @@ interface DashboardData {
 // Bento tile — hairline border, card surface, larger radius, hover lift.
 // Used for every top-level tile in the new asymmetric grid. NO `card-quiet`.
 const TILE =
-  "border border-border bg-card rounded-xl p-5 transition-all duration-200"
+  "border border-border bg-card rounded-xl p-5 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
 const TILE_COMPACT =
-  "border border-border bg-card rounded-xl p-4 transition-all duration-200"
+  "border border-border bg-card rounded-xl p-4 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
 
 // =========================================================================
 // Main component
@@ -1115,7 +1115,7 @@ function HeroPanel({
       className={cn(
         "bg-accent-tint relative overflow-hidden rounded-xl border border-border",
         "",
-        "lg:col-span-7 p-5 sm:p-6 transition-all duration-200"
+        "lg:col-span-7 p-5 sm:p-6 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
       )}
     >
       {/* §38 — Club cover identity. A subtle accent gradient strip pinned
@@ -1230,7 +1230,7 @@ function ProgressRingTile({
       type={onViewHours ? "button" : undefined}
       onClick={onViewHours}
       className={cn(
-        "border border-club/20 bg-club-subtle rounded-xl p-6 text-left flex flex-col transition-all duration-200 lg:col-span-5",
+        "border border-club/20 bg-club-subtle rounded-xl p-6 text-left flex flex-col transition-[color,background-color,border-color,transform,box-shadow] duration-200 lg:col-span-5",
         onViewHours && "hover:border-club/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
     >
@@ -1323,7 +1323,7 @@ function AttentionCard({
       onClick={onClick}
       style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
       className={cn(
-        "border border-border bg-card rounded-xl p-4 text-left border-l-2 border-l-club transition-all duration-200",
+        "border border-border bg-card rounded-xl p-4 text-left border-l-2 border-l-club transition-[color,background-color,border-color,transform,box-shadow] duration-200",
         onClick &&
           "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         urgent && "border-l-red-500"
@@ -1389,7 +1389,7 @@ function OnboardingBanner({
     },
   ]
   return (
-    <div className="border border-club/30 bg-club-muted/40 rounded-xl p-5 relative transition-all duration-200">
+    <div className="border border-club/30 bg-club-muted/40 rounded-xl p-5 relative transition-[color,background-color,border-color,transform,box-shadow] duration-200">
       <button
         type="button"
         onClick={onDismiss}
@@ -1450,7 +1450,7 @@ function MemberOnboardingCard({
   onDismiss: () => void
 }) {
   return (
-    <div className="bg-club-muted/40 rounded-xl p-5 relative transition-all duration-200">
+    <div className="bg-club-muted/40 rounded-xl p-5 relative transition-[color,background-color,border-color,transform,box-shadow] duration-200">
       <button
         type="button"
         onClick={onDismiss}

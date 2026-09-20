@@ -19,12 +19,15 @@ const bricolage = Bricolage_Grotesque({
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
+  adjustFontFallback: true,
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: ["400"],
   display: "swap",
 });
 
@@ -32,7 +35,22 @@ export const metadata: Metadata = {
   title: "ClubHub — Multi-Club Management Platform",
   description:
     "Create or join clubs, track service hours, manage tasks, post announcements, schedule meetings, and more.",
-  icons: { icon: "/club-logo.png", apple: "/club-logo.png" },
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/club-logo.png", sizes: "any" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/club-logo.png", sizes: "180x180" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "ClubHub",
+    statusBarStyle: "default",
+  },
 };
 
 // Explicit viewport config — critical for mobile:

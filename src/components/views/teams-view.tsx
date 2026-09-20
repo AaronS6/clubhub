@@ -315,7 +315,7 @@ function TeamCard({
         }
       }}
       className={cn(
-        "group relative flex flex-col w-full text-left rounded-xl border border-border bg-card overflow-hidden transition-all hover:border-club/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex flex-col w-full text-left rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         flash && "ring-2 ring-club/50"
       )}
     >

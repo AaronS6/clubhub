@@ -53,6 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  ArrowDown,
   ArrowLeft,
   ChevronDown,
   Download,
@@ -327,11 +328,11 @@ function ChatPane({ clubId }: { clubId: string }) {
 
   return (
     <div className="h-[calc(100vh-7rem)] md:h-[calc(100vh-5rem)]">
-      <div className="flex h-full gap-0 md:gap-4">
-        {/* Sidebar — conversation list */}
+      <div className="flex h-full gap-0 md:gap-3">
+        {/* Conversation list — floating panel on desktop */}
         <aside
           className={cn(
-            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col border-r border-border bg-sidebar",
+            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col bg-sidebar md:rounded-2xl md:border md:border-border",
             isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -348,10 +349,10 @@ function ChatPane({ clubId }: { clubId: string }) {
           />
         </aside>
 
-        {/* Main area — messages */}
+        {/* Thread — floating panel on desktop */}
         <main
           className={cn(
-            "card-quiet flex-1 overflow-hidden flex flex-col",
+            "flex-1 overflow-hidden flex flex-col bg-card md:rounded-2xl md:border md:border-border",
             !isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -597,16 +598,9 @@ function ConversationRow({
       aria-current={active ? "true" : undefined}
       className={cn(
         "relative w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
-        active && "bg-club-muted hover:bg-club-muted",
+        active && "bg-club-subtle",
       )}
     >
-      {/* Active conversation: left accent bar */}
-      {active && (
-        <span
-          aria-hidden
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-1 rounded-r-full bg-club"
-        />
-      )}
       <div className="relative shrink-0">
         {isDirect ? (
           <Avatar className="size-9">
@@ -731,6 +725,7 @@ function ConversationPane({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const prevScrollHeightRef = useRef<number>(0)
   const pinnedBottomRef = useRef<boolean>(true)
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false)
   // NOTE: This component is keyed by conversation.id in the parent, so React
   // already remounts it (resetting local state) when switching conversations.
 
@@ -788,6 +783,7 @@ function ConversationPane({
     if (!el) return
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
     pinnedBottomRef.current = distanceFromBottom < 80
+    setShowJumpToBottom(distanceFromBottom > 200)
     if (el.scrollTop <= 40 && !loadingOlder && hasMoreOlder && latestMessages.length > 0) {
       void loadOlder()
     }
@@ -1160,6 +1156,23 @@ function ConversationPane({
           />
         )}
       </div>
+
+      {/* Floating "New messages" pill — shown when scrolled up */}
+      {showJumpToBottom && (
+        <button
+          type="button"
+          onClick={() => {
+            const el = scrollContainerRef.current
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+            setShowJumpToBottom(false)
+          }}
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-card border border-border px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-2 duration-180"
+          aria-label="Jump to latest messages"
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+          New messages
+        </button>
+      )}
 
       {/* Typing indicator */}
       <TypingIndicator conversationId={conversation.id} myUserId={myUserId} />
@@ -1579,11 +1592,11 @@ function MessageBubble({
   return (
     <div
       className={cn(
-        "group relative rounded-xl px-3.5 py-2 max-w-full text-sm break-words",
+        "group relative rounded-2xl px-3.5 py-2 max-w-full text-sm break-words",
         isMine
-          ? "bg-club text-club-foreground"
-          : "bg-muted text-foreground",
-        isDeleted && "italic bg-muted/50 text-muted-foreground",
+          ? "bg-club-subtle text-foreground rounded-br-md"
+          : "bg-muted/60 text-foreground rounded-bl-md",
+        isDeleted && "italic bg-muted/40 text-muted-foreground",
       )}
     >
       {isDeleted ? (
@@ -2036,7 +2049,7 @@ function MessageComposer({
             variant="club"
             size="icon"
             className={cn(
-              "size-11 shrink-0 rounded-full transition-all",
+              "size-11 shrink-0 rounded-full transition-[color,background-color,border-color,transform,box-shadow]",
               (disabled || !value.trim())
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:scale-105",
