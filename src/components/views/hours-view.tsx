@@ -138,7 +138,7 @@ export function HoursView() {
     mutationFn: (id: string) => api(`/api/clubs/${clubId}/hours/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       toast.success("Entry deleted")
-      qc.invalidateQueries({ queryKey: ["hours", clubId] })
+      qc.invalidateQueries({ queryKey: ["hours", clubId] }); qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -490,7 +490,7 @@ export function HoursView() {
         categories={catsQuery.data?.categories ?? []}
         categoriesLoading={catsQuery.isLoading}
         onSubmitted={() => {
-          qc.invalidateQueries({ queryKey: ["hours", clubId] })
+          qc.invalidateQueries({ queryKey: ["hours", clubId] }); qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
         }}
       />
     </div>
@@ -773,144 +773,91 @@ function SubmitHoursDialog({
       }}
     >
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
-        <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
+        <DialogHeader className="px-5 pt-5 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Submit service hours</DialogTitle>
-          <DialogDescription>
-            Record the hours you volunteered. An executive will review your submission.
-          </DialogDescription>
+          <DialogDescription>Record your volunteer work. An executive will review it.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-5 py-5 sm:p-0 space-y-5 pb-24 sm:pb-6">
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="hours-date">Date</Label>
-                <Input
-                  id="hours-date"
-                  type="date"
-                  value={date}
-                  max={todayISO()}
-                  onChange={(e) => {
-                    setDate(e.target.value)
-                    if (dateError) setDateError(null)
-                  }}
-                  required
-                  aria-invalid={!!dateError}
-                  className={dateError ? "border-danger focus-visible:ring-red-500" : ""}
+              <div className="space-y-1.5">
+                <Label htmlFor="hours-date" className="text-xs font-medium text-muted-foreground">Date</Label>
+                <Input id="hours-date" type="date" value={date} max={todayISO()}
+                  onChange={(e) => { setDate(e.target.value); if (dateError) setDateError(null) }}
+                  required aria-invalid={!!dateError}
+                  className={cn("h-11", dateError && "border-danger/50")}
                 />
-                {dateError && (
-                  <p className="text-xs text-danger mt-1">{dateError}</p>
-                )}
+                {dateError && <p className="text-xs text-danger-foreground">{dateError}</p>}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="hours-num">Hours</Label>
-                <Input
-                  id="hours-num"
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  min="0.1"
-                  max="1000"
-                  placeholder="e.g. 3.5 or 0.25"
-                  value={hours}
-                  onChange={(e) => {
-                    setHours(e.target.value)
-                    if (hoursError) setHoursError(null)
-                  }}
-                  required
-                  aria-invalid={!!hoursError}
-                  className={hoursError ? "border-danger focus-visible:ring-red-500" : ""}
+              <div className="space-y-1.5">
+                <Label htmlFor="hours-num" className="text-xs font-medium text-muted-foreground">Hours</Label>
+                <Input id="hours-num" type="number" inputMode="decimal" step="any" min="0.1" max="1000"
+                  placeholder="3.5" value={hours}
+                  onChange={(e) => { setHours(e.target.value); if (hoursError) setHoursError(null) }}
+                  required aria-invalid={!!hoursError}
+                  className={cn("h-11", hoursError && "border-danger/50")}
                 />
-                {hoursError && (
-                  <p className="text-xs text-danger mt-1">{hoursError}</p>
-                )}
+                {hoursError && <p className="text-xs text-danger-foreground">{hoursError}</p>}
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="hours-reason">What did you do?</Label>
-              <Textarea
-                id="hours-reason"
-                rows={3}
+            <div className="space-y-1.5">
+              <Label htmlFor="hours-reason" className="text-xs font-medium text-muted-foreground">What did you do?</Label>
+              <Textarea id="hours-reason" rows={4}
                 placeholder="e.g. Helped set up the spring fair booths and cleaned up afterwards."
-                value={reason}
-                onChange={(e) => {
-                  setReason(e.target.value)
-                  if (reasonError) setReasonError(null)
-                }}
-                maxLength={2000}
-                required
-                aria-invalid={!!reasonError}
-                className={reasonError ? "border-danger focus-visible:ring-red-500" : ""}
+                value={reason} onChange={(e) => { setReason(e.target.value); if (reasonError) setReasonError(null) }}
+                maxLength={2000} required aria-invalid={!!reasonError}
+                className={cn(reasonError && "border-danger/50")}
               />
-              <div className="text-right text-xs text-muted-foreground">{reason.length}/2000</div>
-              {reasonError && (
-                <p className="text-xs text-danger mt-1">{reasonError}</p>
-              )}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{reason.length}/2000</span>
+                {reasonError && <span className="text-danger-foreground">{reasonError}</span>}
+              </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="hours-category">Category (optional)</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="hours-category" className="text-xs font-medium text-muted-foreground">Category (optional)</Label>
               {categoriesLoading ? (
-                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-11 w-full" />
               ) : (
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger id="hours-category" className="w-full">
-                    <SelectValue placeholder="No category" />
-                  </SelectTrigger>
+                  <SelectTrigger id="hours-category" className="h-11"><SelectValue placeholder="No category" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">No category</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
+                    {categories.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               )}
             </div>
-
-            <div className="space-y-2">
-              <Label>Proof file (optional)</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={handleFile}
-                  className="hidden"
-                  id="hours-proof-input"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                >
-                  {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  <span>{uploading ? "Uploading…" : proofUrl ? "Replace file" : "Upload file"}</span>
-                </Button>
-                {proofUrl ? (
-                  <span className="text-caption-medium text-club truncate flex items-center gap-1 min-w-0">
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{proofLabel || "uploaded"}</span>
-                  </span>
-                ) : (
-                  <span className="text-caption text-muted-foreground">JPG, PNG, WebP, or PDF (max 10MB)</span>
-                )}
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Proof (optional)</Label>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={handleFile} className="hidden" id="hours-proof-input" />
+              {proofUrl ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-club/30 bg-club-subtle px-3 py-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle2 className="h-4 w-4 text-club shrink-0" />
+                    <span className="text-sm truncate">{proofLabel || "uploaded"}</span>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>Replace</Button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                  className="flex items-center justify-center gap-2 w-full h-20 rounded-lg border-2 border-dashed border-border hover:border-club/40 hover:bg-accent/30 transition-colors text-sm text-muted-foreground">
+                  {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-5 w-5" /> <span>Tap to upload proof</span></>}
+                </button>
+              )}
+              <p className="text-xs text-muted-foreground">JPG, PNG, WebP, or PDF</p>
             </div>
           </div>
-
-          <DialogFooter className="px-4 py-3 sm:p-0 sm:pt-0 border-t sm:border-0 shrink-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          <div className="pointer-events-none absolute bottom-3 right-3 left-3 z-20 sm:static sm:z-auto sm:pointer-events-auto flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}
+              className="pointer-events-auto rounded-full sm:rounded-md h-11">
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || uploading} variant="club">
+            <Button type="submit" disabled={submitting || uploading} variant="club"
+              className="pointer-events-auto shadow-lg rounded-full sm:rounded-md h-11">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? "Submitting…" : "Submit for review"}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

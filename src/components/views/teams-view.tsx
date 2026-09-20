@@ -328,10 +328,7 @@ function TeamCard({
       <div className="p-5 sm:p-6 flex flex-col gap-4 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="flex items-center gap-2.5 mb-1.5">
-              <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: `${accent}20` }}>
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: accent }} />
-              </span>
+            <div className="flex items-center gap-2 mb-1.5">
               <h3 className="text-lg font-bold truncate" style={{ fontFamily: "var(--font-display)" }}>{team.name}</h3>
             </div>
             {team.description ? (
