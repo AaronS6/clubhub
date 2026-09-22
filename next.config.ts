@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        destination: "https://myclubhub.onrender.com/:path*",
+        destination: "https://clubhub-0rir.onrender.com/:path*",
         permanent: false,
       },
     ];

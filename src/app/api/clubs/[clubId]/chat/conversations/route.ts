@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
-import { emitClubEvent } from "@/lib/realtime-server"
 import { logActivity } from "@/lib/activity"
+import { emitClubEvent } from "@/lib/realtime-server"
 
 // GET /api/clubs/[clubId]/chat/conversations
 // Returns the conversations the current user is a member of in this club.

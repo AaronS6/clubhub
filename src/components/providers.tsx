@@ -13,10 +13,10 @@ export function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 15_000, // 1 minute (was 15s — too aggressive)
+            staleTime: 15_000,
             retry: 1,
             refetchOnWindowFocus: false,
-            refetchIntervalInBackground: false, // don't poll when tab is hidden
+            refetchIntervalInBackground: false,
           },
         },
       })
