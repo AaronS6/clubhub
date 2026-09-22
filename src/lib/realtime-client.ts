@@ -25,11 +25,18 @@ function resolveRealtimeUrl(): string {
 
 export function getRealtimeSocket(): Socket {
   if (socket) return socket
-  socket = io(resolveRealtimeUrl(), {
+  const url = resolveRealtimeUrl()
+  // If no explicit realtime URL is configured, try to connect once, then
+  // give up quickly (3 attempts, 5s apart). The polling fallback handles
+  // all data refresh. This avoids the performance drain of infinite
+  // reconnection attempts to a non-existent server.
+  const hasExplicitUrl = !!process.env.NEXT_PUBLIC_REALTIME_URL
+  socket = io(url, {
     transports: ["websocket"],
-    reconnection: true,
-    reconnectionDelay: 1000,
-    reconnectionAttempts: Infinity,
+    reconnection: hasExplicitUrl, // only auto-reconnect if a service is configured
+    reconnectionDelay: 5000,     // 5s between retries (was 1s)
+    reconnectionAttempts: 3,      // give up after 3 tries (was Infinity)
+    timeout: 3000,               // fail fast on first connect (was default 20s)
   })
   return socket
 }
