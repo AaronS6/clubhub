@@ -422,6 +422,7 @@ export function HoursView() {
                           canDelete={isExec || it.status === "pending"}
                           onDelete={() => deleteMutation.mutate(it.id)}
                           deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                          goal={data?.clubHoursGoal ?? 0}
                         />
                       ))}
                     </TableBody>
@@ -489,6 +490,7 @@ export function HoursView() {
                                 canDelete={isExec || it.status === "pending"}
                                 onDelete={() => deleteMutation.mutate(it.id)}
                                 deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                                goal={data?.clubHoursGoal ?? 0}
                               />
                             ))}
                           </TableBody>
@@ -533,17 +535,35 @@ function HoursRow({
   canDelete,
   onDelete,
   deleting,
+  goal,
 }: {
   item: HoursItem
   canDelete: boolean
   onDelete: () => void
   deleting: boolean
+  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
+      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
+  goal?: number
 }) {
+  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow className="hover:bg-muted/30 transition-colors">
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
-        <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+          {goal && goal > 0 && pct > 0 && (
+            <span
+              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="block h-full rounded-full bg-club"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>

@@ -15,10 +15,13 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // NOTE: Next.js 16 removed the `eslint` config key from next.config.ts.
-  // Lint is run via `bun run lint` in local dev instead.
+  // Same for ESLint — don't fail the Docker build on lint warnings. Lint
+  // runs cleanly in local dev; this is just a belt-and-suspenders guard so
+  // a version bump in an eslint rule doesn't block a deploy.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   reactStrictMode: true,
 };
 
 export default nextConfig;
-

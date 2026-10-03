@@ -213,15 +213,9 @@
     @apply border-border outline-ring/40;
   }
   body {
-    @apply text-foreground antialiased;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
     text-rendering: optimizeLegibility;
-    /* NOTE: do NOT set bg-background on body. The ambient background layer
-       (from CustomizationProvider) needs to show through. The AmbientBackground
-       component renders its own tint overlay at z-1 that provides the base
-       background color, so the body should be transparent. This lets the
-       aurora/blobs/bubbles/etc. effects be visible behind the app shell. */
-    background-color: transparent;
   }
   /* One consistent focus ring: 2px at full opacity, 2px offset. */
   :focus-visible {

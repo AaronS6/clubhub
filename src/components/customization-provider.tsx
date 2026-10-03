@@ -72,11 +72,10 @@ export function CustomizationProvider({ children }: { children: ReactNode }) {
 
   return (
     <>
-      {/* The AmbientBackground always renders — when ambient is "none" it
-          renders the base background color (since body is transparent); when
-          an effect is active it renders the effect + a tint overlay. */}
-      <AmbientBackground />
-      <div style={vars as React.CSSProperties} className="relative z-10">
+      {/* Ambient layer — fixed, behind everything. The app shell sits at
+          z-10+ (via `relative` on the wrapper below) so content stays on top. */}
+      {ambient !== "none" && <AmbientBackground />}
+      <div style={vars as React.CSSProperties} className="relative">
         {children}
       </div>
     </>

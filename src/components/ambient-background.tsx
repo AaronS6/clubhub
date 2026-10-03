@@ -15,13 +15,17 @@ import { useAppStore } from "@/lib/store"
  *   - cost nothing to ship (a few KB of CSS + a handful of divs)
  *   - respect `prefers-reduced-motion` (animations halt to a static frame)
  *
- * Design philosophy: every effect is SLOW (30–60s loops), SUBTLE (low
- * opacity), and ORGANIC (no hard edges, no regular patterns). The goal is a
- * calm, living backdrop — not a screensaver.
+ * The effects are intentionally subtle and SLOW (20–40s loops) so they don't
+ * compete with content. Intensity is driven by `--ambient-opacity`, which the
+ * CustomizationProvider sets from the user's intensity slider.
+ *
+ * The color comes from the active accent (either the club's accent or the
+ * user's override). We pass it in as a CSS variable so each effect can use it.
  * ============================================================================
  */
 
 interface AmbientBackgroundProps {
+  /** The accent color to use. Defaults to the active club accent. */
   accent?: string
 }
 
@@ -35,50 +39,29 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
 
   const opacity = intensity / 100
 
+  // Derive 2-3 secondary hues from the base accent by shifting hue. This
+  // gives each effect a richer palette without hardcoding colors.
   const palette = useMemo(() => {
     const [h, s, l] = hexToHsl(color)
     return {
       base: color,
-      c2: hslToHex((h + 25) % 360, Math.max(0.4, s * 0.85), Math.min(75, l + 6)),
-      c3: hslToHex((h - 20 + 360) % 360, Math.max(0.4, s * 0.9), Math.min(78, l + 10)),
+      // +40° hue shift for the second color (analogous-complementary)
+      c2: hslToHex((h + 40) % 360, s, Math.min(80, l + 8)),
+      // -30° hue shift for the third color
+      c3: hslToHex((h - 30 + 360) % 360, s, Math.min(82, l + 12)),
     }
   }, [color])
 
-  if (ambient === "none") {
-    return (
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0"
-        style={{ background: "var(--background)", zIndex: 0 }}
-      />
-    )
-  }
+  if (ambient === "none") return null
 
   return (
-    <>
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 overflow-hidden"
-        style={{
-          ["--ambient-opacity" as string]: String(opacity),
-          ["--ambient-base" as string]: palette.base,
-          ["--ambient-c2" as string]: palette.c2,
-          ["--ambient-c3" as string]: palette.c3,
-          zIndex: 0,
-        }}
-      >
-        <AmbientEffect effect={ambient} />
-      </div>
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0"
-        style={{
-          background: "var(--background)",
-          opacity: 1 - opacity * 0.5,
-          zIndex: 1,
-        }}
-      />
-    </>
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 overflow-hidden"
+      style={{ ["--ambient-opacity" as string]: String(opacity), ["--ambient-base" as string]: palette.base, ["--ambient-c2" as string]: palette.c2, ["--ambient-c3" as string]: palette.c3, zIndex: 0 }}
+    >
+      <AmbientEffect effect={ambient} />
+    </div>
   )
 }
 
@@ -105,51 +88,49 @@ function AmbientEffect({ effect }: { effect: AmbientEffect }) {
 
 /* ───────────────────────── Effects ───────────────────────── */
 
-/**
- * Aurora — two wide, soft vertical light columns that slowly breathe and
- * shift hue. Inspired by polar aurora photos: vertical, diffuse, never harsh.
- * Uses tall blurred gradients that sway gently rather than horizontal bands.
- */
+/** Aurora — three soft ribbons of light that drift horizontally, reminiscent
+ *  of polar auroras. Uses blur + horizontal translate loops. */
 function Aurora() {
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
-        @keyframes ch-aurora-sway1 {
-          0%, 100% { transform: translate(-5%, 0) scaleX(1); opacity: 0.4; }
-          50%      { transform: translate(8%, -3%) scaleX(1.15); opacity: 0.6; }
+        @keyframes ch-aurora-drift {
+          0%   { transform: translateX(-15%) translateY(0) scaleY(1); }
+          50%  { transform: translateX(10%) translateY(-4%) scaleY(1.08); }
+          100% { transform: translateX(-15%) translateY(0) scaleY(1); }
         }
-        @keyframes ch-aurora-sway2 {
-          0%, 100% { transform: translate(5%, 2%) scaleX(1.1); opacity: 0.5; }
-          50%      { transform: translate(-6%, -2%) scaleX(0.95); opacity: 0.35; }
+        @keyframes ch-aurora-drift2 {
+          0%   { transform: translateX(20%) translateY(2%) scaleY(1); }
+          50%  { transform: translateX(-10%) translateY(-6%) scaleY(1.12); }
+          100% { transform: translateX(20%) translateY(2%) scaleY(1); }
         }
-        @media (prefers-reduced-motion: reduce) { .ch-aurora-col { animation: none !important; } }
+        @keyframes ch-aurora-drift3 {
+          0%   { transform: translateX(0%) translateY(0); }
+          50%  { transform: translateX(18%) translateY(-3%); }
+          100% { transform: translateX(0%) translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ch-aurora-band { animation: none !important; }
+        }
       `}</style>
-      {/* Left column */}
       <div
-        className="ch-aurora-col absolute left-[-10%] top-[-15%] h-[130%] w-[45%] blur-3xl"
-        style={{
-          background: `linear-gradient(160deg, transparent 0%, var(--ambient-base) 40%, var(--ambient-c2) 70%, transparent 100%)`,
-          animation: "ch-aurora-sway1 32s ease-in-out infinite",
-          filter: "blur(60px)",
-        }}
+        className="ch-aurora-band absolute -inset-x-40 top-[-20%] h-[60%] blur-3xl"
+        style={{ background: `linear-gradient(110deg, transparent, var(--ambient-base) 30%, var(--ambient-c2) 55%, transparent 80%)`, animation: "ch-aurora-drift 24s ease-in-out infinite", opacity: 0.55 }}
       />
-      {/* Right column */}
       <div
-        className="ch-aurora-col absolute right-[-10%] top-[-10%] h-[120%] w-[40%] blur-3xl"
-        style={{
-          background: `linear-gradient(200deg, transparent 0%, var(--ambient-c3) 35%, var(--ambient-base) 65%, transparent 100%)`,
-          animation: "ch-aurora-sway2 38s ease-in-out infinite",
-          filter: "blur(60px)",
-        }}
+        className="ch-aurora-band absolute -inset-x-40 top-[-10%] h-[55%] blur-3xl"
+        style={{ background: `linear-gradient(-100deg, transparent, var(--ambient-c2) 25%, var(--ambient-c3) 60%, transparent 85%)`, animation: "ch-aurora-drift2 30s ease-in-out infinite", opacity: 0.5 }}
+      />
+      <div
+        className="ch-aurora-band absolute -inset-x-40 top-[10%] h-[40%] blur-3xl"
+        style={{ background: `linear-gradient(90deg, transparent, var(--ambient-c3) 35%, var(--ambient-base) 65%, transparent)`, animation: "ch-aurora-drift3 36s ease-in-out infinite", opacity: 0.4 }}
       />
     </div>
   )
 }
 
-/**
- * Blobs — three large morphing circles that breathe and drift. Heavy blur,
- * slow morph, soft colors. (Unchanged — user likes this one.)
- */
+/** Blobs — three large morphing circles that breathe and drift. Classic but
+ *  refined: heavy blur, slow morph, soft colors. */
 function Blobs() {
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
@@ -186,23 +167,22 @@ function Blobs() {
   )
 }
 
-/**
- * Bubbles — soft, glowing orbs that slowly rise. Refined: no borders, no
- * harsh gradients. Each bubble is a soft radial glow that fades at the edges,
- * like luminous dust motes. Much calmer than a "soap bubble" look.
- */
+/** Bubbles — a slow shower of translucent bubbles rising upward. Generated
+ *  with a deterministic set (no Math.random on render — would re-randomize on
+ *  every re-render). */
 function Bubbles() {
   const bubbles = useMemo(() => {
+    // Deterministic pseudo-random based on index so the layout is stable.
     const arr: { left: number; size: number; duration: number; delay: number; drift: number }[] = []
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 18; i++) {
       const seed = i * 9301 + 49297
       const r = (n: number) => ((Math.sin(seed + n) + 1) / 2)
       arr.push({
-        left: 5 + r(1) * 90,
-        size: 40 + r(2) * 80,
-        duration: 20 + r(3) * 20,
-        delay: r(4) * -25,
-        drift: (r(5) - 0.5) * 80,
+        left: r(1) * 100,
+        size: 16 + r(2) * 60,
+        duration: 16 + r(3) * 18,
+        delay: r(4) * -20,
+        drift: (r(5) - 0.5) * 60,
       })
     }
     return arr
@@ -212,25 +192,28 @@ function Bubbles() {
       <style>{`
         @keyframes ch-bubble-rise {
           0%   { transform: translateY(110vh) translateX(0); opacity: 0; }
-          15%  { opacity: 0.35; }
-          85%  { opacity: 0.25; }
-          100% { transform: translateY(-20vh) translateX(var(--drift, 0px)); opacity: 0; }
+          10%  { opacity: 0.5; }
+          90%  { opacity: 0.4; }
+          100% { transform: translateY(-10vh) translateX(var(--drift, 0px)); opacity: 0; }
         }
-        @media (prefers-reduced-motion: reduce) { .ch-bubble { animation: none !important; opacity: 0.3 !important; transform: translateY(40vh) !important; } }
+        @media (prefers-reduced-motion: reduce) { .ch-bubble { animation: none !important; opacity: 0.3 !important; transform: translateY(50vh) !important; } }
       `}</style>
       {bubbles.map((b, i) => (
         <div
           key={i}
-          className="ch-bubble absolute bottom-0 rounded-full"
+          className="ch-bubble absolute bottom-0 rounded-full border"
           style={{
             left: `${b.left}%`,
             width: b.size,
             height: b.size,
-            background: `radial-gradient(circle at 40% 40%, var(--ambient-base) 0%, transparent 65%)`,
+            background: `radial-gradient(circle at 30% 30%, var(--ambient-base), transparent 70%)`,
+            borderColor: "var(--ambient-base)",
+            borderWidth: 1,
             ["--drift" as string]: `${b.drift}px`,
-            animation: `ch-bubble-rise ${b.duration}s ease-in-out infinite`,
+            animation: `ch-bubble-rise ${b.duration}s linear infinite`,
             animationDelay: `${b.delay}s`,
-            filter: "blur(20px)",
+            opacity: 0.45,
+            filter: "blur(0.5px)",
           }}
         />
       ))}
@@ -238,151 +221,97 @@ function Bubbles() {
   )
 }
 
-/**
- * Mesh — a smooth, single-layer gradient that slowly shifts its focal points.
- * Refined: uses just two large radial gradients (not four) with heavy blur,
- * creating a soft "aurora haze" feel rather than a muddy 4-color grid.
- */
+/** Mesh — a four-point gradient mesh that slowly rotates its hues. Feels like
+ *  a warm, living gradient. */
 function Mesh() {
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
         @keyframes ch-mesh-shift {
-          0%, 100% { transform: translate(0%, 0%) scale(1); }
-          33%      { transform: translate(8%, -5%) scale(1.1); }
-          66%      { transform: translate(-6%, 6%) scale(0.95); }
-        }
-        @keyframes ch-mesh-shift2 {
-          0%, 100% { transform: translate(0%, 0%) scale(1); }
-          50%      { transform: translate(-10%, 8%) scale(1.15); }
+          0%, 100% { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 100%; }
+          50%      { background-position: 30% 20%, 70% 10%, 80% 70%, 10% 60%; }
         }
         @media (prefers-reduced-motion: reduce) { .ch-mesh-layer { animation: none !important; } }
       `}</style>
       <div
-        className="ch-mesh-layer absolute inset-[-20%] blur-3xl"
+        className="ch-mesh-layer absolute inset-0 blur-2xl"
         style={{
-          background: `radial-gradient(ellipse 60% 50% at 30% 30%, var(--ambient-base) 0%, transparent 70%)`,
-          animation: "ch-mesh-shift 40s ease-in-out infinite",
+          backgroundImage: `
+            radial-gradient(at 20% 20%, var(--ambient-base) 0px, transparent 50%),
+            radial-gradient(at 80% 20%, var(--ambient-c2) 0px, transparent 50%),
+            radial-gradient(at 50% 80%, var(--ambient-c3) 0px, transparent 50%),
+            radial-gradient(at 20% 80%, var(--ambient-base) 0px, transparent 50%)
+          `,
+          backgroundSize: "200% 200%",
+          backgroundPosition: "0% 0%, 100% 0%, 50% 100%, 0% 100%",
+          animation: "ch-mesh-shift 28s ease-in-out infinite",
           opacity: 0.5,
-          filter: "blur(40px)",
-        }}
-      />
-      <div
-        className="ch-mesh-layer absolute inset-[-20%] blur-3xl"
-        style={{
-          background: `radial-gradient(ellipse 50% 60% at 70% 70%, var(--ambient-c2) 0%, transparent 70%)`,
-          animation: "ch-mesh-shift2 50s ease-in-out infinite",
-          opacity: 0.45,
-          filter: "blur(40px)",
         }}
       />
     </div>
   )
 }
 
-/**
- * Waves — soft, layered gradient hills at the bottom. Refined: uses smooth
- * CSS gradients (no SVG paths) with heavy blur, creating a gentle "fog rolling
- * over hills" feel. Three layers drift at different speeds for parallax.
- */
+/** Waves — layered contour lines at the bottom, like a soft topographic
+ *  map. Two SVG paths animate with different speeds for a parallax effect. */
 function Waves() {
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
-        @keyframes ch-wave-drift1 {
-          0%, 100% { transform: translateX(0); }
-          50%      { transform: translateX(-30px); }
-        }
-        @keyframes ch-wave-drift2 {
-          0%, 100% { transform: translateX(0); }
-          50%      { transform: translateX(40px); }
-        }
-        @keyframes ch-wave-drift3 {
-          0%, 100% { transform: translateX(0); }
-          50%      { transform: translateX(-20px); }
+        @keyframes ch-wave-x {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
         }
         @media (prefers-reduced-motion: reduce) { .ch-wave-layer { animation: none !important; } }
       `}</style>
-      {/* Back wave */}
-      <div
-        className="ch-wave-layer absolute bottom-0 left-[-10%] right-[-10%] h-[40%]"
-        style={{
-          background: `linear-gradient(to top, var(--ambient-c3) 0%, transparent 100%)`,
-          animation: "ch-wave-drift1 35s ease-in-out infinite",
-          opacity: 0.25,
-          filter: "blur(30px)",
-          borderRadius: "50% 50% 0 0 / 20% 20% 0 0",
-        }}
-      />
-      {/* Mid wave */}
-      <div
-        className="ch-wave-layer absolute bottom-0 left-[-10%] right-[-10%] h-[30%]"
-        style={{
-          background: `linear-gradient(to top, var(--ambient-c2) 0%, transparent 100%)`,
-          animation: "ch-wave-drift2 45s ease-in-out infinite",
-          opacity: 0.3,
-          filter: "blur(25px)",
-          borderRadius: "50% 50% 0 0 / 25% 25% 0 0",
-        }}
-      />
-      {/* Front wave */}
-      <div
-        className="ch-wave-layer absolute bottom-0 left-[-10%] right-[-10%] h-[22%]"
-        style={{
-          background: `linear-gradient(to top, var(--ambient-base) 0%, transparent 100%)`,
-          animation: "ch-wave-drift3 55s ease-in-out infinite",
-          opacity: 0.35,
-          filter: "blur(20px)",
-          borderRadius: "50% 50% 0 0 / 30% 30% 0 0",
-        }}
-      />
+      <svg className="ch-wave-layer absolute bottom-0 left-0 h-[50%] w-[200%]" viewBox="0 0 1200 300" preserveAspectRatio="none" style={{ animation: "ch-wave-x 40s linear infinite" }}>
+        <path d="M0,150 C200,100 400,200 600,150 C800,100 1000,200 1200,150 L1200,300 L0,300 Z" fill="var(--ambient-base)" opacity="0.18" />
+      </svg>
+      <svg className="ch-wave-layer absolute bottom-0 left-0 h-[40%] w-[200%]" viewBox="0 0 1200 300" preserveAspectRatio="none" style={{ animation: "ch-wave-x 55s linear infinite reverse" }}>
+        <path d="M0,180 C150,130 350,230 600,180 C850,130 1050,230 1200,180 L1200,300 L0,300 Z" fill="var(--ambient-c2)" opacity="0.16" />
+      </svg>
+      <svg className="ch-wave-layer absolute bottom-0 left-0 h-[30%] w-[200%]" viewBox="0 0 1200 300" preserveAspectRatio="none" style={{ animation: "ch-wave-x 70s linear infinite" }}>
+        <path d="M0,210 C200,160 400,250 600,210 C800,160 1000,250 1200,210 L1200,300 L0,300 Z" fill="var(--ambient-c3)" opacity="0.14" />
+      </svg>
     </div>
   )
 }
 
-/**
- * Particles — soft glowing orbs that drift slowly upward like dust in a
- * sunbeam. Refined: larger, softer (heavy blur), fewer in count, and they
- * pulse gently rather than just translating. Feels like floating light.
- */
+/** Particles — a fine dust of small dots drifting upward, like motes in a
+ *  sunbeam. Deterministic so it's stable across renders. */
 function Particles() {
   const dots = useMemo(() => {
-    const arr: { left: number; top: number; size: number; duration: number; delay: number }[] = []
-    for (let i = 0; i < 18; i++) {
+    const arr: { left: number; size: number; duration: number; delay: number }[] = []
+    for (let i = 0; i < 40; i++) {
       const seed = i * 7919 + 1009
       const r = (n: number) => ((Math.sin(seed + n) + 1) / 2)
-      arr.push({
-        left: r(1) * 100,
-        top: r(2) * 100,
-        size: 20 + r(3) * 40,
-        duration: 8 + r(4) * 12,
-        delay: r(5) * -10,
-      })
+      arr.push({ left: r(1) * 100, size: 2 + r(2) * 4, duration: 12 + r(3) * 14, delay: r(4) * -18 })
     }
     return arr
   }, [])
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
-        @keyframes ch-particle-float {
-          0%, 100% { transform: translate(0, 0); opacity: 0.2; }
-          50%      { transform: translate(0, -20px); opacity: 0.5; }
+        @keyframes ch-particle-up {
+          0%   { transform: translateY(105vh); opacity: 0; }
+          15%  { opacity: 0.7; }
+          85%  { opacity: 0.5; }
+          100% { transform: translateY(-10vh); opacity: 0; }
         }
-        @media (prefers-reduced-motion: reduce) { .ch-particle { animation: none !important; opacity: 0.3 !important; } }
+        @media (prefers-reduced-motion: reduce) { .ch-particle { animation: none !important; opacity: 0.4 !important; transform: translateY(50vh) !important; } }
       `}</style>
       {dots.map((d, i) => (
         <div
           key={i}
-          className="ch-particle absolute rounded-full"
+          className="ch-particle absolute bottom-0 rounded-full"
           style={{
             left: `${d.left}%`,
-            top: `${d.top}%`,
             width: d.size,
             height: d.size,
-            background: `radial-gradient(circle, var(--ambient-base) 0%, transparent 70%)`,
-            animation: `ch-particle-float ${d.duration}s ease-in-out infinite`,
+            background: "var(--ambient-base)",
+            boxShadow: "0 0 6px var(--ambient-base)",
+            animation: `ch-particle-up ${d.duration}s linear infinite`,
             animationDelay: `${d.delay}s`,
-            filter: "blur(8px)",
           }}
         />
       ))}
@@ -390,24 +319,15 @@ function Particles() {
   )
 }
 
-/**
- * Stardust — tiny twinkling points scattered across the sky. Refined: smaller
- * points with a soft glow, more of them (80), gentle twinkle (opacity pulse
- * only, no scaling). Feels like a calm night sky, not a laser show.
- */
+/** Stardust — a constellation of twinkling pinpoints. Unlike Particles
+ *  (which drift), Stardust points stay put and twinkle via opacity flicker. */
 function Stardust() {
   const stars = useMemo(() => {
     const arr: { left: number; top: number; size: number; duration: number; delay: number }[] = []
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 60; i++) {
       const seed = i * 4099 + 2017
       const r = (n: number) => ((Math.sin(seed + n) + 1) / 2)
-      arr.push({
-        left: r(1) * 100,
-        top: r(2) * 100,
-        size: 1 + r(3) * 2,
-        duration: 3 + r(4) * 5,
-        delay: r(5) * -8,
-      })
+      arr.push({ left: r(1) * 100, top: r(2) * 100, size: 1 + r(3) * 2.5, duration: 2 + r(4) * 4, delay: r(5) * -6 })
     }
     return arr
   }, [])
@@ -415,8 +335,8 @@ function Stardust() {
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
         @keyframes ch-star-twinkle {
-          0%, 100% { opacity: 0.1; }
-          50%      { opacity: 0.7; }
+          0%, 100% { opacity: 0.15; transform: scale(0.8); }
+          50%      { opacity: 0.9; transform: scale(1.1); }
         }
         @media (prefers-reduced-motion: reduce) { .ch-star { animation: none !important; opacity: 0.4 !important; } }
       `}</style>
@@ -430,7 +350,7 @@ function Stardust() {
             width: s.size,
             height: s.size,
             background: "var(--ambient-base)",
-            boxShadow: `0 0 ${s.size * 3}px var(--ambient-base)`,
+            boxShadow: `0 0 ${s.size * 2}px var(--ambient-base)`,
             animation: `ch-star-twinkle ${s.duration}s ease-in-out infinite`,
             animationDelay: `${s.delay}s`,
           }}
