@@ -460,7 +460,6 @@ export function ApprovalsView() {
                       (reviewMutation.isPending && reviewMutation.variables?.id === it.id) ||
                       (bulkMutation.isPending && selectedInScope.has(it.id))
                     }
-                    goal={approvalsQuery.data?.clubHoursGoal ?? 0}
                   />
                 ))}
               </TableBody>
@@ -519,7 +518,6 @@ export function ApprovalsView() {
                     item={it}
                     onDelete={() => deleteMutation.mutate(it.id)}
                     deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
-                    goal={approvalsQuery.data?.clubHoursGoal ?? 0}
                   />
                 ))}
               </TableBody>
@@ -567,7 +565,6 @@ function ApprovalRow({
   onApprove,
   onReject,
   reviewing,
-  goal,
 }: {
   item: HoursItem
   checked: boolean
@@ -575,12 +572,8 @@ function ApprovalRow({
   onApprove: () => void
   onReject: () => void
   reviewing: boolean
-  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
-      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
-  goal?: number
 }) {
   const [expanded, setExpanded] = useState(false)
-  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow data-state={checked ? "selected" : undefined} className="hover:bg-muted/30 transition-colors">
       <TableCell>
@@ -602,20 +595,7 @@ function ApprovalRow({
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
-          {goal && goal > 0 && pct > 0 && (
-            <span
-              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
-              aria-hidden
-            >
-              <span
-                className="block h-full rounded-full bg-club"
-                style={{ width: `${pct}%` }}
-              />
-            </span>
-          )}
-        </div>
+        <span className="text-base font-semibold tabular-nums">{item.hours}</span>
       </TableCell>
       <TableCell className="max-w-xs align-top">
         <div
@@ -781,16 +761,11 @@ function ReviewedRow({
   item,
   onDelete,
   deleting,
-  goal,
 }: {
   item: HoursItem
   onDelete: () => void
   deleting: boolean
-  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
-      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
-  goal?: number
 }) {
-  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow className="hover:bg-muted/30 transition-colors">
       {/* §39 — Member cell with avatar + name */}
@@ -809,20 +784,7 @@ function ReviewedRow({
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
-          {goal && goal > 0 && pct > 0 && (
-            <span
-              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
-              aria-hidden
-            >
-              <span
-                className="block h-full rounded-full bg-club"
-                style={{ width: `${pct}%` }}
-              />
-            </span>
-          )}
-        </div>
+        <span className="text-base font-semibold tabular-nums">{item.hours}</span>
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>

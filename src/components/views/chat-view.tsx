@@ -327,7 +327,7 @@ function ChatPane({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] md:h-[calc(100vh-5rem)]">
+    <div className="h-[calc(100dvh-7rem)] md:h-[calc(100dvh-5rem)]">
       <div className="flex h-full gap-0 md:gap-3">
         {/* Conversation list — floating panel on desktop */}
         <aside
