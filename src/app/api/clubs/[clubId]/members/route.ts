@@ -44,7 +44,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
     list.push(t.team)
     teamsByUser.set(t.userId, list)
   }
-  const hoursMap = new Map(hours.map((h) => [h.userId, h._sum.hours ?? 0]))
+  // Explicit type annotation — the Promise.all destructuring can widen the
+  // groupBy element type in some inference contexts, which would make
+  // `h._sum.hours` a type error. Spell out the shape so the Map value is
+  // correctly typed as `number`.
+  const hoursMap = new Map<string, number>(
+    hours.map((h) => [h.userId, (h._sum as { hours: number | null }).hours ?? 0])
+  )
   return json({
     members: members.map((m) => ({
       membershipId: m.id,

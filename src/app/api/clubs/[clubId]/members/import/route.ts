@@ -302,9 +302,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
           },
         }),
       ])
-  const userByEmail = new Map(usersWithEmail.map((u) => [u.email, u]))
+  const userByEmail = new Map<string, { id: string; name: string; email: string }>(
+    usersWithEmail.map((u) => [(u as { email: string }).email, u as { id: string; name: string; email: string }])
+  )
   // Index memberships by lowercased email for O(1) lookup during the second pass.
-  const membershipByEmail = new Map(memberships.map((m) => [m.user.email, m]))
+  // Explicit type annotation — the Promise.all+ternary above can widen the
+  // element type to `{}` in some inference contexts, which would make
+  // `existingMembership.status` a type error.
+  const membershipByEmail = new Map<string, { id: string; userId: string; status: string; role: string; user: { email: string } }>(
+    memberships.map((m) => [(m as { user: { email: string } }).user.email, m as { id: string; userId: string; status: string; role: string; user: { email: string } }])
+  )
 
   // Second pass: classify each candidate using the in-memory maps. Collect
   // mutation tasks (reactivations + new creates) + notify targets for batched
