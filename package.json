@@ -3,16 +3,14 @@
   "version": "0.2.1",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS=--max-http-header-size=65536 next dev -p 3000 2>&1 | tee dev.log",
-    "build": "prisma generate && next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production NODE_OPTIONS=--max-http-header-size=65536 node .next/standalone/server.js",
+    "dev": "next dev -p 3000 2>&1 | tee dev.log",
+    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
-    "test": "bun test",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
-    "postinstall": "prisma generate"
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -75,9 +73,9 @@
     "react-resizable-panels": "^3.0.3",
     "react-syntax-highlighter": "^15.6.1",
     "recharts": "^2.15.4",
-    "resend": "^6.26.0",
+    "resend": "^6.32.0",
     "sharp": "^0.34.3",
-    "socket.io-client": "^4.8.3",
+    "socket.io-client": "^4.8.4",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",

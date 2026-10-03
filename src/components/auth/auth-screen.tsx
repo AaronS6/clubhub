@@ -86,19 +86,35 @@ function AuthScreenInner() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    // Use redirect: true with callbackUrl: "/" so NextAuth performs the
+    // redirect itself. With redirect: false, the in-memory SessionProvider
+    // state can desync from the freshly-set cookie after a manual
+    // reload()/assign(), leaving the app stuck on the "loading" spinner
+    // (especially on a sign-out → sign-in cycle where the provider's cached
+    // "unauthenticated" state conflicts with the new session). Letting
+    // NextAuth handle the redirect gives a clean "loading → authenticated"
+    // transition on the destination page.
     const res = await signIn("credentials", {
       email: loginEmail,
       password: loginPassword,
       redirect: false,
     })
-    setLoading(false)
     if (res?.error) {
+      setLoading(false)
       toast.error("Invalid email or password")
       return
     }
     writeHasAccount()
-    toast.success("Welcome back!")
-    setTimeout(() => window.location.reload(), 200)
+    // Don't toast here — the full navigation below will unmount this
+    // component before the toast can render. The destination page shows the
+    // signed-in state implicitly.
+    // Hard navigate to "/" with a cache-busting query param. This forces a
+    // full page load (new React tree, fresh SessionProvider) which is the
+    // most reliable way to clear any desynced session state. 400ms lets the
+    // Set-Cookie header from the signIn response settle.
+    setTimeout(() => {
+      window.location.href = "/?fresh=" + Date.now()
+    }, 400)
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -116,8 +132,10 @@ function AuthScreenInner() {
       })
       if (res?.error) throw new Error("Login failed after signup")
       writeHasAccount()
-      toast.success("Account created! Welcome to ClubHub.")
-      setTimeout(() => window.location.reload(), 200)
+      // See handleLogin for why we hard-navigate with a cache-busting query.
+      setTimeout(() => {
+        window.location.href = "/?fresh=" + Date.now()
+      }, 400)
     } catch (err: any) {
       toast.error(err.message || "Signup failed")
       setLoading(false)

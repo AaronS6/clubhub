@@ -48,7 +48,7 @@ import {
   ScrollText, Wallet, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, RefreshCw,
-  Upload, Trash2,
+  Upload, Trash2, Palette,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -74,6 +74,8 @@ import {
 import {
   notifMeta, notifToneClasses, targetViewFor,
 } from "@/lib/notif-meta"
+import { useCustomizationStore, AMBIENT_PRESETS, THEME_COLOR_PRESETS } from "@/lib/customization-store"
+import { OnboardingTour } from "@/components/onboarding-tour"
 
 interface MeResponse {
   user: { id: string; name: string; email: string; avatarUrl?: string | null } | null
@@ -158,12 +160,60 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // small accent dot.
   const hasUnreadAnnouncements = useUnreadAnnouncements(currentClubId ?? undefined)
 
+  // ── Session-loading timeout + manual session probe ──────────────────────
+  // NextAuth v4's `useSession()` can intermittently get stuck in the "loading"
+  // state on page navigation (known issue in the App Router where the
+  // SessionProvider's in-memory cache desyncs from the freshly-set cookie).
+  // We can't rely on `status` alone to gate the app — a stuck "loading" would
+  // spin forever.
+  //
+  // Strategy: do a manual `fetch('/api/auth/session')` on mount. If it
+  // returns a session, we mark `manualSession` as the authoritative auth
+  // state. We then treat `status === "loading"` as "unauthenticated" UNLESS
+  // the manual probe found a session (in which case we proceed as
+  // authenticated). This means:
+  //   - Fresh visit, no cookie → manual probe returns null → show auth screen
+  //     immediately (no spinner blocking the UI).
+  //   - Just-logged-in → manual probe returns the user → proceed to app
+  //     even if SessionProvider is still "loading".
+  //   - Stuck SessionProvider on a page reload → same as above.
+  // The SessionProvider's `status` still drives the realtime socket auth
+  // and the `session` object, but it no longer gates the initial render.
+  const [manualSession, setManualSession] = useState<{ user: { id: string } | null } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/auth/session", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : { user: null }))
+      .then((d) => { if (!cancelled) setManualSession({ user: d?.user ?? null }) })
+      .catch(() => { if (!cancelled) setManualSession({ user: null }) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Effective auth state: if the manual probe has completed, use it as the
+  // source of truth (it's a fresh fetch every page load, so it's always
+  // current). Fall back to the SessionProvider's status only before the
+  // probe completes (the first ~50ms).
+  const manualAuthenticated = manualSession?.user != null
+  const effectiveStatus: "loading" | "authenticated" | "unauthenticated" =
+    manualSession == null
+      ? "loading"
+      : manualAuthenticated
+        ? "authenticated"
+        : "unauthenticated"
+  // We still use `session?.user?.id` from the SessionProvider for the actual
+  // user id (the manual probe only confirms presence). If the manual probe
+  // says authenticated but the SessionProvider hasn't resolved yet, we
+  // synthesize a minimal session from the manual probe's user id.
+  const effectiveUserId = session?.user?.id ?? manualSession?.user?.id ?? null
+
   // Bootstrap: fetch /api/me once the session is authenticated. This is the
   // gate that keeps the entire app on the loading screen, so it has a hard
   // timeout (8s) that falls back to a friendly Retry UI instead of spinning
-  // forever on a slow/hung request.
+  // forever on a slow/hung request. We use `effectiveStatus` (which is
+  // backed by the manual session probe) instead of `status` from the
+  // SessionProvider, because the SessionProvider can get stuck in "loading".
   useEffect(() => {
-    if (status !== "authenticated" || bootstrapped || bootRef.current) return
+    if (effectiveStatus !== "authenticated" || bootstrapped || bootRef.current) return
     bootRef.current = true
     let cancelled = false
     let timedOut = false
@@ -187,7 +237,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setBootstrapped(true)
       })
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [status, bootstrapped, setClubs])
+  }, [effectiveStatus, bootstrapped, setClubs])
 
   // Retry handler for the timeout fallback.
   const retryBoot = () => {
@@ -195,20 +245,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setBootFailed(false)
   }
 
+  // ── First-club-join detection ────────────────────────────────────────────
+  // When the user transitions from "no clubs" to "has clubs" (after creating
+  // or joining their first club), we auto-open the OnboardingTour — but ONLY
+  // if they haven't completed it before (`onboardingCompleted` flag in the
+  // customization store). Returning users who add a second club won't see it
+  // again; they can replay it from the account menu if they want.
+  const onboardingCompleted = useCustomizationStore((s) => s.onboardingCompleted)
+  const prevClubsCountRef = useRef(clubs.length)
+  useEffect(() => {
+    const prev = prevClubsCountRef.current
+    prevClubsCountRef.current = clubs.length
+    // Transition: 0 clubs → 1+ clubs, and tour not completed yet
+    if (prev === 0 && clubs.length > 0 && !onboardingCompleted) {
+      // Slight delay so the dashboard renders first (feels less jarring than
+      // the tour popping in instantly on top of a blank screen).
+      const t = setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 600)
+      return () => clearTimeout(t)
+    }
+  }, [clubs.length, onboardingCompleted])
+
   useEffect(() => {
     const v = params.get("view") as View | null
     if (v && NAV.some((n) => n.view === v)) setView(v)
   }, [params, setView])
 
-  // Authenticate the realtime socket once we know the user + clubs
+  // Authenticate the realtime socket once we know the user + clubs. We use
+  // `effectiveUserId` (from the manual probe fallback) so the socket connects
+  // even if the SessionProvider is still "loading".
   useEffect(() => {
-    if (status !== "authenticated" || !session?.user?.id || clubs.length === 0) return
-    authenticateSocket(session.user.id, clubs.map((c) => c.clubId))
+    if (effectiveStatus !== "authenticated" || !effectiveUserId || clubs.length === 0) return
+    authenticateSocket(effectiveUserId, clubs.map((c) => c.clubId))
     const s = getRealtimeSocket()
     if (!s.connected) s.connect()
-  }, [status, session, clubs])
+  }, [effectiveStatus, effectiveUserId, clubs])
 
-  if (status === "loading" || (status === "authenticated" && !bootstrapped && !bootFailed)) {
+  // The manual session probe completes in ~50ms. We only show the bare
+  // spinner for that brief window (manualSession == null). Once the probe
+  // returns, we immediately render either the auth screen (no session) or
+  // proceed to bootstrap. This eliminates the "stuck on loading" failure
+  // mode entirely — there's no long-lived "loading" state to get stuck in.
+  if (effectiveStatus === "loading" || (effectiveStatus === "authenticated" && !bootstrapped && !bootFailed)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -218,7 +295,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Bootstrap timeout fallback — the /api/me call took too long. Show a
   // friendly retry instead of spinning forever.
-  if (status === "authenticated" && bootFailed && !bootstrapped) {
+  if (effectiveStatus === "authenticated" && bootFailed && !bootstrapped) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="text-center max-w-sm">
@@ -246,7 +323,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <PublicClubProfile code={publicCode} />
   }
 
-  if (status === "unauthenticated" || !session?.user) {
+  if (effectiveStatus === "unauthenticated") {
     return <AuthScreen />
   }
 
@@ -436,6 +513,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
       <GlobalSearch />
       <BadgeConfettiPopup />
+      {/* Onboarding tour — auto-opens on first club join, or replayable from
+          the account menu via the `open-onboarding-tour` window event. */}
+      <OnboardingTour />
     </div>
   )
 }
@@ -1110,7 +1190,7 @@ function ClubSwitcher({
 function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }) {
   const { data: session } = useSession()
   const [showSettings, setShowSettings] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security">("profile")
+  const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security" | "appearance">("profile")
   const [showJoin, setShowJoin] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
@@ -1119,18 +1199,26 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
   // Listen for the `open-settings` custom event so other surfaces (e.g. the
   // NotificationBell footer's "Notification settings" link) can open the
   // dialog on a specific tab. The event detail carries `{ tab: "..." }`.
+  // Also listen for `close-settings` so the AppearanceTab can close the dialog
+  // before opening the onboarding tour (otherwise the tour is buried behind
+  // the modal).
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { tab?: string } | undefined
-      if (detail?.tab === "notifications" || detail?.tab === "security" || detail?.tab === "profile") {
+      if (detail?.tab === "notifications" || detail?.tab === "security" || detail?.tab === "profile" || detail?.tab === "appearance") {
         setSettingsTab(detail.tab)
       } else {
         setSettingsTab("profile")
       }
       setShowSettings(true)
     }
+    const closeHandler = () => setShowSettings(false)
     window.addEventListener("open-settings", handler as EventListener)
-    return () => window.removeEventListener("open-settings", handler as EventListener)
+    window.addEventListener("close-settings", closeHandler as EventListener)
+    return () => {
+      window.removeEventListener("open-settings", handler as EventListener)
+      window.removeEventListener("close-settings", closeHandler as EventListener)
+    }
   }, [])
 
   function openSettingsFromMenu() {
@@ -1198,6 +1286,14 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer">
             <Plus className="mr-2 h-4 w-4" /> Create a club
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => window.dispatchEvent(new CustomEvent("open-onboarding-tour"))}
+            className="cursor-pointer"
+          >
+            <Sparkles className="mr-2 h-4 w-4" /> Replay introduction guide
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-danger-foreground focus:text-danger-foreground">
             <LogOut className="mr-2 h-4 w-4" /> Sign out
           </DropdownMenuItem>
@@ -1209,7 +1305,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
         open={showSettings}
         onOpenChange={setShowSettings}
         tab={settingsTab}
-        onTabChange={(t) => setSettingsTab(t as "profile" | "notifications" | "security")}
+        onTabChange={(t) => setSettingsTab(t as "profile" | "notifications" | "security" | "appearance")}
         isExec={useAppStore.getState().currentClub?.role === "executive"}
       />
     </>
@@ -1308,8 +1404,8 @@ function SettingsDialog({
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  tab: "profile" | "notifications" | "security"
-  onTabChange: (v: "profile" | "notifications" | "security") => void
+  tab: "profile" | "notifications" | "security" | "appearance"
+  onTabChange: (v: "profile" | "notifications" | "security" | "appearance") => void
   isExec: boolean
 }) {
   const { data: session, update } = useSession()
@@ -1431,139 +1527,173 @@ function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-lg")} showCloseButton>
-        <DialogHeader>
-          <DialogTitle>Account settings</DialogTitle>
-          <DialogDescription>Update your profile, notification preferences, and password.</DialogDescription>
-        </DialogHeader>
-        {/* Theme toggle — mobile only (desktop has the sidebar toggle) */}
-        <div className="md:hidden flex items-center justify-between rounded-lg border border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            <span className="text-sm font-medium">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+        {/* Mobile-padding wrapper — the DIALOG_CLASS uses `p-0` on mobile so
+            the dialog is full-screen. Without this wrapper, the header + tabs
+            + content would touch the screen edges (and the theme toggle's
+            border would sit AT the edge, making the knob look like it escapes
+            the "blob"). We add px-5 pt-5 pb-6 on mobile and zero on sm+ where
+            the dialog already has sm:p-6. */}
+        <div className="px-5 pt-5 pb-6 sm:px-0 sm:pt-0 sm:pb-0 flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Account settings</DialogTitle>
+            <DialogDescription>Update your profile, notifications, appearance, and password.</DialogDescription>
+          </DialogHeader>
+          {/* Theme toggle — mobile only (desktop has the sidebar toggle).
+              The knob is centered with `top-1/2 -translate-y-1/2` so it sits
+              symmetrically inside the pill (previously `top-0.5` left a 5px
+              gap below; the dark-mode `translate-x-[22px]` also ran the knob
+              flush against the right inner edge). New geometry: 44px wide
+              pill, 16px knob, 6px inset each side → translate-x-[22px] in
+              dark, translate-x-[6px] in light. */}
+          <div className="md:hidden flex items-center justify-between rounded-lg border border-border bg-card/60 px-4 py-3">
+            <div className="flex items-center gap-2">
+              {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              <span className="text-sm font-medium">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="relative h-6 w-11 rounded-full bg-muted border border-border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Toggle theme"
+            >
+              <span
+                className={cn(
+                  "absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-foreground transition-transform",
+                  theme === "dark" ? "translate-x-[22px]" : "translate-x-[6px]"
+                )}
+              />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="relative h-6 w-11 rounded-full bg-muted border border-border transition-colors"
-            aria-label="Toggle theme"
-          >
-            <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-foreground transition-transform", theme === "dark" ? "translate-x-[22px]" : "translate-x-0.5")} />
-          </button>
-        </div>
-        <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "notifications" | "security")} className="w-full">
-          <TabsList className={cn("w-full", isExec ? "grid grid-cols-3" : "grid grid-cols-2")}>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            {isExec && <TabsTrigger value="security">Security</TabsTrigger>}
-          </TabsList>
+          <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "notifications" | "security" | "appearance")} className="w-full">
+            {/* Tab list — up to 4 tabs. On very narrow viewports the 4-col
+                grid can get tight, so we use auto-fit minmax to allow wrapping
+                instead of forcing a single row that overflows. */}
+            <TabsList
+              className={cn(
+                "w-full grid",
+                isExec ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"
+              )}
+            >
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="notifications">Alerts</TabsTrigger>
+              {isExec && <TabsTrigger value="security">Security</TabsTrigger>}
+              <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="profile" className="mt-4">
-            {/* Install ClubHub hint (PWA) */}
-            <InstallHint />
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Display name</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Avatar</Label>
-                {/* §44 — Drop zone wrapper. The dashed border + tinted bg appear
-                    only when avatarDragging; the inner avatar + buttons row is
-                    unchanged otherwise. */}
-                <div
-                  className={cn(
-                    "flex items-center gap-4 rounded-md p-2 -m-2 transition-colors",
-                    avatarDragging && "border-2 border-dashed border-club bg-club-muted/20"
-                  )}
-                  onDragOver={onAvatarDragOver}
-                  onDragLeave={onAvatarDragLeave}
-                  onDrop={onAvatarDrop}
-                >
-                  <Avatar className="h-16 w-16 shrink-0 border">
-                    {avatarUrl ? (
-                      <AvatarImage src={avatarUrl} alt={name || "Your avatar"} />
-                    ) : null}
-                    <AvatarFallback className="text-lg font-semibold">
-                      {avatarUploading ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                      ) : (
-                        initials(name || session?.user?.name || "?")
-                      )}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={avatarFileRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleAvatarUpload}
-                      className="hidden"
-                      aria-hidden
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => avatarFileRef.current?.click()}
-                      disabled={avatarUploading}
-                    >
-                      {avatarUploading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-                      <span>{avatarUploading ? "Uploading…" : "Upload"}</span>
-                    </Button>
-                    {avatarUrl && (
+            <TabsContent value="profile" className="mt-4">
+              {/* Install ClubHub hint (PWA) */}
+              <InstallHint />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Display name</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Avatar</Label>
+                  {/* §44 — Drop zone wrapper. The dashed border + tinted bg
+                      appear only when avatarDragging. NOTE: the negative
+                      margin (`-m-2`) only applies on sm+ (where the dialog
+                      has sm:p-6); on mobile it's removed so the dropzone
+                      can't overflow the screen edges. */}
+                  <div
+                    className={cn(
+                      "flex items-center gap-4 rounded-md p-2 sm:-m-2 transition-colors",
+                      avatarDragging && "border-2 border-dashed border-club bg-club-muted/20"
+                    )}
+                    onDragOver={onAvatarDragOver}
+                    onDragLeave={onAvatarDragLeave}
+                    onDrop={onAvatarDrop}
+                  >
+                    <Avatar className="h-16 w-16 shrink-0 border">
+                      {avatarUrl ? (
+                        <AvatarImage src={avatarUrl} alt={name || "Your avatar"} />
+                      ) : null}
+                      <AvatarFallback className="text-lg font-semibold">
+                        {avatarUploading ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        ) : (
+                          initials(name || session?.user?.name || "?")
+                        )}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <input
+                        ref={avatarFileRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                        aria-hidden
+                      />
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={handleAvatarRemove}
+                        onClick={() => avatarFileRef.current?.click()}
                         disabled={avatarUploading}
                       >
-                        <Trash2 className="h-4 w-4" />
-                        <span>Remove</span>
+                        {avatarUploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        <span>{avatarUploading ? "Uploading…" : "Upload"}</span>
                       </Button>
-                    )}
+                      {avatarUrl && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={handleAvatarRemove}
+                          disabled={avatarUploading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span>Remove</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
+                  <p className="text-caption text-muted-foreground">
+                    PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
+                  </p>
                 </div>
-                <p className="text-caption text-muted-foreground">
-                  PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label>Bio</Label>
-                <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} />
-              </div>
-              <Button variant="club" onClick={saveProfile} disabled={loading}>
-                {loading ? "Saving..." : "Save profile"}
-              </Button>
-
-              <DangerZoneSection isExec={isExec} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="notifications" className="mt-4">
-            <NotificationsTab userEmail={session?.user?.email ?? ""} />
-          </TabsContent>
-
-          {isExec && (
-            <TabsContent value="security" className="mt-4">
-              <div className="space-y-2">
-                <Label>Change password</Label>
-                {!isExec && (
-                  <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
-                )}
-                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
-                <Button variant="club" onClick={changePassword} disabled={loading}>
-                  {loading ? "Saving..." : "Change password"}
+                <div className="space-y-2">
+                  <Label>Bio</Label>
+                  <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} />
+                </div>
+                <Button variant="club" onClick={saveProfile} disabled={loading}>
+                  {loading ? "Saving..." : "Save profile"}
                 </Button>
+
+                <DangerZoneSection isExec={isExec} />
               </div>
             </TabsContent>
-          )}
-        </Tabs>
+
+            <TabsContent value="notifications" className="mt-4">
+              <NotificationsTab userEmail={session?.user?.email ?? ""} />
+            </TabsContent>
+
+            {isExec && (
+              <TabsContent value="security" className="mt-4">
+                <div className="space-y-2">
+                  <Label>Change password</Label>
+                  {!isExec && (
+                    <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
+                  )}
+                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
+                  <Button variant="club" onClick={changePassword} disabled={loading}>
+                    {loading ? "Saving..." : "Change password"}
+                  </Button>
+                </div>
+              </TabsContent>
+            )}
+
+            <TabsContent value="appearance" className="mt-4">
+              <AppearanceTab />
+            </TabsContent>
+          </Tabs>
+        </div>
       </DialogContent>
       {/* Crop-then-upload dialog: opens when a file is picked/dropped. The
           user positions the square crop + zoom/rotate, then confirms to
@@ -1576,6 +1706,190 @@ function SettingsDialog({
         onCancel={() => setCropFile(null)}
       />
     </Dialog>
+  )
+}
+
+/**
+ * AppearanceTab — user-level visual personalization. Lets the user change
+ * their ambient background effect, theme color (with an "override club color"
+ * toggle), and the ambient intensity. Also offers a "Replay introduction
+ * guide" button so the tour is discoverable from settings, not just the
+ * account menu. All changes apply live (the CustomizationProvider in the
+ * layout reads the same store).
+ */
+function AppearanceTab() {
+  const ambient = useCustomizationStore((s) => s.ambient)
+  const setAmbient = useCustomizationStore((s) => s.setAmbient)
+  const themeColor = useCustomizationStore((s) => s.themeColor)
+  const setThemeColor = useCustomizationStore((s) => s.setThemeColor)
+  const override = useCustomizationStore((s) => s.overrideThemeColor)
+  const setOverride = useCustomizationStore((s) => s.setOverrideThemeColor)
+  const intensity = useCustomizationStore((s) => s.ambientIntensity)
+  const setIntensity = useCustomizationStore((s) => s.setAmbientIntensity)
+  const reset = useCustomizationStore((s) => s.reset)
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <div className="space-y-5">
+      {/* Light / Dark mode — desktop doesn't have the mobile-only toggle that
+          sits above the tabs, so we expose it here for all viewport sizes.
+          (The mobile-only toggle is still there for quick access without
+          diving into Appearance.) */}
+      <div className="space-y-2">
+        <Label>Color mode</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setTheme("light")}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors",
+              theme !== "dark" ? "border-club bg-club-muted text-club-ink" : "border-border bg-card text-muted-foreground hover:bg-accent/40"
+            )}
+          >
+            <Sun className="h-4 w-4" /> Light
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("dark")}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors",
+              theme === "dark" ? "border-club bg-club-muted text-club-ink" : "border-border bg-card text-muted-foreground hover:bg-accent/40"
+            )}
+          >
+            <Moon className="h-4 w-4" /> Dark
+          </button>
+        </div>
+      </div>
+
+      {/* Theme color */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Theme color</Label>
+          <label className="flex items-center gap-1.5 text-caption text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={override}
+              onChange={(e) => setOverride(e.target.checked)}
+              className="h-3.5 w-3.5 rounded accent-club"
+            />
+            Override club color
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {THEME_COLOR_PRESETS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setThemeColor(c.hex)}
+              aria-label={`Theme color ${c.label}`}
+              className={cn(
+                "h-8 w-8 rounded-full border-2 transition-all hover:scale-110",
+                themeColor.toLowerCase() === c.hex.toLowerCase() && override
+                  ? "border-foreground ring-2 ring-club/40 scale-110"
+                  : "border-card"
+              )}
+              style={{ background: c.hex }}
+            />
+          ))}
+          <label
+            className="relative h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:bg-accent/40 transition-colors overflow-hidden"
+            title="Pick a custom color"
+          >
+            <input
+              type="color"
+              value={themeColor}
+              onChange={(e) => setThemeColor(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            />
+            <Palette className="h-3.5 w-3.5 text-muted-foreground" />
+          </label>
+        </div>
+        <p className="text-caption text-muted-foreground">
+          {override
+            ? "Your theme color overrides the club's accent everywhere."
+            : "Off — each club's own accent color is used."}
+        </p>
+      </div>
+
+      {/* Ambient background effect */}
+      <div className="space-y-2">
+        <Label>Background effect</Label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {AMBIENT_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setAmbient(p.id)}
+              className={cn(
+                "group relative flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-center transition-all",
+                ambient === p.id
+                  ? "border-club bg-club-muted ring-2 ring-club/30"
+                  : "border-border bg-card hover:bg-accent/40"
+              )}
+            >
+              <span className={cn("text-caption-medium font-medium", ambient === p.id ? "text-club-ink" : "text-foreground")}>
+                {p.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        {ambient !== "none" && (
+          <p className="text-caption text-muted-foreground mt-1">
+            {AMBIENT_PRESETS.find((p) => p.id === ambient)?.description}
+          </p>
+        )}
+      </div>
+
+      {/* Intensity slider — only when an effect is active */}
+      {ambient !== "none" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Effect intensity</Label>
+            <span className="text-caption text-muted-foreground tabular-nums">{intensity}%</span>
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={100}
+            value={intensity}
+            onChange={(e) => setIntensity(parseInt(e.target.value, 10))}
+            className="w-full accent-club"
+            aria-label="Effect intensity"
+          />
+        </div>
+      )}
+
+      {/* Replay introduction guide */}
+      <div className="pt-2 border-t border-border">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => {
+            // Close the settings dialog first, then open the tour, so the
+            // tour isn't buried behind the modal.
+            window.dispatchEvent(new CustomEvent("close-settings"))
+            setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 50)
+          }}
+        >
+          <Sparkles className="h-4 w-4" /> Replay introduction guide
+        </Button>
+      </div>
+
+      {/* Reset */}
+      <div className="pt-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full text-muted-foreground"
+          onClick={() => {
+            reset()
+            toast.success("Appearance reset to defaults")
+          }}
+        >
+          Reset to defaults
+        </Button>
+      </div>
+    </div>
   )
 }
 

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 import { Suspense } from "react";
 import { ClubAccentProvider } from "@/components/club-accent-provider";
+import { CustomizationProvider } from "@/components/customization-provider";
 
 // Bricolage Grotesque — the display face. Used only for .text-page-title and
 // .text-numeral (the big hours number). 600/700 only — keeps the bundle small.
@@ -81,7 +82,9 @@ export default function RootLayout({
       >
         <Providers>
           <ClubAccentProvider>
-            <Suspense>{children}</Suspense>
+            <CustomizationProvider>
+              <Suspense>{children}</Suspense>
+            </CustomizationProvider>
           </ClubAccentProvider>
         </Providers>
         <Toaster />
