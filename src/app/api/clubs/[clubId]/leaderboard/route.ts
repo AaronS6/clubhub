@@ -27,25 +27,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
   }
 
   // -- Determine which users to include ------------------------------------
-  let memberUserIds: string[] | null = null
+  // We compute memberUserIds as a `const string[]` (not `let ... | null`) so
+  // TypeScript can narrow the type and we don't trip strict null checks at
+  // the `.length` access below. The team-ownership validation is kept as a
+  // separate guard before the assignment.
   if (teamId) {
     const team = await db.team.findUnique({
       where: { id: teamId },
       select: { id: true, clubId: true },
     })
     if (!team || team.clubId !== clubId) return error("Team not found in this club", 404)
-    const teamMembers = await db.teamMember.findMany({
-      where: { teamId },
-      select: { userId: true },
-    })
-    memberUserIds = teamMembers.map((tm) => tm.userId)
-  } else {
-    const clubMembers = await db.clubMember.findMany({
-      where: { clubId, status: "active" },
-      select: { userId: true },
-    })
-    memberUserIds = clubMembers.map((m) => m.userId)
   }
+  const memberUserIds: string[] = teamId
+    ? (await db.teamMember.findMany({ where: { teamId }, select: { userId: true } })).map((tm) => tm.userId)
+    : (await db.clubMember.findMany({ where: { clubId, status: "active" }, select: { userId: true } })).map((m) => m.userId)
 
   if (memberUserIds.length === 0) return json({ items: [], range, teamId })
 
