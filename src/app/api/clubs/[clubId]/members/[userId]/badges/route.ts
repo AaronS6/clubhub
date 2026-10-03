@@ -63,7 +63,12 @@ export async function GET(_req: Request, ctx: { params: Promise<Params> }) {
     }),
   ])
 
-  const awardMap = new Map(awards.map((a) => [a.badgeId, a]))
+  // Explicit type annotation — without it, TypeScript widens the Map value
+  // to `{}` in some inference contexts (the Promise.all destructuring can lose
+  // the element type), which then makes `award?.awardedAt` a type error.
+  const awardMap = new Map<string, { badgeId: string; awardedAt: Date; awardedBy: string | null; awarder: { id: string; name: string } | null }>(
+    awards.map((a) => [a.badgeId, a])
+  )
 
   return json({
     badges: badges.map((b) => {
