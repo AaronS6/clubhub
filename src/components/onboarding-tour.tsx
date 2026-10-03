@@ -89,7 +89,7 @@ export function OnboardingTour() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center p-0 sm:p-6"
+          className="fixed inset-0 z-[200] flex items-stretch sm:items-center justify-stretch sm:justify-center p-0 sm:p-6"
           style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)" }}
         >
           <TourCard
@@ -128,10 +128,12 @@ function TourCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 12 }}
       transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="relative w-full max-w-2xl overflow-hidden sm:rounded-xl rounded-none border border-border bg-card shadow-xl"
-      style={{ maxHeight: "100dvh" }}
+      // Mobile: full-screen sheet (h-dvh, no rounding, flex-col so header +
+      // scrollable content + sticky footer stack to fill the viewport).
+      // Desktop: centered modal with rounded corners, max height 90dvh.
+      className="relative w-full max-w-2xl flex flex-col h-dvh sm:h-[90dvh] sm:max-h-[90dvh] overflow-hidden sm:rounded-xl border border-border bg-card shadow-xl"
     >
-      {/* Top progress bar — thin, accent-colored */}
+      {/* Top progress bar — thin, accent-colored. Sits above the header. */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted z-30">
         <motion.div
           className="h-full bg-club"
@@ -141,23 +143,25 @@ function TourCard({
         />
       </div>
 
-      {/* Close + step counter */}
-      <div className="absolute top-3.5 right-4 z-30 flex items-center gap-3">
-        <span className="text-xs text-muted-foreground tabular-nums hidden sm:block">
+      {/* Header — close + step counter. shrink-0 so it doesn't collapse. */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-2 shrink-0 z-20">
+        <span className="text-xs font-medium text-muted-foreground tabular-nums">
           {step + 1} / {total}
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Skip introduction"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Step content */}
-      <div className="overflow-y-auto" style={{ maxHeight: "100dvh" }}>
+      {/* Step content — flex-1 + min-h-0 so it scrolls within the card while
+          the header and footer stay pinned. On mobile this is the only
+          scrollable area. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -174,22 +178,27 @@ function TourCard({
             {step === 5 && <StepReady onViewDashboard={onViewDashboard} />}
           </motion.div>
         </AnimatePresence>
+      </div>
 
-        {/* Footer nav */}
-        <div className="flex items-center justify-between border-t border-border px-6 py-3.5">
-          <Button variant="ghost" size="sm" onClick={onBack} disabled={step === 0} className="text-muted-foreground">
-            <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
+      {/* Footer nav — shrink-0, pinned to the bottom of the card. On mobile
+          this sits above the safe-area inset. Buttons are larger (h-9) for
+          thumb-friendly tap targets. */}
+      <div
+        className="flex items-center justify-between gap-3 border-t border-border px-5 py-3.5 shrink-0"
+        style={{ paddingBottom: "calc(0.875rem + env(safe-area-inset-bottom))" }}
+      >
+        <Button variant="ghost" size="sm" onClick={onBack} disabled={step === 0} className="text-muted-foreground">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back
+        </Button>
+        {step < total - 1 ? (
+          <Button size="sm" variant="club" onClick={onNext}>
+            Continue <ArrowRight className="ml-1 h-4 w-4" />
           </Button>
-          {step < total - 1 ? (
-            <Button size="sm" variant="club" onClick={onNext}>
-              Continue <ArrowRight className="ml-1 h-3.5 w-3.5" />
-            </Button>
-          ) : (
-            <Button size="sm" variant="club" onClick={onViewDashboard}>
-              <Rocket className="mr-1.5 h-3.5 w-3.5" /> Enter ClubHub
-            </Button>
-          )}
-        </div>
+        ) : (
+          <Button size="sm" variant="club" onClick={onViewDashboard}>
+            <Rocket className="mr-1.5 h-4 w-4" /> Enter ClubHub
+          </Button>
+        )}
       </div>
     </motion.div>
   )
@@ -199,7 +208,7 @@ function TourCard({
 
 function StepWelcome() {
   return (
-    <div className="flex flex-col items-center justify-center px-6 pt-24 pb-16 text-center min-h-[60vh]">
+    <div className="flex flex-col items-center justify-center px-5 sm:px-6 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center min-h-[50vh] sm:min-h-[60vh]">
       {/* Simple brand mark — just a rounded square with the accent. No
           pulsing rings, no drifting orbs, no glow. Quiet and confident. */}
       <motion.div
@@ -268,14 +277,14 @@ function StepFeatures() {
   }, [visible])
 
   return (
-    <div className="px-6 pt-16 pb-8">
-      <div className="text-center mb-8">
+    <div className="px-5 sm:px-6 pt-8 sm:pt-12 pb-8">
+      <div className="text-center mb-6 sm:mb-8">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2" style={{ fontFamily: "var(--font-display)" }}>
           Everything in one place
         </h2>
         <p className="text-sm text-muted-foreground">Eight tools, one shared home for your club.</p>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
         {FEATURES.map((f, i) => {
           const Icon = f.icon
           const isShown = i < visible
@@ -285,10 +294,10 @@ function StepFeatures() {
               initial={{ opacity: 0, y: 8 }}
               animate={isShown ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-4 text-center"
+              className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-3 sm:p-4 text-center"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-club-muted text-club">
-                <Icon className="h-5 w-5" />
+              <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-club-muted text-club">
+                <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
               <div>
                 <div className="text-sm font-medium">{f.title}</div>
@@ -324,14 +333,14 @@ const PILLARS = [
 
 function StepHowItWorks() {
   return (
-    <div className="px-6 pt-16 pb-8">
-      <div className="text-center mb-8">
+    <div className="px-5 sm:px-6 pt-8 sm:pt-12 pb-8">
+      <div className="text-center mb-6 sm:mb-8">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2" style={{ fontFamily: "var(--font-display)" }}>
           Built for clubs
         </h2>
         <p className="text-sm text-muted-foreground">Three things that make ClubHub different.</p>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5 sm:space-y-3">
         {PILLARS.map((p, i) => {
           const Icon = p.icon
           return (
@@ -376,14 +385,14 @@ const TIPS = [
 
 function StepTips() {
   return (
-    <div className="px-6 pt-16 pb-8">
-      <div className="text-center mb-8">
+    <div className="px-5 sm:px-6 pt-8 sm:pt-12 pb-8">
+      <div className="text-center mb-6 sm:mb-8">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2" style={{ fontFamily: "var(--font-display)" }}>
           Three quick tips
         </h2>
         <p className="text-sm text-muted-foreground">Small things that make the app feel natural.</p>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5 sm:space-y-3">
         {TIPS.map((t, i) => (
           <motion.div
             key={t.title}
@@ -420,8 +429,8 @@ function StepCustomize({
   const setOverride = useCustomizationStore((s) => s.setOverrideThemeColor)
 
   return (
-    <div className="px-6 pt-16 pb-8">
-      <div className="text-center mb-8">
+    <div className="px-5 sm:px-6 pt-8 sm:pt-12 pb-8">
+      <div className="text-center mb-6 sm:mb-8">
         <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-2" style={{ fontFamily: "var(--font-display)" }}>
           Make it yours
         </h2>
@@ -575,7 +584,7 @@ function AmbientPreviewMini({ effect, active }: { effect: AmbientEffect; active:
 
 function StepReady({ onViewDashboard }: { onViewDashboard: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 pt-24 pb-16 text-center min-h-[60vh]">
+    <div className="flex flex-col items-center justify-center px-5 sm:px-6 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center min-h-[50vh] sm:min-h-[60vh]">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}

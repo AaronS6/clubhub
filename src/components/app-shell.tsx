@@ -683,20 +683,25 @@ function MobileTabBar() {
 }
 
 /** Compact nav used inside the mobile "More" bottom-sheet.
- *  Filters out execOnly items for members (Approvals, Activity Log). */
+ *  Filters out execOnly items for members (Approvals, Activity Log).
+ *  The club switcher is pinned at the BOTTOM so it's thumb-reachable and
+ *  visually separated from the nav list. */
 function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
   const view = useAppStore((s) => s.view)
+  const clubs = useAppStore((s) => s.clubs)
   const currentClub = useAppStore((s) => s.currentClub)
+  const selectClub = useAppStore((s) => s.selectClub)
   const isExec = currentClub?.role === "executive"
   return (
-    <nav className="flex flex-col gap-4 px-2.5 py-4" aria-label="More">
-      {NAV_TIERS.map((tier) => {
-        const items = tier.items.filter((n) => !n.execOnly || isExec)
-        if (items.length === 0) return null
-        return (
-          <div key={tier.id} className="space-y-0.5">
-            <div className="px-3 pb-0.5 text-xs font-medium text-muted-foreground/70">{tier.label}</div>
-            {items.map((item) => {
+    <div className="flex flex-col h-full">
+      <nav className="flex flex-col gap-4 px-2.5 py-4 flex-1 overflow-y-auto scrollbar-thin" aria-label="More">
+        {NAV_TIERS.map((tier) => {
+          const items = tier.items.filter((n) => !n.execOnly || isExec)
+          if (items.length === 0) return null
+          return (
+            <div key={tier.id} className="space-y-0.5">
+              <div className="px-3 pb-0.5 text-xs font-medium text-muted-foreground/70">{tier.label}</div>
+              {items.map((item) => {
               const Icon = item.icon
               const active = view === item.view
               return (
@@ -716,7 +721,18 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
           </div>
         )
       })}
-    </nav>
+      </nav>
+      {/* Club switcher — pinned at the bottom of the "More" sheet, thumb-
+          reachable, visually separated by a top border. */}
+      <div className="border-t border-border px-2.5 pt-3 pb-4 shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
+        <div className="px-3 pb-1 text-xs font-medium text-muted-foreground/70">Club</div>
+        <ClubSwitcher
+          clubs={clubs}
+          currentClub={currentClub ?? null}
+          onSelect={(id) => { selectClub(id); onPick("dashboard") }}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -1543,21 +1559,17 @@ function SettingsDialog({
             <DialogDescription>Update your profile, notifications, appearance, and password.</DialogDescription>
           </DialogHeader>
           {/* Theme toggle — mobile only (desktop has the sidebar toggle).
-              The knob is centered with `top-1/2 -translate-y-1/2` so it sits
-              symmetrically inside the pill (previously `top-0.5` left a 5px
-              gap below; the dark-mode `translate-x-[22px]` also ran the knob
-              flush against the right inner edge). New geometry: 44px wide
-              pill, 16px knob, 6px inset each side → translate-x-[22px] in
-              dark, translate-x-[6px] in light. */}
+              Compact on mobile: smaller text, the toggle pill is contained
+              within the row's padding so the knob never escapes the box. */}
           <div className="md:hidden flex items-center justify-between rounded-lg border border-border bg-card/60 px-4 py-3">
-            <div className="flex items-center gap-2">
-              {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-              <span className="text-sm font-medium">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              {theme === "dark" ? <Moon className="h-4 w-4 shrink-0" /> : <Sun className="h-4 w-4 shrink-0" />}
+              <span className="text-sm font-medium truncate">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
             </div>
             <button
               type="button"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="relative h-6 w-11 rounded-full bg-muted border border-border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="relative h-6 w-11 shrink-0 rounded-full bg-muted border border-border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ml-3"
               aria-label="Toggle theme"
             >
               <span
@@ -1569,19 +1581,19 @@ function SettingsDialog({
             </button>
           </div>
           <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "notifications" | "security" | "appearance")} className="w-full">
-            {/* Tab list — up to 4 tabs. On very narrow viewports the 4-col
-                grid can get tight, so we use auto-fit minmax to allow wrapping
-                instead of forcing a single row that overflows. */}
+            {/* Tab list — compact on mobile (smaller text + padding so all 4
+                tabs fit in the px-5 wrapper without overflowing). On sm+
+                they expand to normal size. */}
             <TabsList
               className={cn(
                 "w-full grid",
-                isExec ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"
+                isExec ? "grid-cols-4 sm:grid-cols-4" : "grid-cols-3 sm:grid-cols-3"
               )}
             >
-              <TabsTrigger value="profile">Profile</TabsTrigger>
-              <TabsTrigger value="notifications">Alerts</TabsTrigger>
-              {isExec && <TabsTrigger value="security">Security</TabsTrigger>}
-              <TabsTrigger value="appearance">Appearance</TabsTrigger>
+              <TabsTrigger value="profile" className="text-xs sm:text-sm px-1 sm:px-3">Profile</TabsTrigger>
+              <TabsTrigger value="notifications" className="text-xs sm:text-sm px-1 sm:px-3">Alerts</TabsTrigger>
+              {isExec && <TabsTrigger value="security" className="text-xs sm:text-sm px-1 sm:px-3">Security</TabsTrigger>}
+              <TabsTrigger value="appearance" className="text-xs sm:text-sm px-1 sm:px-3">Look</TabsTrigger>
             </TabsList>
 
             <TabsContent value="profile" className="mt-4">
