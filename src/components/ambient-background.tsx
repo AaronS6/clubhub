@@ -52,16 +52,52 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
     }
   }, [color])
 
-  if (ambient === "none") return null
+  if (ambient === "none") {
+    // Even with no effect, we still need the base background color (since the
+    // body is transparent — see globals.css). Render just the tint overlay.
+    return (
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0"
+        style={{ background: "var(--background)", zIndex: 0 }}
+      />
+    )
+  }
 
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 overflow-hidden"
-      style={{ ["--ambient-opacity" as string]: String(opacity), ["--ambient-base" as string]: palette.base, ["--ambient-c2" as string]: palette.c2, ["--ambient-c3" as string]: palette.c3, zIndex: 0 }}
-    >
-      <AmbientEffect effect={ambient} />
-    </div>
+    <>
+      {/* The ambient layer — fixed, covers the full viewport, sits ABOVE the
+          body's background but BELOW all app content (which uses z-10+).
+          pointer-events-none so it never blocks clicks. The opacity is driven
+          by the user's intensity slider via the --ambient-opacity CSS var. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 overflow-hidden"
+        style={{
+          ["--ambient-opacity" as string]: String(opacity),
+          ["--ambient-base" as string]: palette.base,
+          ["--ambient-c2" as string]: palette.c2,
+          ["--ambient-c3" as string]: palette.c3,
+          zIndex: 0,
+        }}
+      >
+        <AmbientEffect effect={ambient} />
+      </div>
+      {/* A subtle tint overlay that darkens/lightens the ambient so text stays
+          readable. This sits at z-0 too but after the effects, so it's on top
+          of them but still behind app content (z-10). We use a semi-transparent
+          background that matches the app's background color so the ambient
+          shows through at the set opacity while keeping contrast. */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0"
+        style={{
+          background: "var(--background)",
+          opacity: 1 - opacity * 0.55, // higher intensity = more ambient, less tint
+          zIndex: 1,
+        }}
+      />
+    </>
   )
 }
 

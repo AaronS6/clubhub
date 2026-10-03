@@ -143,7 +143,7 @@ function AuthScreenInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+    <div className="min-h-screen flex flex-col bg-transparent text-[#1a1815] dark:text-[#f0ebe0] relative z-10">
       {/* ── Header (in-flow at top — never overlaps anything) ─────────────── */}
       <header className="flex items-center px-5 sm:px-8 py-5 shrink-0">
         <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
@@ -479,7 +479,7 @@ function ResetPasswordScreen({
     "h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+    <div className="relative min-h-screen overflow-hidden bg-transparent text-[#1a1815] dark:text-[#f0ebe0] z-10">
       {/* Wordmark */}
       <header className="absolute top-0 left-0 z-10 p-6 sm:p-8 flex items-center">
         <span className="text-xl font-extrabold tracking-tight">ClubHub</span>

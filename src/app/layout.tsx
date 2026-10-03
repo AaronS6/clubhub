@@ -78,7 +78,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground`}
+        className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased text-foreground`}
       >
         <Providers>
           <ClubAccentProvider>

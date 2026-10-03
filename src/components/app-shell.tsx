@@ -330,8 +330,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // No clubs yet -> onboarding
   if (clubs.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/40 p-6">
+      <div className="min-h-screen flex flex-col bg-transparent relative z-10">
+        <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/20 p-6 rounded-3xl m-3">
           <div className="w-full max-w-md text-center">
             <h1 className="text-3xl font-extrabold tracking-tight mb-2">ClubHub</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
@@ -417,7 +417,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //   RIGHT:  connection dot, notification bell, profile avatar
   // The club switcher + theme toggle live in the sidebar (top + bottom).
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/95 backdrop-blur shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/80 backdrop-blur-md shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
           The wordmark competed with the club switcher in the sidebar.
           Mobile nav is via the bottom tab bar's "More" button — no hamburger
@@ -472,7 +472,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <div className="h-dvh flex flex-col bg-background overflow-hidden">
+    <div className="h-dvh flex flex-col overflow-hidden relative z-10">
+      {/* The ambient background (CustomizationProvider renders this) sits at
+          z-0 behind this z-10 shell. We use `bg-transparent` here so the
+          ambient shows through. Cards/surfaces inside (bg-card) remain opaque
+          so content stays readable. */}
       <UrgentBanner />
       {topBar}
       <div className="flex flex-1 min-h-0 p-3 gap-3">
@@ -630,7 +634,7 @@ function MobileTabBar() {
   return (
     <>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border bg-background/95 backdrop-blur"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border bg-background/80 backdrop-blur-md"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Mobile primary"
       >

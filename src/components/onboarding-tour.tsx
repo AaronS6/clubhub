@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, useScroll, useSpring } from "framer-motion"
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Check, Palette, Wand2,
   Megaphone, Clock, CheckSquare, CalendarDays, MessageSquare,
-  Users, Wallet, Bell, Zap, Trophy, Rocket, Heart,
+  Users, Wallet, Bell, Zap, Trophy, Rocket, Heart, Play, Pause,
+  LayoutDashboard, Star, ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,29 +17,29 @@ import { cn } from "@/lib/utils"
 
 /**
  * ============================================================================
- * OnboardingTour — the polished first-run introduction
+ * OnboardingTour — the cinematic first-run introduction
  * ============================================================================
  *
- * A 5-step guided tour shown the FIRST time a user joins/creates a club, and
+ * A 6-step guided tour shown the FIRST time a user joins/creates a club, and
  * replayable anytime from the account menu ("Replay introduction guide").
  *
- *   Step 0  Welcome          — animated brand mark + headline
- *   Step 1  What it does      — animated feature cards
- *   Step 2  Power tips         — 3 tips that make the app click
- *   Step 3  Customize          — live preview: pick ambient effect + theme color
- *   Step 4  You're all set     — confetti + a final CTA into the dashboard
+ *   Step 0  Cinematic Intro   — full-screen animated brand reveal
+ *   Step 1  What it does       — auto-playing animated feature demos
+ *   Step 2  Power features    — 3 hero features with rich visual demos
+ *   Step 3  Power tips          — pro tips with staggered reveal
+ *   Step 4  Customize           — immersive live preview picker
+ *   Step 5  You're all set      — confetti finale + CTA
  *
- * The tour uses Framer Motion for step transitions (slide + fade), and the
- * customization step writes to the customization store so the user sees the
- * effect live behind the dialog (the AmbientBackground is rendered globally
- * by the CustomizationProvider in layout.tsx).
- *
- * Open via the `open-onboarding-tour` window event (so the menu item and the
- * first-join detection can both trigger it without prop drilling).
+ * Design language:
+ *   - Glassmorphism cards (backdrop-blur, subtle border, layered shadows)
+ *   - Framer Motion for every transition (spring physics, parallax, stagger)
+ *   - Animated "video-like" demos using pure CSS (no real video files)
+ *   - Progress bar with animated fill
+ *   - Keyboard nav (Esc/←/→/Enter)
  * ============================================================================
  */
 
-const TOTAL_STEPS = 5
+const TOTAL_STEPS = 6
 
 export function OnboardingTour() {
   const [open, setOpen] = useState(false)
@@ -48,8 +49,7 @@ export function OnboardingTour() {
   const setThemeColor = useCustomizationStore((s) => s.setThemeColor)
   const setView = useAppStore((s) => s.setView)
 
-  // Listen for the open-onboarding-tour event (from the menu "Replay" button
-  // and from the first-club-join detection in AppShell).
+  // Listen for the open-onboarding-tour event
   useEffect(() => {
     const handler = () => {
       setStep(0)
@@ -73,7 +73,7 @@ export function OnboardingTour() {
     if (step > 0) setStep(step - 1)
   }, [step])
 
-  // Keyboard: Escape closes, ArrowRight/Enter next, ArrowLeft back
+  // Keyboard nav
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -82,7 +82,6 @@ export function OnboardingTour() {
       else if (e.key === "ArrowLeft") back()
     }
     window.addEventListener("keydown", onKey)
-    // Lock body scroll while the tour is open
     const prev = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
@@ -91,6 +90,9 @@ export function OnboardingTour() {
     }
   }, [open, close, next, back])
 
+  // Progress spring
+  const progress = useSpring(step / (TOTAL_STEPS - 1), { stiffness: 120, damping: 20 })
+
   return (
     <AnimatePresence>
       {open && (
@@ -98,11 +100,21 @@ export function OnboardingTour() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.3 }}
           className="fixed inset-0 z-[200] flex items-center justify-center p-0 sm:p-6"
-          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(12px)" }}
         >
-          <TourCard step={step} total={TOTAL_STEPS} onClose={close} onNext={next} onBack={back} onSetAmbient={setAmbient} onSetThemeColor={setThemeColor} onViewDashboard={() => { close(); setView("dashboard") }} />
+          <TourCard
+            step={step}
+            total={TOTAL_STEPS}
+            progress={progress}
+            onClose={close}
+            onNext={next}
+            onBack={back}
+            onSetAmbient={setAmbient}
+            onSetThemeColor={setThemeColor}
+            onViewDashboard={() => { close(); setView("dashboard") }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
@@ -112,10 +124,11 @@ export function OnboardingTour() {
 /* ───────────────────────── Card shell ───────────────────────── */
 
 function TourCard({
-  step, total, onClose, onNext, onBack, onSetAmbient, onSetThemeColor, onViewDashboard,
+  step, total, progress, onClose, onNext, onBack, onSetAmbient, onSetThemeColor, onViewDashboard,
 }: {
   step: number
   total: number
+  progress: any
   onClose: () => void
   onNext: () => void
   onBack: () => void
@@ -125,68 +138,66 @@ function TourCard({
 }) {
   return (
     <motion.div
-      initial={{ scale: 0.95, opacity: 0, y: 10 }}
+      initial={{ scale: 0.92, opacity: 0, y: 20 }}
       animate={{ scale: 1, opacity: 1, y: 0 }}
-      exit={{ scale: 0.95, opacity: 0, y: 10 }}
-      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="relative w-full max-w-2xl overflow-hidden rounded-none sm:rounded-2xl border border-border bg-card shadow-2xl"
+      exit={{ scale: 0.92, opacity: 0, y: 20 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="relative w-full max-w-3xl overflow-hidden sm:rounded-2xl rounded-none border border-white/10 bg-card/80 backdrop-blur-2xl shadow-2xl"
       style={{ maxHeight: "100dvh" }}
     >
-      {/* Close button */}
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Skip introduction"
-        className="absolute right-3 top-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <X className="h-4 w-4" />
-      </button>
-
-      {/* Step progress dots */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
-        {Array.from({ length: total }).map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-1.5 rounded-full transition-all duration-300",
-              i === step ? "w-6 bg-club" : i < step ? "w-1.5 bg-club/50" : "w-1.5 bg-muted-foreground/30"
-            )}
-          />
-        ))}
+      {/* Top progress bar — animated spring fill */}
+      <div className="absolute top-0 left-0 right-0 h-1 z-30 bg-foreground/10">
+        <motion.div
+          className="h-full bg-gradient-to-r from-club via-club to-club/60"
+          style={{ scaleX: progress, transformOrigin: "left" }}
+        />
       </div>
 
-      {/* Step content — slides horizontally */}
+      {/* Close + step counter */}
+      <div className="absolute top-3 right-3 z-30 flex items-center gap-3">
+        <span className="text-caption text-muted-foreground tabular-nums hidden sm:block">
+          {step + 1} / {total}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Skip introduction"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-foreground/10 hover:text-foreground transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Step content — cinematic transitions */}
       <div className="overflow-y-auto" style={{ maxHeight: "100dvh" }}>
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -30 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0, x: 40, scale: 0.98 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -40, scale: 0.98 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
           >
-            {step === 0 && <StepWelcome />}
-            {step === 1 && <StepFeatures />}
-            {step === 2 && <StepTips />}
-            {step === 3 && <StepCustomize onSetAmbient={onSetAmbient} onSetThemeColor={onSetThemeColor} />}
-            {step === 4 && <StepAllSet onViewDashboard={onViewDashboard} />}
+            {step === 0 && <StepCinematicIntro />}
+            {step === 1 && <StepFeatureShowcase />}
+            {step === 2 && <StepPowerFeatures />}
+            {step === 3 && <StepPowerTips />}
+            {step === 4 && <StepCustomize onSetAmbient={onSetAmbient} onSetThemeColor={onSetThemeColor} />}
+            {step === 5 && <StepFinale onViewDashboard={onViewDashboard} />}
           </motion.div>
         </AnimatePresence>
 
-        {/* Footer nav */}
-        <div className="flex items-center justify-between border-t border-border bg-card/95 backdrop-blur px-5 py-3 sm:px-6">
+        {/* Footer nav — glassmorphism bar */}
+        <div className="flex items-center justify-between border-t border-white/5 bg-card/60 backdrop-blur-xl px-6 py-4">
           <Button variant="ghost" size="sm" onClick={onBack} disabled={step === 0} className="text-muted-foreground">
             <ArrowLeft className="mr-1 h-4 w-4" /> Back
           </Button>
-          <span className="text-caption text-muted-foreground tabular-nums">
-            {step + 1} / {total}
-          </span>
           {step < total - 1 ? (
-            <Button size="sm" variant="club" onClick={onNext}>
+            <Button size="sm" variant="club" onClick={onNext} className="shadow-lg shadow-club/20">
               Continue <ArrowRight className="ml-1 h-4 w-4" />
             </Button>
           ) : (
-            <Button size="sm" variant="club" onClick={onViewDashboard}>
+            <Button size="sm" variant="club" onClick={onViewDashboard} className="shadow-lg shadow-club/20">
               <Rocket className="mr-1 h-4 w-4" /> Enter ClubHub
             </Button>
           )}
@@ -196,132 +207,176 @@ function TourCard({
   )
 }
 
-/* ───────────────────────── Steps ───────────────────────── */
+/* ───────────────────────── Step 0: Cinematic Intro ───────────────────────── */
 
-/** Step 0 — Welcome */
-function StepWelcome() {
+function StepCinematicIntro() {
   return (
-    <div className="relative flex flex-col items-center justify-center px-6 pt-16 pb-12 text-center sm:pt-20 sm:pb-16 min-h-[60vh] overflow-hidden">
+    <div className="relative flex flex-col items-center justify-center px-6 pt-20 pb-16 text-center min-h-[70vh] overflow-hidden">
+      {/* Animated background orbs */}
+      <motion.div
+        className="absolute inset-0 pointer-events-none"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2, duration: 1 }}
+      >
+        {[...Array(3)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute rounded-full blur-3xl"
+            style={{
+              width: 300 + i * 80,
+              height: 300 + i * 80,
+              left: `${20 + i * 25}%`,
+              top: `${10 + i * 15}%`,
+              background: i === 0 ? "var(--club)" : i === 1 ? "var(--club)" : "var(--club)",
+              opacity: 0.15,
+            }}
+            animate={{
+              x: [0, 30, -20, 0],
+              y: [0, -25, 15, 0],
+              scale: [1, 1.1, 0.95, 1],
+            }}
+            transition={{
+              duration: 8 + i * 2,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        ))}
+      </motion.div>
+
       {/* Animated brand mark */}
       <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="mb-6"
+        initial={{ scale: 0.5, opacity: 0, rotateY: 180 }}
+        animate={{ scale: 1, opacity: 1, rotateY: 0 }}
+        transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+        className="relative mb-8"
       >
-        <BrandMarkHero />
+        <div className="relative h-32 w-32">
+          {/* Pulsing rings */}
+          {[0, 1, 2].map((i) => (
+            <motion.div
+              key={i}
+              className="absolute inset-0 rounded-3xl border-2"
+              style={{ borderColor: "var(--club)" }}
+              animate={{ scale: [1, 1.4], opacity: [0.6, 0] }}
+              transition={{ duration: 2, repeat: Infinity, delay: i * 0.6, ease: "easeOut" }}
+            />
+          ))}
+          {/* Core */}
+          <motion.div
+            className="absolute inset-4 rounded-2xl bg-club flex items-center justify-center shadow-2xl"
+            style={{ boxShadow: "0 0 60px var(--club)" }}
+            animate={{ y: [0, -4, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Sparkles className="h-12 w-12 text-club-foreground" />
+          </motion.div>
+        </div>
       </motion.div>
 
       <motion.div
-        initial={{ y: 10, opacity: 0 }}
+        initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.15, duration: 0.4 }}
+        transition={{ delay: 0.5, duration: 0.6 }}
       >
-        <p className="text-caption-medium text-club font-medium mb-2 tracking-wider uppercase">
+        <p className="text-caption font-medium text-club mb-3 tracking-[0.2em] uppercase">
           Welcome to
         </p>
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>
+        <h1
+          className="text-5xl sm:text-6xl font-bold tracking-tight mb-5"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           ClubHub
         </h1>
-        <p className="text-body text-muted-foreground max-w-md mx-auto">
-          The all-in-one home for clubs — announcements, service hours, tasks,
-          meetings, chat, and more. Built for the people who run things.
+        <p className="text-body text-muted-foreground max-w-md mx-auto leading-relaxed">
+          The all-in-one home for clubs. Announcements, service hours, tasks,
+          meetings, chat, and more — built for the people who run things.
         </p>
       </motion.div>
 
       <motion.div
-        initial={{ y: 10, opacity: 0 }}
+        initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.3, duration: 0.4 }}
-        className="mt-8 flex items-center gap-2 text-caption text-muted-foreground"
+        transition={{ delay: 1, duration: 0.5 }}
+        className="mt-10 flex items-center gap-2 text-caption text-muted-foreground"
       >
-        <Zap className="h-3.5 w-3.5 text-club" />
-        <span>Takes ~60 seconds · you can replay this anytime</span>
+        <motion.div
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+        >
+          <Zap className="h-4 w-4 text-club" />
+        </motion.div>
+        <span>Takes ~90 seconds · replayable anytime</span>
       </motion.div>
     </div>
   )
 }
 
-/** Animated brand mark — three concentric rounded squares with a pulse.
- *  Pure SVG + Framer Motion so it's crisp at any size and respects reduced
- *  motion (Framer auto-handles that). */
-function BrandMarkHero() {
-  return (
-    <div className="relative h-28 w-28">
-      <motion.div
-        className="absolute inset-0 rounded-3xl bg-club/20"
-        animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0.2, 0.4] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="absolute inset-2 rounded-2xl bg-club/30"
-        animate={{ scale: [1, 1.08, 1], opacity: [0.6, 0.4, 0.6] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-      />
-      <motion.div
-        className="absolute inset-4 rounded-xl bg-club flex items-center justify-center shadow-lg"
-        animate={{ y: [0, -3, 0] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
-      >
-        <Sparkles className="h-9 w-9 text-club-foreground" />
-      </motion.div>
-    </div>
-  )
-}
+/* ───────────────────────── Step 1: Feature Showcase (auto-playing) ───────────────────────── */
 
-/** Step 1 — What it does (feature showcase) */
 const FEATURES = [
-  { icon: Megaphone, title: "Announcements", desc: "Pin urgent news, react with emoji, threaded replies.", color: "#f97316" },
-  { icon: Clock, title: "Service Hours", desc: "Log hours, track goals, get executive approval, export.", color: "#10b981" },
-  { icon: CheckSquare, title: "Tasks", desc: "Kanban + list, assign teammates, subtasks, comments.", color: "#0ea5e9" },
-  { icon: CalendarDays, title: "Meetings", desc: "RSVP, attendees, calendar export (.ics), recap notes.", color: "#a855f7" },
-  { icon: MessageSquare, title: "Chat", desc: "Real-time DMs + group chats, pin messages, reactions.", color: "#ec4899" },
-  { icon: Users, title: "Teams & Members", desc: "Sub-groups, role permissions, member import.", color: "#14b8a6" },
-  { icon: Wallet, title: "Financials", desc: "Track income & expenses, see the club balance over time.", color: "#eab308" },
-  { icon: Trophy, title: "Badges & Leaderboard", desc: "Earn badges for milestones, climb the leaderboard.", color: "#ef4444" },
+  { icon: Megaphone, title: "Announcements", desc: "Pin urgent news, react with emoji, threaded replies.", color: "#f97316", demo: "announcement" },
+  { icon: Clock, title: "Service Hours", desc: "Log hours, track goals, get executive approval, export.", color: "#10b981", demo: "hours" },
+  { icon: CheckSquare, title: "Tasks", desc: "Kanban + list, assign teammates, subtasks, comments.", color: "#0ea5e9", demo: "tasks" },
+  { icon: CalendarDays, title: "Meetings", desc: "RSVP, attendees, calendar export (.ics), recap notes.", color: "#a855f7", demo: "meetings" },
+  { icon: MessageSquare, title: "Chat", desc: "Real-time DMs + group chats, pin messages, reactions.", color: "#ec4899", demo: "chat" },
+  { icon: Wallet, title: "Financials", desc: "Track income & expenses, see the club balance over time.", color: "#eab308", demo: "financials" },
+  { icon: Users, title: "Teams & Members", desc: "Sub-groups, role permissions, member import.", color: "#14b8a6", demo: "teams" },
+  { icon: Trophy, title: "Badges & Leaderboard", desc: "Earn badges for milestones, climb the leaderboard.", color: "#ef4444", demo: "badges" },
 ]
 
-function StepFeatures() {
+function StepFeatureShowcase() {
   const [visible, setVisible] = useState(0)
   useEffect(() => {
-    // Stagger reveal of feature cards
     if (visible < FEATURES.length) {
-      const t = setTimeout(() => setVisible(v => v + 1), 80)
+      const t = setTimeout(() => setVisible(v => v + 1), 90)
       return () => clearTimeout(t)
     }
   }, [visible])
 
   return (
-    <div className="px-6 pt-14 pb-8 sm:pt-16">
-      <div className="text-center mb-6">
-        <p className="text-caption-medium text-club font-medium mb-1.5 tracking-wider uppercase">
+    <div className="px-6 pt-16 pb-8 sm:pt-20">
+      <div className="text-center mb-8">
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-caption font-medium text-club mb-2 tracking-[0.15em] uppercase"
+        >
           Everything in one place
-        </p>
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+        </motion.p>
+        <motion.h2
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-3xl sm:text-4xl font-semibold tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           What ClubHub does
-        </h2>
+        </motion.h2>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {FEATURES.map((f, i) => {
           const Icon = f.icon
           const isShown = i < visible
           return (
             <motion.div
               key={f.title}
-              initial={{ opacity: 0, y: 12 }}
-              animate={isShown ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-start gap-3 rounded-xl border border-border bg-card p-3.5 hover:bg-accent/30 transition-colors"
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={isShown ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 20, scale: 0.95 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              whileHover={{ y: -4, scale: 1.02 }}
+              className="group relative flex flex-col items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-4 text-center hover:border-club/40 transition-colors"
             >
               <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                className="flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110"
                 style={{ background: `${f.color}20`, color: f.color }}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className="h-6 w-6" />
               </div>
-              <div className="min-w-0">
-                <div className="text-body-medium font-medium">{f.title}</div>
-                <div className="text-caption text-muted-foreground mt-0.5">{f.desc}</div>
+              <div>
+                <div className="text-body-medium font-semibold">{f.title}</div>
+                <div className="text-caption text-muted-foreground mt-1 leading-relaxed">{f.desc}</div>
               </div>
             </motion.div>
           )
@@ -331,7 +386,201 @@ function StepFeatures() {
   )
 }
 
-/** Step 2 — Power tips */
+/* ───────────────────────── Step 2: Power Features (animated demos) ───────────────────────── */
+
+const POWER_FEATURES = [
+  {
+    icon: Bell,
+    title: "Notifications that work for you",
+    body: "Each notification type — announcements, tasks, hours, chat — has its own channel. Email, push, or both. You're in control.",
+    visual: <NotificationsDemo />,
+  },
+  {
+    icon: Zap,
+    title: "Real-time everything",
+    body: "Chat, typing indicators, presence dots, and announcements update live. No refresh needed. The green dot means you're connected.",
+    visual: <RealtimeDemo />,
+  },
+  {
+    icon: Trophy,
+    title: "Track your impact",
+    body: "Service hours, badges, and the leaderboard celebrate your contributions. Watch your stats grow over the season.",
+    visual: <LeaderboardDemo />,
+  },
+]
+
+function StepPowerFeatures() {
+  return (
+    <div className="px-6 pt-16 pb-8 sm:pt-20">
+      <div className="text-center mb-8">
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-caption font-medium text-club mb-2 tracking-[0.15em] uppercase"
+        >
+          Built for clubs
+        </motion.p>
+        <motion.h2
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-3xl sm:text-4xl font-semibold tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          Features you'll love
+        </motion.h2>
+      </div>
+      <div className="space-y-4">
+        {POWER_FEATURES.map((f, i) => {
+          const Icon = f.icon
+          return (
+            <motion.div
+              key={f.title}
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              className="flex flex-col sm:flex-row items-start gap-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-5"
+            >
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-club-muted text-club">
+                <Icon className="h-7 w-7" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-bold text-muted-foreground/60 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
+                  <h3 className="text-lg font-semibold">{f.title}</h3>
+                </div>
+                <p className="text-body text-muted-foreground leading-relaxed mb-3">{f.body}</p>
+                {/* Animated visual demo */}
+                <div className="rounded-xl border border-white/5 bg-background/30 overflow-hidden">
+                  {f.visual}
+                </div>
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ── Animated "video-like" demos (pure CSS, no real video files) ── */
+
+function NotificationsDemo() {
+  const [active, setActive] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setActive(a => (a + 1) % 4), 1200)
+    return () => clearInterval(t)
+  }, [])
+  const types = ["New announcement", "Task assigned", "Hours approved", "New message"]
+  return (
+    <div className="p-4 space-y-2">
+      {types.map((t, i) => (
+        <motion.div
+          key={t}
+          animate={{
+            opacity: active === i ? 1 : 0.4,
+            x: active === i ? 0 : 0,
+            scale: active === i ? 1 : 0.98,
+          }}
+          transition={{ duration: 0.3 }}
+          className={cn(
+            "flex items-center gap-3 rounded-lg p-2.5 transition-colors",
+            active === i ? "bg-club-muted/60 border border-club/30" : "bg-transparent"
+          )}
+        >
+          <div className={cn("h-2 w-2 rounded-full", active === i ? "bg-club" : "bg-muted-foreground/40")} />
+          <span className="text-caption-medium">{t}</span>
+          {active === i && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="ml-auto text-caption text-club font-medium"
+            >
+              now
+            </motion.span>
+          )}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+function RealtimeDemo() {
+  return (
+    <div className="p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <motion.div
+          animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+          className="h-2.5 w-2.5 rounded-full bg-club"
+        />
+        <span className="text-caption-medium text-club font-medium">Live · connected</span>
+      </div>
+      <div className="space-y-2">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="rounded-lg bg-muted/40 p-2.5 text-caption"
+        >
+          <span className="font-medium">Maya:</span> Pushed the auto code 🚀
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1 }}
+          className="rounded-lg bg-club-muted/40 p-2.5 text-caption"
+        >
+          <span className="font-medium">Jordan:</span> Drive train is done ✅
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 0] }}
+          transition={{ delay: 1.8, duration: 1.5, repeat: Infinity }}
+          className="text-caption text-muted-foreground italic px-1"
+        >
+          Maya is typing…
+        </motion.div>
+      </div>
+    </div>
+  )
+}
+
+function LeaderboardDemo() {
+  const rows = [
+    { rank: 1, name: "Alex Rivera", hours: "20h", avatar: "AR", color: "#f59e0b" },
+    { rank: 2, name: "Maya Chen", hours: "14h", avatar: "MC", color: "#94a3b8" },
+    { rank: 3, name: "Jordan Patel", hours: "10h", avatar: "JP", color: "#a78a7d" },
+  ]
+  return (
+    <div className="p-4 space-y-2">
+      {rows.map((r, i) => (
+        <motion.div
+          key={r.rank}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.2 }}
+          className={cn(
+            "flex items-center gap-3 rounded-lg p-2.5",
+            r.rank === 1 ? "bg-club-muted/40" : "bg-muted/30"
+          )}
+        >
+          <span className="text-lg font-bold w-6 text-center" style={{ color: r.color }}>
+            {r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : "🥉"}
+          </span>
+          <div className="h-7 w-7 rounded-full bg-club/20 flex items-center justify-center text-caption font-medium">
+            {r.avatar}
+          </div>
+          <span className="text-caption-medium flex-1">{r.name}</span>
+          <span className="text-caption font-semibold tabular-nums">{r.hours}</span>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
+/* ───────────────────────── Step 3: Power Tips ───────────────────────── */
+
 const TIPS = [
   {
     icon: Bell,
@@ -350,16 +599,26 @@ const TIPS = [
   },
 ]
 
-function StepTips() {
+function StepPowerTips() {
   return (
-    <div className="px-6 pt-14 pb-8 sm:pt-16">
-      <div className="text-center mb-6">
-        <p className="text-caption-medium text-club font-medium mb-1.5 tracking-wider uppercase">
+    <div className="px-6 pt-16 pb-8 sm:pt-20">
+      <div className="text-center mb-8">
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-caption font-medium text-club mb-2 tracking-[0.15em] uppercase"
+        >
           Pro tips
-        </p>
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+        </motion.p>
+        <motion.h2
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-3xl sm:text-4xl font-semibold tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           Three things that make it click
-        </h2>
+        </motion.h2>
       </div>
       <div className="space-y-3">
         {TIPS.map((t, i) => {
@@ -367,18 +626,18 @@ function StepTips() {
           return (
             <motion.div
               key={t.title}
-              initial={{ opacity: 0, x: -20 }}
+              initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.15, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-start gap-4 rounded-xl border border-border bg-card p-4"
+              transition={{ delay: i * 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm p-5 hover:border-club/30 transition-colors"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-club-muted text-club">
-                <Icon className="h-5 w-5" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-club-muted text-club">
+                <Icon className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1.5">
                   <span className="text-xs font-bold text-muted-foreground/60 tabular-nums">{String(i + 1).padStart(2, "0")}</span>
-                  <h3 className="text-body-medium font-semibold">{t.title}</h3>
+                  <h3 className="text-lg font-semibold">{t.title}</h3>
                 </div>
                 <p className="text-body text-muted-foreground leading-relaxed">{t.body}</p>
               </div>
@@ -390,7 +649,8 @@ function StepTips() {
   )
 }
 
-/** Step 3 — Customize (live preview) */
+/* ───────────────────────── Step 4: Customize (immersive) ───────────────────────── */
+
 function StepCustomize({
   onSetAmbient, onSetThemeColor,
 }: {
@@ -403,51 +663,80 @@ function StepCustomize({
   const setOverride = useCustomizationStore((s) => s.setOverrideThemeColor)
 
   return (
-    <div className="px-6 pt-14 pb-8 sm:pt-16">
-      <div className="text-center mb-6">
-        <p className="text-caption-medium text-club font-medium mb-1.5 tracking-wider uppercase">
+    <div className="px-6 pt-16 pb-8 sm:pt-20">
+      <div className="text-center mb-8">
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-caption font-medium text-club mb-2 tracking-[0.15em] uppercase"
+        >
           Make it yours
-        </p>
-        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+        </motion.p>
+        <motion.h2
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="text-3xl sm:text-4xl font-semibold tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
           Customize your space
-        </h2>
-        <p className="text-body text-muted-foreground mt-2 max-w-md mx-auto">
+        </motion.h2>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="text-body text-muted-foreground mt-3 max-w-md mx-auto"
+        >
           Pick a background effect and a theme color. You'll see it live behind
           this card. Change it anytime in Settings → Appearance.
-        </p>
+        </motion.p>
       </div>
 
       {/* Ambient picker */}
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-2.5">
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
           <Wand2 className="h-4 w-4 text-club" />
           <h3 className="text-body-medium font-semibold">Background effect</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {AMBIENT_PRESETS.map((p) => (
-            <button
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {AMBIENT_PRESETS.map((p, i) => (
+            <motion.button
               key={p.id}
               type="button"
               onClick={() => onSetAmbient(p.id)}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.04 }}
+              whileHover={{ y: -3 }}
+              whileTap={{ scale: 0.97 }}
               className={cn(
-                "group relative flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-all",
+                "group relative flex flex-col items-center gap-2 rounded-2xl border p-4 text-center transition-all",
                 ambient === p.id
-                  ? "border-club bg-club-muted ring-2 ring-club/30"
-                  : "border-border bg-card hover:bg-accent/40"
+                  ? "border-club bg-club-muted/40 ring-2 ring-club/40 shadow-lg shadow-club/10"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
               )}
             >
               <AmbientPreviewMini effect={p.id} active={ambient === p.id} />
               <span className={cn("text-caption-medium font-medium", ambient === p.id ? "text-club-ink" : "text-foreground")}>
                 {p.label}
               </span>
-            </button>
+              {ambient === p.id && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-club flex items-center justify-center"
+                >
+                  <Check className="h-3 w-3 text-club-foreground" strokeWidth={3} />
+                </motion.div>
+              )}
+            </motion.button>
           ))}
         </div>
       </div>
 
       {/* Theme color picker */}
       <div>
-        <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Palette className="h-4 w-4 text-club" />
             <h3 className="text-body-medium font-semibold">Theme color</h3>
@@ -462,25 +751,40 @@ function StepCustomize({
             Override club color
           </label>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {THEME_COLOR_PRESETS.map((c) => (
-            <button
+        <div className="flex flex-wrap gap-2.5">
+          {THEME_COLOR_PRESETS.map((c, i) => (
+            <motion.button
               key={c.id}
               type="button"
               onClick={() => onSetThemeColor(c.hex)}
               aria-label={`Theme color ${c.label}`}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              whileHover={{ scale: 1.15 }}
+              whileTap={{ scale: 0.95 }}
               className={cn(
-                "h-9 w-9 rounded-full border-2 transition-all hover:scale-110",
+                "relative h-10 w-10 rounded-full border-2 transition-all",
                 themeColor.toLowerCase() === c.hex.toLowerCase() && override
                   ? "border-foreground ring-2 ring-club/40 scale-110"
-                  : "border-card"
+                  : "border-card/50"
               )}
-              style={{ background: c.hex }}
-            />
+              style={{ background: c.hex, boxShadow: themeColor.toLowerCase() === c.hex.toLowerCase() && override ? `0 0 16px ${c.hex}` : "none" }}
+            >
+              {themeColor.toLowerCase() === c.hex.toLowerCase() && override && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  <Check className="h-4 w-4 text-white drop-shadow" strokeWidth={3} />
+                </motion.div>
+              )}
+            </motion.button>
           ))}
           {/* Custom color input */}
           <label
-            className="relative h-9 w-9 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:bg-accent/40 transition-colors overflow-hidden"
+            className="relative h-10 w-10 rounded-full border-2 border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors overflow-hidden"
             title="Pick a custom color"
           >
             <input
@@ -493,46 +797,69 @@ function StepCustomize({
           </label>
         </div>
         {override && (
-          <p className="text-caption text-muted-foreground mt-2">
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-caption text-muted-foreground mt-3"
+          >
             Your theme color overrides the club's accent everywhere.
-          </p>
+          </motion.p>
         )}
       </div>
     </div>
   )
 }
 
-/** Mini live preview of an ambient effect for the picker tiles. Renders a
- *  tiny inset card with a CSS approximation of the effect. */
+/** Mini live preview of an ambient effect for the picker tiles. */
 function AmbientPreviewMini({ effect, active }: { effect: AmbientEffect; active: boolean }) {
   const baseColor = "var(--club-accent, #10b981)"
   return (
     <div
       className={cn(
-        "relative h-12 w-full overflow-hidden rounded-lg",
+        "relative h-14 w-full overflow-hidden rounded-lg",
         active ? "ring-1 ring-club/30" : ""
       )}
-      style={{ background: "rgba(0,0,0,0.04)" }}
+      style={{ background: "rgba(0,0,0,0.08)" }}
     >
       <div className="absolute inset-0" style={{ ["--amb" as string]: baseColor } as React.CSSProperties}>
         {effect === "none" && <div className="absolute inset-0 flex items-center justify-center text-caption text-muted-foreground/50">clean</div>}
         {effect === "aurora" && (
           <div className="absolute inset-0">
-            <div className="absolute -inset-x-4 top-0 h-8 blur-md" style={{ background: `linear-gradient(90deg, transparent, ${baseColor}, transparent)`, opacity: 0.6 }} />
+            <motion.div
+              className="absolute -inset-x-4 top-0 h-10 blur-md"
+              style={{ background: `linear-gradient(90deg, transparent, ${baseColor}, transparent)` }}
+              animate={{ x: [-20, 20, -20] }}
+              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+            />
           </div>
         )}
         {effect === "blobs" && (
           <div className="absolute inset-0">
-            <div className="absolute left-1 top-1 h-6 w-6 rounded-full blur-md" style={{ background: baseColor, opacity: 0.5 }} />
-            <div className="absolute right-1 bottom-1 h-6 w-6 rounded-full blur-md" style={{ background: baseColor, opacity: 0.4 }} />
+            <motion.div
+              className="absolute left-1 top-1 h-7 w-7 rounded-full blur-md"
+              style={{ background: baseColor, opacity: 0.5 }}
+              animate={{ scale: [1, 1.2, 1], x: [0, 4, 0] }}
+              transition={{ duration: 3, repeat: Infinity }}
+            />
+            <motion.div
+              className="absolute right-1 bottom-1 h-7 w-7 rounded-full blur-md"
+              style={{ background: baseColor, opacity: 0.4 }}
+              animate={{ scale: [1, 1.3, 1], x: [0, -4, 0] }}
+              transition={{ duration: 3.5, repeat: Infinity, delay: 0.5 }}
+            />
           </div>
         )}
         {effect === "bubbles" && (
           <div className="absolute inset-0 flex items-end gap-0.5 px-1 pb-1">
-            <div className="h-2 w-2 rounded-full" style={{ background: baseColor, opacity: 0.5 }} />
-            <div className="h-3 w-3 rounded-full" style={{ background: baseColor, opacity: 0.4 }} />
-            <div className="h-2 w-2 rounded-full" style={{ background: baseColor, opacity: 0.5 }} />
-            <div className="h-3 w-3 rounded-full" style={{ background: baseColor, opacity: 0.3 }} />
+            {[0, 1, 2, 3, 4].map((i) => (
+              <motion.div
+                key={i}
+                className="rounded-full"
+                style={{ background: baseColor, opacity: 0.5, width: 4 + (i % 2) * 2, height: 4 + (i % 2) * 2 }}
+                animate={{ y: [10, -2, 10] }}
+                transition={{ duration: 2 + i * 0.3, repeat: Infinity, delay: i * 0.2 }}
+              />
+            ))}
           </div>
         )}
         {effect === "mesh" && (
@@ -551,21 +878,27 @@ function AmbientPreviewMini({ effect, active }: { effect: AmbientEffect; active:
         )}
         {effect === "particles" && (
           <div className="absolute inset-0">
-            {[0, 1, 2, 3, 4].map(i => (
-              <div key={i} className="absolute rounded-full" style={{
-                left: `${15 + i * 18}%`, top: `${20 + (i % 3) * 25}%`, width: 2, height: 2,
-                background: baseColor, boxShadow: `0 0 4px ${baseColor}`, opacity: 0.7,
-              }} />
+            {[0, 1, 2, 3, 4].map((i) => (
+              <motion.div
+                key={i}
+                className="absolute rounded-full"
+                style={{ left: `${15 + i * 18}%`, width: 2, height: 2, background: baseColor, boxShadow: `0 0 4px ${baseColor}` }}
+                animate={{ y: [15, 2, 15], opacity: [0.3, 0.8, 0.3] }}
+                transition={{ duration: 2 + i * 0.2, repeat: Infinity, delay: i * 0.15 }}
+              />
             ))}
           </div>
         )}
         {effect === "stardust" && (
           <div className="absolute inset-0">
-            {[0, 1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="absolute rounded-full" style={{
-                left: `${10 + (i * 16) % 80}%`, top: `${15 + (i * 23) % 70}%`, width: 1.5, height: 1.5,
-                background: baseColor, boxShadow: `0 0 3px ${baseColor}`, opacity: 0.8,
-              }} />
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <motion.div
+                key={i}
+                className="absolute rounded-full"
+                style={{ left: `${10 + (i * 16) % 80}%`, top: `${15 + (i * 23) % 70}%`, width: 2, height: 2, background: baseColor, boxShadow: `0 0 3px ${baseColor}` }}
+                animate={{ opacity: [0.2, 0.9, 0.2], scale: [0.8, 1.2, 0.8] }}
+                transition={{ duration: 1.5 + i * 0.2, repeat: Infinity, delay: i * 0.1 }}
+              />
             ))}
           </div>
         )}
@@ -574,56 +907,76 @@ function AmbientPreviewMini({ effect, active }: { effect: AmbientEffect; active:
   )
 }
 
-/** Step 4 — You're all set (with confetti) */
-function StepAllSet({ onViewDashboard }: { onViewDashboard: () => void }) {
+/* ───────────────────────── Step 5: Finale ───────────────────────── */
+
+function StepFinale({ onViewDashboard }: { onViewDashboard: () => void }) {
   const confetti = useRef<{ left: number; delay: number; color: string; rot: number }[]>(null as any)
   if (!confetti.current) {
-    const colors = ["#10b981", "#f97316", "#a855f7", "#ec4899", "#eab308", "#0ea5e9"]
-    confetti.current = Array.from({ length: 40 }).map(() => ({
+    const colors = ["#10b981", "#f97316", "#a855f7", "#ec4899", "#eab308", "#0ea5e9", "#14b8a6"]
+    confetti.current = Array.from({ length: 60 }).map(() => ({
       left: Math.random() * 100,
-      delay: Math.random() * 0.5,
+      delay: Math.random() * 0.6,
       color: colors[Math.floor(Math.random() * colors.length)],
       rot: Math.random() * 720 - 360,
     }))
   }
   return (
-    <div className="relative px-6 pt-16 pb-12 text-center overflow-hidden min-h-[60vh] flex flex-col items-center justify-center">
+    <div className="relative px-6 pt-20 pb-16 text-center overflow-hidden min-h-[70vh] flex flex-col items-center justify-center">
       {/* Confetti burst */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {confetti.current.map((c, i) => (
           <motion.div
             key={i}
-            initial={{ y: -20, opacity: 1, rotate: 0 }}
-            animate={{ y: "120vh", opacity: 0, rotate: c.rot }}
-            transition={{ duration: 2.5, delay: c.delay, ease: "easeIn" }}
-            className="absolute top-0 h-3 w-2 rounded-sm"
+            initial={{ y: -20, opacity: 1, rotate: 0, x: 0 }}
+            animate={{ y: "110vh", opacity: 0, rotate: c.rot, x: (c.left - 50) * 4 }}
+            transition={{ duration: 3, delay: c.delay, ease: "easeIn" }}
+            className="absolute top-0 h-3.5 w-2.5 rounded-sm"
             style={{ left: `${c.left}%`, background: c.color }}
           />
         ))}
       </div>
 
+      {/* Pulsing glow behind the check */}
       <motion.div
-        initial={{ scale: 0.6, opacity: 0 }}
+        className="absolute"
+        animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 2, repeat: Infinity }}
+      >
+        <div className="h-32 w-32 rounded-full bg-club blur-3xl" />
+      </motion.div>
+
+      <motion.div
+        initial={{ scale: 0.5, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.2, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ delay: 0.2, duration: 0.6, ease: [0.22,  1, 0.36, 1] }}
         className="relative z-10"
       >
-        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-club text-club-foreground shadow-lg">
-          <Check className="h-10 w-10" strokeWidth={3} />
+        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-club text-club-foreground shadow-2xl" style={{ boxShadow: "0 0 80px var(--club)" }}>
+          <motion.div
+            animate={{ rotate: [0, 360] }}
+            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          >
+            <Check className="h-12 w-12" strokeWidth={3} />
+          </motion.div>
         </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3" style={{ fontFamily: "var(--font-display)" }}>
+        <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>
           You&apos;re all set
         </h2>
-        <p className="text-body text-muted-foreground max-w-md mx-auto mb-6">
+        <p className="text-body text-muted-foreground max-w-md mx-auto mb-8 leading-relaxed">
           That&apos;s the tour. You can revisit this anytime from your account
           menu, and change your background or theme color in Settings →
           Appearance. Welcome to ClubHub.
         </p>
 
-        <div className="flex items-center justify-center gap-1.5 text-caption text-muted-foreground">
-          <Heart className="h-3.5 w-3.5 text-club fill-club" />
+        <motion.div
+          animate={{ y: [0, -4, 0] }}
+          transition={{ duration: 2, repeat: Infinity }}
+          className="flex items-center justify-center gap-2 text-caption text-muted-foreground"
+        >
+          <Heart className="h-4 w-4 text-club fill-club" />
           <span>Built for the people who run things.</span>
-        </div>
+          <Heart className="h-4 w-4 text-club fill-club" />
+        </motion.div>
       </motion.div>
     </div>
   )
