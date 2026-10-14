@@ -42,6 +42,8 @@ import {
   Loader2,
   LayoutGrid,
   List as ListIcon,
+  Target,
+  Pencil,
 } from "lucide-react"
 
 import { api } from "@/lib/api/client"
@@ -127,6 +129,7 @@ interface TaskUser {
 interface TaskTeam {
   id: string
   name: string
+  mainIdea?: string | null
 }
 interface Subtask {
   id: string
@@ -164,6 +167,7 @@ interface TasksListResponse {
   tasks: Task[]
   teams: TaskTeam[]
   members: TaskUser[]
+  mainGoal: string | null
   myUserId: string
   myRole: "member" | "executive"
 }
@@ -449,6 +453,30 @@ export function TasksView() {
         />
       </div>
 
+      {/* Main Goal — exec-set club-wide objective shown at the very top of
+          the Tasks view. Inline editor (textarea + Save/Cancel) for execs;
+          read-only display for members. Falls back to an empty-state card
+          when no main goal has been set yet. */}
+      <MainGoalCard
+        clubId={currentClubId}
+        mainGoal={data?.mainGoal ?? null}
+        isExec={isExec}
+        onChanged={invalidate}
+      />
+
+      {/* Team main ideas — one chip per team, shown under the Main Goal. The
+          row is horizontally scrollable on mobile so it stays one line tall.
+          Each chip shows the team name + main idea (or "no main idea yet"),
+          with an inline editor for execs. */}
+      {data && data.teams.length > 0 && (
+        <TeamMainIdeasRow
+          clubId={currentClubId}
+          teams={data.teams}
+          isExec={isExec}
+          onChanged={invalidate}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -670,6 +698,299 @@ export function TasksView() {
         myUserId={data?.myUserId}
         isExec={!!isExec}
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main Goal + Team main ideas
+//   Two new top-of-view cards that surface what the club is working on right
+//   now. Exec-only writes (both routes return 403 for members). Any active
+//   member can read them — they're embedded in the GET /tasks response so
+//   there's no extra round-trip.
+// ---------------------------------------------------------------------------
+
+const MAIN_GOAL_MAX = 280
+const MAIN_IDEA_MAX = 280
+
+function MainGoalCard({
+  clubId,
+  mainGoal,
+  isExec,
+  onChanged,
+}: {
+  clubId: string
+  mainGoal: string | null
+  isExec: boolean
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(mainGoal ?? "")
+  const [saving, setSaving] = React.useState(false)
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+
+  // Sync the draft when the upstream mainGoal changes (e.g. another exec
+  // edited it and a realtime event refreshed the query).
+  React.useEffect(() => {
+    if (!editing) setDraft(mainGoal ?? "")
+  }, [mainGoal, editing])
+
+  // Auto-grow the textarea on input. Capped so it doesn't push the action
+  // row off the card.
+  React.useEffect(() => {
+    if (!editing) return
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`
+  }, [draft, editing])
+
+  async function handleSave() {
+    if (draft.length > MAIN_GOAL_MAX) {
+      toast.error(`Main goal must be ${MAIN_GOAL_MAX} characters or fewer`)
+      return
+    }
+    setSaving(true)
+    try {
+      await api<{ mainGoal: string | null }>(`/api/clubs/${clubId}/main-goal`, {
+        method: "PATCH",
+        json: { mainGoal: draft },
+      })
+      toast.success("Main goal updated")
+      setEditing(false)
+      onChanged()
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't update main goal")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Empty-state card: no main goal yet. Exec sees a "Set the main goal" CTA;
+  // members see a neutral "no main goal set" line.
+  if (!mainGoal && !editing) {
+    return (
+      <div className="card-quiet p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <div className="flex size-9 items-center justify-center rounded-full bg-club-subtle text-club-ink shrink-0">
+          <Target className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-card-title">Main goal</div>
+          <p className="text-body text-muted-foreground mt-0.5">
+            No main goal set yet{isExec ? " — tell everyone what the club is working on." : "."}
+          </p>
+        </div>
+        {isExec && (
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="shrink-0">
+            <Pencil className="size-4" />
+            <span className="hidden sm:inline">Set main goal</span>
+            <span className="sm:hidden">Set</span>
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (editing) {
+    return (
+      <div className="card-quiet p-4 sm:p-5 shadow-popover">
+        <div className="flex items-center gap-2 mb-2">
+          <Target className="size-4 text-club-ink" />
+          <span className="text-card-title">Edit main goal</span>
+          <span className="ml-auto text-caption text-muted-foreground tabular-nums">
+            {draft.length}/{MAIN_GOAL_MAX}
+          </span>
+        </div>
+        <Textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, MAIN_GOAL_MAX))}
+          placeholder="What is the club working on right now? (e.g. Win the regional competition by March.)"
+          maxLength={MAIN_GOAL_MAX}
+          className="min-h-[80px] resize-y"
+          autoFocus
+        />
+        <div className="flex items-center justify-end gap-2 mt-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(mainGoal ?? "")
+              setEditing(false)
+            }}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="club"
+            size="sm"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+            Save
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Read-only display (members + execs when not editing).
+  return (
+    <div className="card-quiet-hover p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+      <div className="flex size-9 items-center justify-center rounded-full bg-club-subtle text-club-ink shrink-0">
+        <Target className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-caption-medium text-muted-foreground">Main goal</div>
+        <p className="text-body-medium mt-1 break-words">{mainGoal}</p>
+      </div>
+      {isExec && (
+        <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="shrink-0 -mr-2">
+          <Pencil className="size-4" />
+          <span className="hidden sm:inline">Edit</span>
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function TeamMainIdeasRow({
+  clubId,
+  teams,
+  isExec,
+  onChanged,
+}: {
+  clubId: string
+  teams: TaskTeam[]
+  isExec: boolean
+  onChanged: () => void
+}) {
+  return (
+    <div className="flex items-stretch gap-2 overflow-x-auto scrollbar-thin pb-1 -mx-1 px-1">
+      {teams.map((t) => (
+        <TeamMainIdeaChip
+          key={t.id}
+          clubId={clubId}
+          team={t}
+          isExec={isExec}
+          onChanged={onChanged}
+        />
+      ))}
+    </div>
+  )
+}
+
+function TeamMainIdeaChip({
+  clubId,
+  team,
+  isExec,
+  onChanged,
+}: {
+  clubId: string
+  team: TaskTeam
+  isExec: boolean
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [draft, setDraft] = React.useState(team.mainIdea ?? "")
+  const [saving, setSaving] = React.useState(false)
+  const taRef = React.useRef<HTMLTextAreaElement>(null)
+
+  React.useEffect(() => {
+    if (!editing) setDraft(team.mainIdea ?? "")
+  }, [team.mainIdea, editing])
+
+  React.useEffect(() => {
+    if (!editing) return
+    const el = taRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [draft, editing])
+
+  async function handleSave() {
+    if (draft.length > MAIN_IDEA_MAX) {
+      toast.error(`Team main idea must be ${MAIN_IDEA_MAX} characters or fewer`)
+      return
+    }
+    setSaving(true)
+    try {
+      await api(`/api/clubs/${clubId}/teams/${team.id}/main-idea`, {
+        method: "PATCH",
+        json: { mainIdea: draft },
+      })
+      toast.success(`"${team.name}" main idea updated`)
+      setEditing(false)
+      onChanged()
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't update team main idea")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="card-quiet p-3 shadow-popover min-w-[260px] sm:min-w-[300px] flex flex-col gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-card-title truncate">{team.name}</span>
+          <span className="text-caption text-muted-foreground tabular-nums ml-auto">
+            {draft.length}/{MAIN_IDEA_MAX}
+          </span>
+        </div>
+        <Textarea
+          ref={taRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, MAIN_IDEA_MAX))}
+          placeholder={`What is "${team.name}" working on?`}
+          maxLength={MAIN_IDEA_MAX}
+          className="min-h-[64px] resize-y text-sm"
+          autoFocus
+        />
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(team.mainIdea ?? "")
+              setEditing(false)
+            }}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button variant="club" size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+            Save
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card-quiet-hover p-3 min-w-[220px] sm:min-w-[260px] flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <Users className="size-3.5 text-muted-foreground" />
+        <span className="text-card-title truncate">{team.name}</span>
+        {isExec && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            aria-label={`Edit ${team.name} main idea`}
+          >
+            <Pencil className="size-3" />
+          </button>
+        )}
+      </div>
+      <p className="text-body text-muted-foreground line-clamp-2 break-words">
+        {team.mainIdea || (
+          <span className="italic">No main idea set{isExec ? " — click to add" : ""}</span>
+        )}
+      </p>
     </div>
   )
 }

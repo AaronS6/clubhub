@@ -214,8 +214,10 @@
   }
   body {
     @apply text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv01" 1, "cv02" 1;
     text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     /* NOTE: do NOT set bg-background on body. The ambient background layer
        (from CustomizationProvider) needs to show through. The AmbientBackground
        component renders its own tint overlay at z-1 that provides the base
@@ -223,80 +225,111 @@
        aurora/blobs/bubbles/etc. effects be visible behind the app shell. */
     background-color: transparent;
   }
-  /* One consistent focus ring: 2px at full opacity, 2px offset. */
+  /* Refined focus ring: 2px ring at 60% opacity, 2px offset against the
+     background. Soft enough not to jolt, distinct enough to be findable.
+     Keyboard users get this on every focusable element; mouse users see
+     it only while tabbing. */
   :focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-none ring-2 ring-ring/60 ring-offset-2 ring-offset-background;
+    transition: box-shadow 120ms var(--motion-ease);
   }
-  /* Tabular numbers for counts/tables — keeps layouts stable */
+  /* Tabular numerals everywhere counts/tables/numbers appear — keeps
+     layouts from shifting on data refresh. */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv01" 1;
   }
-  /* Respect reduced motion: disable all non-essential animation. */
+  /* Respect reduced motion: kill all non-essential motion AND any
+     transform-based entrance/exit (not just animation-duration). This
+     catches framer-motion + animate-in + bespoke keyframes uniformly. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
+      animation-delay: 0ms !important;
       transition-duration: 0.001ms !important;
+      transition-delay: 0ms !important;
       scroll-behavior: auto !important;
+      transform: none !important;
+    }
+    /* But keep the *visual* of an entrance — i.e. just opacity. */
+    [class*="animate-in"],
+    [class*="fade-in"],
+    [style*="opacity:0"] {
+      opacity: 1 !important;
+      transform: none !important;
     }
   }
 }
 
 @layer components {
   /* Type scale — 12 / 14 / 16 / 20 / 28 / 44. Body is 14px @ 1.5 line height.
-     Display face (Bricolage) only for page titles + numerals. */
+     Display face (Bricolage) only for page titles + numerals.
+     Letter-spacing is tightened on display sizes (optical alignment) and
+     left neutral on body text for readability. */
   .text-page-title {
     font-family: var(--font-display);
     font-size: 1.75rem;   /* 28px */
-    line-height: 2.25rem;
+    line-height: 2.125rem;
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
   }
   .text-section-title {
     font-size: 1.25rem;   /* 20px */
-    line-height: 1.75rem;
+    line-height: 1.625rem;
     font-weight: 600;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
   }
   .text-card-title {
     font-size: 1rem;      /* 16px */
-    line-height: 1.5rem;
+    line-height: 1.375rem;
     font-weight: 600;
-    letter-spacing: -0.005em;
+    letter-spacing: -0.006em;
   }
   .text-body {
     font-size: 0.875rem;  /* 14px */
     line-height: 1.5rem;
     font-weight: 400;
+    letter-spacing: -0.001em;
   }
   .text-body-medium {
     font-size: 0.875rem;
     line-height: 1.5rem;
     font-weight: 500;
+    letter-spacing: -0.001em;
   }
   .text-caption {
     font-size: 0.75rem;   /* 12px */
     line-height: 1rem;
     font-weight: 400;
     color: var(--muted-foreground);
+    letter-spacing: 0;
   }
   .text-caption-medium {
     font-size: 0.75rem;
     line-height: 1rem;
     font-weight: 500;
     color: var(--muted-foreground);
+    letter-spacing: 0;
   }
-  /* The big numeral — display face, 44px, tabular-nums. Used for the hours
-     hero and any large stat that should feel like the "memorable" number. */
+  /* The big numeral — display face, scales fluidly from 30px on small mobile
+     viewports up to 44px on desktop. Used for the hours hero and any large
+     stat that should feel like the "memorable" number. Negative letter-
+     spacing + tabular-nums keeps the digits optically tight and stable
+     across value changes. clamp() means the size never overflows narrow
+     screens, so the hero number stays prominent without breaking layout. */
   .text-numeral {
     font-family: var(--font-display);
-    font-size: 2.75rem;   /* 44px */
+    font-size: clamp(1.875rem, 1.5rem + 1.6vw, 2.75rem); /* 30px → 44px */
     line-height: 1;
     font-weight: 700;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.035em;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "ss01" 1;
   }
 
   /* Status chips — soft tinted background (not saturated fills),
@@ -307,19 +340,78 @@
   .chip-progress  { background: var(--info-subtle);     color: var(--info-foreground); }
   .chip-neutral   { background: var(--muted);           color: var(--muted-foreground); }
 
-  /* Card — 1px border, no shadow. Shadows appear only on popovers/dialogs/drag. */
+  /* Card — 1px hairline border, no resting shadow. The shadow scale lives
+     as CSS vars so surfaces can opt into a subtle hover lift without
+     introducing bespoke box-shadows everywhere. Shadows are layered
+     (ambient + key) for depth that reads as light, not as dropshadow. */
+  :root {
+    --shadow-card: 0 1px 2px rgba(15, 18, 22, 0.04);
+    --shadow-card-hover:
+      0 1px 2px rgba(15, 18, 22, 0.04),
+      0 4px 12px rgba(15, 18, 22, 0.06);
+    --shadow-popover:
+      0 1px 2px rgba(15, 18, 22, 0.06),
+      0 8px 24px rgba(15, 18, 22, 0.10);
+    --shadow-dialog:
+      0 1px 2px rgba(15, 18, 22, 0.06),
+      0 12px 32px rgba(15, 18, 22, 0.14);
+    --shadow-hero:
+      0 1px 2px rgba(15, 18, 22, 0.05),
+      0 6px 16px rgba(15, 18, 22, 0.06);
+  }
+  .dark {
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-card-hover:
+      0 1px 2px rgba(0, 0, 0, 0.30),
+      0 4px 12px rgba(0, 0, 0, 0.36);
+    --shadow-popover:
+      0 1px 2px rgba(0, 0, 0, 0.40),
+      0 8px 24px rgba(0, 0, 0, 0.50);
+    --shadow-dialog:
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 12px 32px rgba(0, 0, 0, 0.60);
+    --shadow-hero:
+      0 1px 2px rgba(0, 0, 0, 0.36),
+      0 6px 16px rgba(0, 0, 0, 0.40);
+  }
   .card-quiet {
-    @apply border border-border bg-card rounded-xl;
+    @apply border border-border/80 bg-card rounded-xl;
+    box-shadow: var(--shadow-card);
+  }
+  /* Card with subtle hover lift — used by bento tiles, attention cards,
+     leaderboard rows. Border softens on hover so the elevation reads as
+     light, not as a hard outline shift. */
+  .card-quiet-hover {
+    @apply border border-border/80 bg-card rounded-xl;
+    box-shadow: var(--shadow-card);
+    transition:
+      box-shadow 180ms var(--motion-ease),
+      border-color 180ms var(--motion-ease),
+      transform 180ms var(--motion-ease);
+  }
+  .card-quiet-hover:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: color-mix(in oklab, var(--border) 60%, var(--club-accent) 8%);
   }
 
-  /* Fade-in for newly loaded content (still used by views pending rebuild —
-     removed globally in Phase 7 once all views drop it). */
+  /* Fade-in for newly loaded content. Two-step translateY keeps the motion
+     subtle — content arrives from below without bouncing. */
   @keyframes fade-in {
-    from { opacity: 0; transform: translateY(2px); }
+    from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
   .animate-fade-in {
-    animation: fade-in 200ms ease-out;
+    animation: fade-in 220ms var(--motion-ease);
+  }
+
+  /* Editorial entrance — for hero text + brand marks. Slower + softer so
+     the headline reads as deliberate rather than reactive. */
+  @keyframes editorial-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-editorial-rise {
+    animation: editorial-rise 600ms var(--motion-ease) both;
   }
 
   /* Gentle float — still used by the auth screen until Phase 6 rebuilds it. */
@@ -363,7 +455,9 @@
   animation: dialog-scale-in 150ms ease-out;
 }
 
-/* Thin, unobtrusive scrollbars (Notion/Linear style) */
+/* Thin, unobtrusive scrollbars (Notion/Linear style). The thumb sits on a
+   transparent track so it doesn't compete with content. Hover darkens it
+   slightly to signal scroll affordance without flashing. */
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -372,11 +466,32 @@
   .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: var(--border);
-    border-radius: 3px;
+    background-color: color-mix(in oklab, var(--border) 80%, var(--muted-foreground) 0%);
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
+  }
+  /* Surface elevation utilities — let components opt into the shadow scale
+     without writing multi-layer box-shadows inline. */
+  .shadow-card      { box-shadow: var(--shadow-card); }
+  .shadow-card-hover{ box-shadow: var(--shadow-card-hover); }
+  .shadow-popover   { box-shadow: var(--shadow-popover); }
+  .shadow-dialog    { box-shadow: var(--shadow-dialog); }
+  .shadow-hero      { box-shadow: var(--shadow-hero); }
+  /* Subtle hairline separator that fades to transparent at the ends.
+     Used under section headers + above sticky toolbars. */
+  .hairline-soft {
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--border) 12%,
+      var(--border) 88%,
+      transparent
+    );
+    height: 1px;
   }
 }
 

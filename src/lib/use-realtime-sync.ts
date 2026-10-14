@@ -91,6 +91,8 @@ export function useRealtimeSync(): ConnectionState {
         qc.invalidateQueries({ queryKey: ["activity", cid] })
         qc.invalidateQueries({ queryKey: ["conversations", cid] })
         qc.invalidateQueries({ queryKey: ["notifications", cid] })
+        qc.invalidateQueries({ queryKey: ["notes", cid] })
+        qc.invalidateQueries({ queryKey: ["tags", cid] })
       }
       wasConnectedRef.current = true
     }
@@ -174,9 +176,13 @@ export function useRealtimeSync(): ConnectionState {
         case "team_member_added":
         case "team_member_removed":
           apply(
-            [["teams", cid], ["members", cid], ["dashboard", cid], ["activity", cid]],
+            [["teams", cid], ["members", cid], ["dashboard", cid], ["activity", cid], ["tasks", cid]],
             { type: "team", id: data?.teamId }
           )
+          break
+        case "main_goal_updated":
+          // Main goal lives on Club and is consumed by the Tasks view.
+          apply([["tasks", cid], ["dashboard", cid]])
           break
         case "member_promoted":
         case "member_demoted":
@@ -200,6 +206,18 @@ export function useRealtimeSync(): ConnectionState {
           break
         case "presence_update":
           apply([["presence", cid], ["members", cid]])
+          break
+        case "note_created":
+        case "note_updated":
+        case "note_deleted":
+        case "note_hearted":
+          apply(
+            [["notes", cid], ["tags", cid], ["activity", cid]],
+            { type: "note", id: data?.noteId },
+          )
+          break
+        case "note_tag_created":
+          apply([["tags", cid], ["notes", cid]])
           break
         default:
           // Unknown — refresh dashboard + activity as a safe default.

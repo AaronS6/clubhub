@@ -108,9 +108,9 @@ interface DashboardData {
 // Bento tile — hairline border, card surface, larger radius, hover lift.
 // Used for every top-level tile in the new asymmetric grid. NO `card-quiet`.
 const TILE =
-  "border border-border bg-card rounded-xl p-5 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
+  "border border-border/80 bg-card rounded-xl p-5 shadow-card transition-[box-shadow,border-color,background-color,transform] duration-200 hover:shadow-card-hover hover:border-club/15"
 const TILE_COMPACT =
-  "border border-border bg-card rounded-xl p-4 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
+  "border border-border/80 bg-card rounded-xl p-4 shadow-card transition-[box-shadow,border-color,background-color] duration-200 hover:shadow-card-hover hover:border-club/15"
 
 // =========================================================================
 // Main component
@@ -280,7 +280,7 @@ export function DashboardView() {
               <li key={t.id} className="flex items-center gap-2 text-body">
                 {isOverdue ? (
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-danger-subtle0 shrink-0"
+                    className="h-1.5 w-1.5 rounded-full bg-danger shrink-0"
                     aria-label="Overdue"
                   />
                 ) : (
@@ -349,7 +349,7 @@ export function DashboardView() {
           <h2 className="text-card-title">Approved hours · last 30 days</h2>
         </div>
         <Badge variant="secondary" className="text-xs tabular-nums">
-          Total {fmtHours(data.hoursTrend.reduce((s, d) => s + d.hours, 0))}h
+          {fmtHours(data.myStats.approvedHours)}h lifetime
         </Badge>
       </div>
       {data.hoursTrend.every((d) => d.hours === 0) ? (
@@ -1113,9 +1113,8 @@ function HeroPanel({
   return (
     <section
       className={cn(
-        "bg-accent-tint relative overflow-hidden rounded-xl border border-border",
-        "",
-        "lg:col-span-7 p-5 sm:p-6 transition-[color,background-color,border-color,transform,box-shadow] duration-200"
+        "relative overflow-hidden rounded-xl border border-border/80 bg-card p-5 sm:p-6 shadow-card transition-[box-shadow,border-color] duration-200 hover:shadow-card-hover",
+        "lg:col-span-7"
       )}
     >
       {/* §38 — Club cover identity. A subtle accent gradient strip pinned
@@ -1125,7 +1124,7 @@ function HeroPanel({
           so it reads cleanly. */}
       <div
         aria-hidden
-        className="absolute left-0 top-0 h-1 w-full from-club via-club/50 to-transparent"
+        className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-club via-club/50 to-transparent"
       />
       {/* Barely-visible dot-grid texture overlay (matches the auth-screen
           pattern but at opacity 0.05 for an even quieter feel). */}
@@ -1137,7 +1136,7 @@ function HeroPanel({
             "radial-gradient(circle, currentColor 1px, transparent 1px)",
           backgroundSize: "20px 20px",
           color: "var(--foreground)",
-          opacity: 0.05,
+          opacity: 0.04,
         }}
       />
       {/* Accent edge — subtle vertical bar pinned to the left edge, curved top/bottom. */}
@@ -1151,7 +1150,7 @@ function HeroPanel({
           {/* Larger logo / initials tile (was h-10 w-10 rounded-lg, now
               h-12 w-12 rounded-xl for more visual presence in the bento
               hero). */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-club text-club-foreground text-sm font-bold shrink-0 overflow-hidden">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-club text-club-foreground text-sm font-bold shrink-0 overflow-hidden shadow-card-hover">
             {logoUrl ? (
               <img
                 src={logoUrl}
@@ -1179,7 +1178,9 @@ function HeroPanel({
       </div>
 
       {/* Personal progress element — inline hours summary with either a thin
-          Progress bar (when a goal is set) or a tiny sparkline (no goal). */}
+          Progress bar (when a goal is set) or a tiny sparkline (no goal).
+          The hero hours number uses the display face + tightened letter-
+          spacing so it reads as the single "memorable" stat on the page. */}
       <div className="relative mt-5 pt-4 border-t border-border/60">
         <div className="flex items-baseline justify-between mb-2 gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -1187,7 +1188,13 @@ function HeroPanel({
             <span className="text-body-medium truncate">Your hours</span>
           </div>
           <div className="flex items-baseline gap-1.5 shrink-0">
-            <span className="text-xl font-bold tabular-nums">
+            <span
+              className="text-2xl sm:text-3xl font-bold tabular-nums"
+              style={{
+                fontFamily: "var(--font-display)",
+                letterSpacing: "-0.03em",
+              }}
+            >
               {fmtHours(approvedHours)}h
             </span>
             {hoursGoal > 0 && (
@@ -1230,8 +1237,8 @@ function ProgressRingTile({
       type={onViewHours ? "button" : undefined}
       onClick={onViewHours}
       className={cn(
-        "border border-club/20 bg-club-subtle rounded-xl p-6 text-left flex flex-col transition-[color,background-color,border-color,transform,box-shadow] duration-200 lg:col-span-5",
-        onViewHours && "hover:border-club/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        "border border-club/20 bg-club-subtle rounded-xl p-6 text-left flex flex-col shadow-card transition-[box-shadow,border-color,transform] duration-200 lg:col-span-5",
+        onViewHours && "hover:shadow-card-hover hover:border-club/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       )}
     >
       <div className="flex items-center justify-between mb-4">
@@ -1323,10 +1330,10 @@ function AttentionCard({
       onClick={onClick}
       style={delay ? { animationDelay: `${delay}ms`, animationFillMode: "backwards" } : undefined}
       className={cn(
-        "border border-border bg-card rounded-xl p-4 text-left border-l-2 border-l-club transition-[color,background-color,border-color,transform,box-shadow] duration-200",
+        "border border-border/80 border-l-2 bg-card rounded-xl p-4 text-left shadow-card transition-[box-shadow,border-color,background-color] duration-200",
+        urgent ? "border-l-danger" : "border-l-club",
         onClick &&
-          "hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        urgent && "border-l-red-500"
+          "hover:shadow-card-hover hover:border-club/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       )}
     >
       <div className="flex items-start gap-3">

@@ -62,6 +62,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
       id: t.id,
       name: t.name,
       description: t.description,
+      mainIdea: t.mainIdea,
       createdAt: t.createdAt,
       members: t.members.map((m) => ({
         id: m.id,

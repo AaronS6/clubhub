@@ -56,6 +56,8 @@ model User {
   badgesAwarded    MemberBadge[] @relation("BadgeAwarder")
   receivedBadges   MemberBadge[]
   createdTransactions ClubTransaction[]
+  notes             ClubNote[]
+  noteHearts        NoteHeart[]
 }
 
 model Session {
@@ -88,6 +90,8 @@ model Club {
   clubCode         String   @unique // 6-char human-friendly code
   clubPasswordEnc  String   // AES-256-GCM encrypted join password (reversible for exec display)
   hoursGoal        Float    @default(0) // optional per-club hours goal
+  // Exec-set "what the club is working on right now". API-enforced max 280 chars.
+  mainGoal         String?
   createdBy         String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -105,6 +109,8 @@ model Club {
   badges          Badge[]
   memberBadges    MemberBadge[]
   transactions    ClubTransaction[]
+  notes           ClubNote[]
+  noteTags        NoteTag[]
 }
 
 model ClubMember {
@@ -223,6 +229,9 @@ model Team {
   clubId      String
   name        String
   description String?
+  // Exec-set team "main idea" — what this team is contributing to the club main goal.
+  // API-enforced max 280 chars.
+  mainIdea    String?
   createdAt   DateTime @default(now())
 
   club     Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
@@ -500,4 +509,77 @@ model ClubTransaction {
   creator   User?      @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([clubId, date])
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Notes — member-authored markdown notes (storage-constrained, no images).
+//   title:       optional, API max 120 chars
+//   content:     markdown body, API max 5000 chars
+//   isPrivate:   if true, only author + sharedWith user IDs can see it
+//   sharedWith:  JSON array of userIds; null/empty = treated as private-with-no-shares
+//   deletedAt:   soft-delete timestamp; non-null = invisible everywhere
+//   Caps (API-enforced, per club): 500 notes, 50 tags
+//
+// Design note: schema stays SQLite-portable (no @db.* native types). The
+// length caps above are enforced at the API layer. Production Postgres
+// deployment uses the same schema (provider flips via Dockerfile sed).
+// ───────────────────────────────────────────────────────────────────────────
+model ClubNote {
+  id          String   @id @default(cuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title       String?  // API max 120 chars (no @db type — SQLite-portable)
+  content     String   // API max 5000 chars
+  isPrivate   Boolean  @default(false)
+  // JSON array of userIds; null/empty when public. Resolved at read time.
+  sharedWith  Json?
+  hearts      NoteHeart[]
+  tags        NoteTagAssignment[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([clubId, deletedAt, createdAt])
+  @@index([authorId])
+}
+
+model NoteTag {
+  id          String   @id @default(cuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name        String   // API max 40 chars (no @db type — SQLite-portable)
+  color       String?  // hex color, optional, API max 7 chars
+  // Plain createdBy userId (no relation back to User — we don't navigate by
+  // creator anywhere, and the simpler shape avoids another back-relation).
+  createdBy   String
+  createdAt   DateTime @default(now())
+  assignments NoteTagAssignment[]
+
+  @@unique([clubId, name])
+  @@index([clubId])
+}
+
+model NoteTagAssignment {
+  noteId      String
+  note        ClubNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tagId       String
+  tag         NoteTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime @default(now())
+
+  @@id([noteId, tagId])
+  @@index([tagId])
+}
+
+model NoteHeart {
+  id        String   @id @default(cuid())
+  noteId    String
+  note      ClubNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([noteId, userId])
+  @@index([noteId])
 }

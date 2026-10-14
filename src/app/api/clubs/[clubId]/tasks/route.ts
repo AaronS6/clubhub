@@ -47,10 +47,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
   // Convenience: also return club's teams and members for the filters,
   // so the frontend doesn't have to make extra round-trips. Bounded — these
   // are filter dropdowns, so 200 is plenty.
-  const [teams, members] = await Promise.all([
+  const [teams, members, club] = await Promise.all([
     db.team.findMany({
       where: { clubId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, mainIdea: true },
       orderBy: { name: "asc" },
       take: 200,
     }),
@@ -62,6 +62,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
       orderBy: { user: { name: "asc" } },
       take: 500,
     }),
+    db.club.findUnique({ where: { id: clubId }, select: { mainGoal: true } }),
   ])
 
   return json({
@@ -91,6 +92,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
     })),
     teams,
     members: members.map((m) => m.user),
+    mainGoal: club?.mainGoal ?? null,
     myUserId: c.user.id,
     myRole: c.membership.role,
   })

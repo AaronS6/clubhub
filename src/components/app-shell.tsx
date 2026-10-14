@@ -48,7 +48,7 @@ import {
   ScrollText, Wallet, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, RefreshCw,
-  Upload, Trash2, Palette,
+  Upload, Trash2, Palette, NotebookPen,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -121,6 +121,7 @@ const NAV_TIERS: NavTier[] = [
     label: "Work",
     items: [
       { view: "tasks", label: "Tasks", icon: CheckSquare },
+      { view: "notes", label: "Notes", icon: NotebookPen },
       { view: "meetings", label: "Meetings", icon: CalendarDays },
       { view: "hours", label: "Service Hours", icon: Clock },
     ],
@@ -367,7 +368,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (items.length === 0) return null
         return (
           <div key={tier.id} className="space-y-0.5">
-            <div className="px-3 pt-1 pb-0.5 text-xs font-medium text-muted-foreground/70">
+            <div className="px-3 pt-1 pb-0.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground/60">
               {tier.label}
             </div>
             {items.map((item) => {
@@ -378,16 +379,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group flex items-center gap-2.5 rounded-md w-full h-9 px-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "group relative flex items-center gap-2.5 rounded-lg w-full h-9 px-2.5 text-left text-sm font-medium transition-[background-color,color,box-shadow] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                     active
-                      ? "bg-club-subtle text-club-ink"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      ? "bg-club-subtle text-club-ink shadow-card"
+                      : "text-muted-foreground hover:bg-accent/70 hover:text-foreground"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
+                  {/* Active accent strip — a subtle 2px vertical bar on the
+                      left edge, flush against the icon. Reads as "this is the
+                      current surface" without competing with the icon. */}
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club"
+                    />
+                  )}
                   <div className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-md shrink-0 transition-colors",
-                    active ? "bg-club/15 text-club-ink" : "bg-muted/60 text-muted-foreground/80 group-hover:bg-accent group-hover:text-foreground"
+                    active
+                      ? "bg-club/15 text-club-ink"
+                      : "bg-muted/50 text-muted-foreground/80 group-hover:bg-accent group-hover:text-foreground"
                   )}>
                     <Icon className="h-4 w-4" />
                   </div>
@@ -417,13 +429,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //   RIGHT:  connection dot, notification bell, profile avatar
   // The club switcher + theme toggle live in the sidebar (top + bottom).
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b bg-background/80 backdrop-blur-md shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/80 bg-background/80 backdrop-blur-md shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
           The wordmark competed with the club switcher in the sidebar.
           Mobile nav is via the bottom tab bar's "More" button — no hamburger
           in the top bar (it was redundant). */}
       <div className="hidden md:flex items-center shrink-0 min-w-0">
-        <h1 className="text-page-title truncate" style={{ fontSize: "1.25rem", lineHeight: "1.75rem" }}>{pageTitle}</h1>
+        <h1 className="truncate font-semibold" style={{ fontFamily: "var(--font-display)", fontSize: "1.125rem", lineHeight: "1.5rem", letterSpacing: "-0.018em" }}>{pageTitle}</h1>
       </div>
 
       {/* Search (center, desktop) — bordered trigger styled to match a real
@@ -434,18 +446,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         type="button"
         onClick={() => openGlobalSearch()}
         disabled={!currentClubId}
-        className="hidden md:flex group items-center gap-2.5 h-9 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
+        className="hidden md:flex group items-center gap-2.5 h-9 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
         aria-label="Open search"
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left truncate">Search this club…</span>
-        <kbd className="inline-flex items-center gap-0.5 rounded border bg-background px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+        <kbd className="inline-flex items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground">
           <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
       {/* Mobile: page title fills the gap (replaces the club name) */}
-      <div className="md:hidden font-semibold truncate flex-1 px-1 min-w-0">
+      <div className="md:hidden font-semibold truncate flex-1 px-1 min-w-0" style={{ letterSpacing: "-0.01em" }}>
         {pageTitle}
       </div>
 
@@ -484,15 +496,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             the top bar, 16px radius (rounded-2xl), 1px border. Club-switcher
             card pinned at the top, nav in the scrollable middle, theme toggle
             at the bottom. */}
-        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border bg-card overflow-hidden shrink-0">
+        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border/80 bg-card overflow-hidden shrink-0 shadow-card">
           {/* Club switcher — bordered card at the top: accent logo, name,
               role, chevron. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
           {/* Theme toggle pinned to the BOTTOM of the sidebar */}
-          <div className="p-2 shrink-0 border-t border-border">
-            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={toggleTheme}>
+          <div className="p-2 shrink-0 border-t border-border/80">
+            <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="ml-2">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
             </Button>
@@ -634,7 +646,7 @@ function MobileTabBar() {
   return (
     <>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border bg-background/80 backdrop-blur-md"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/85 backdrop-blur-md"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Mobile primary"
       >
@@ -646,11 +658,21 @@ function MobileTabBar() {
               key={t.view}
               onClick={() => setView(t.view)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-colors",
-                active ? "text-club-ink" : "text-muted-foreground"
+                "relative flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-colors",
+                active ? "text-club-ink" : "text-muted-foreground hover:text-foreground"
               )}
               aria-current={active ? "page" : undefined}
             >
+              {/* Active indicator — a 2px pill above the icon, animated in
+                  and out via transition-all so it slides as the user
+                  switches tabs. Sits flush against the top edge. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute top-0 h-0.5 rounded-full bg-club transition-all duration-200 ease-out",
+                  active ? "w-7 opacity-100" : "w-0 opacity-0"
+                )}
+              />
               <Icon className={cn("h-5 w-5 transition-transform", active && "text-club-ink scale-110")} />
               <span>{t.label}</span>
               {t.view === "announcements" && hasUnreadAnnouncements && !active && (
@@ -663,14 +685,14 @@ function MobileTabBar() {
         <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
           <SheetTrigger asChild>
             <button
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground"
+              className="flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               aria-label="More"
             >
               <Menu className="h-5 w-5" />
               <span>More</span>
             </button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="rounded-t-xl p-0 flex flex-col max-h-[80dvh]">
+          <SheetContent side="bottom" className="rounded-t-xl p-0 flex flex-col max-h-[80dvh] shadow-dialog">
             <SwipeDownToClose onClose={() => setMobileNavOpen(false)} />
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />

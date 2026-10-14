@@ -174,7 +174,7 @@ function BalanceHero({ balance, revenue, expense, mRev, mExp }: { balance: numbe
       <div className="relative">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Club Balance</p>
         <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-[3.5rem] sm:text-[4rem] font-bold leading-none tabular-nums" style={{ fontFamily: "var(--font-display)", color: isPositive ? "var(--club-ink)" : "var(--danger-foreground)" }}>
+          <span className="text-[2.5rem] sm:text-[4rem] font-bold leading-none tabular-nums break-all" style={{ fontFamily: "var(--font-display)", color: isPositive ? "var(--club-ink)" : "var(--danger-foreground)" }}>
             {balance < 0 ? "-" : ""}${fmtMoney(Math.abs(animated))}
           </span>
         </div>

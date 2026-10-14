@@ -327,7 +327,12 @@ function ChatPane({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] md:h-[calc(100vh-5rem)]">
+    // Mobile: dynamic viewport height (dvh) instead of vh so the chat panel
+    // shrinks correctly when the soft keyboard opens or the mobile browser's
+    // URL bar is visible. With 100vh, the input ended up buried under the
+    // keyboard. Desktop uses dvh too — same math, no behavioral change
+    // because desktop browsers don't hide the URL bar.
+    <div className="h-[calc(100dvh-7rem)] md:h-[calc(100dvh-5rem)]">
       <div className="flex h-full gap-0 md:gap-3">
         {/* Conversation list — floating panel on desktop */}
         <aside

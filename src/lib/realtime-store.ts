@@ -46,6 +46,7 @@ export type RemoteChangeType =
   | "announcement"
   | "hours"
   | "chat"
+  | "note"
 
 interface RemoteChangeEntry {
   /** Monotonic id for React keys. */
