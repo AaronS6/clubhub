@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api, apiUpload } from "@/lib/api/client"
@@ -2102,8 +2102,23 @@ function LeaveClubDialog({
   const setClubs = useAppStore((s) => s.setClubs)
   const clubs = useAppStore((s) => s.clubs)
   const [loading, setLoading] = useState(false)
+  // Type-to-confirm: user must type exactly "LEAVE" (case-insensitive) before
+  // the destructive action is enabled. Prevents accidental clicks on a
+  // one-way action that deletes all access.
+  const [confirmText, setConfirmText] = useState("")
+  const CONFIRMATION_WORD = "LEAVE"
+  const isConfirmed = confirmText.trim().toUpperCase() === CONFIRMATION_WORD
+
+  // Reset the input when the dialog closes so a re-open starts fresh.
+  useEffect(() => {
+    if (!open) {
+      const t = setTimeout(() => setConfirmText(""), 200)
+      return () => clearTimeout(t)
+    }
+  }, [open])
 
   async function leave() {
+    if (!isConfirmed) return
     setLoading(true)
     try {
       await api(`/api/clubs/${clubId}/leave`, { method: "POST" })
@@ -2128,6 +2143,31 @@ function LeaveClubDialog({
             promote another member first. You can rejoin later with the club code and password.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        <div className="space-y-2 py-2">
+          <label htmlFor="leave-confirm" className="text-sm font-medium text-foreground">
+            Type <span className="font-mono font-bold tracking-wider text-destructive">{CONFIRMATION_WORD}</span> to confirm
+          </label>
+          <Input
+            id="leave-confirm"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={CONFIRMATION_WORD}
+            disabled={loading}
+            className="font-mono tracking-wider"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isConfirmed && !loading) {
+                e.preventDefault()
+                leave()
+              }
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            This action is permanent — your membership, tasks, and access are removed instantly.
+          </p>
+        </div>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
@@ -2136,7 +2176,7 @@ function LeaveClubDialog({
               e.preventDefault()
               leave()
             }}
-            disabled={loading}
+            disabled={loading || !isConfirmed}
           >
             {loading ? "Leaving…" : "Leave club"}
           </AlertDialogAction>
