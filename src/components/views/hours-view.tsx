@@ -246,20 +246,9 @@ export function HoursView() {
   }
 
   const data = hoursQuery.data
-  // Derive pending hours client-side. The API's `totals.approvedHours` only
-  // sums APPROVED rows, so a freshly-submitted (pending) entry shows as "0
-  // approved" — which previously made the summary card read "0h" beside the
-  // just-submitted hours. We surface pending as a sub-line + a dual-tone
-  // progress bar (approved + pending) so the user's submission is visible.
   const approvedHours = data?.totals.approvedHours ?? 0
-  const pendingHours = data?.items
-    ? data.items.filter((it) => it.status === "pending").reduce((s, it) => s + it.hours, 0)
-    : 0
   const goal = data?.clubHoursGoal ?? 0
-  // Progress combines approved + pending so the bar reflects submissions,
-  // not just approved ones. Cap at 100 for the bar width.
-  const progressPct = goal > 0 ? Math.min(100, Math.round(((approvedHours + pendingHours) / goal) * 100)) : 0
-  const approvedPct = goal > 0 ? Math.min(100, Math.round((approvedHours / goal) * 100)) : 0
+  const progressPct = goal > 0 ? Math.min(100, Math.round((approvedHours / goal) * 100)) : 0
 
   return (
     <div className="space-y-6">
@@ -292,16 +281,6 @@ export function HoursView() {
               <div className="text-3xl font-semibold tracking-tight">
                 {hoursQuery.isLoading ? <Skeleton className="h-9 w-20" /> : approvedHours}
               </div>
-              {/* Pending sub-line — only render when there are pending hours.
-                  Previously, a freshly-submitted entry showed "0" approved
-                  beside the user's submission; this surfaces the pending
-                  amount so the user sees their hours immediately. */}
-              {!hoursQuery.isLoading && pendingHours > 0 && (
-                <div className="text-caption-medium text-muted-foreground mt-0.5">
-                  <span className="text-warning-foreground font-medium">+{pendingHours}h</span>{" "}
-                  pending approval
-                </div>
-              )}
             </div>
           </div>
           {goal > 0 && (
@@ -310,19 +289,7 @@ export function HoursView() {
                 <span className="text-muted-foreground">Goal: {goal}h</span>
                 <span className="font-medium">{progressPct}%</span>
               </div>
-              {/* Dual-tone progress bar: approved (solid) + pending (muted).
-                  The pending segment overlaps the approved segment so the bar
-                  grows as the user submits, not only when approved. */}
-              <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-club transition-[width] duration-300"
-                  style={{ width: `${approvedPct}%` }}
-                />
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-club-muted transition-[width] duration-300"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
+              <Progress value={progressPct} className="h-2.5" />
             </div>
           )}
         </div>
@@ -422,6 +389,7 @@ export function HoursView() {
                           canDelete={isExec || it.status === "pending"}
                           onDelete={() => deleteMutation.mutate(it.id)}
                           deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                          goal={data?.clubHoursGoal ?? 0}
                         />
                       ))}
                     </TableBody>
@@ -489,6 +457,7 @@ export function HoursView() {
                                 canDelete={isExec || it.status === "pending"}
                                 onDelete={() => deleteMutation.mutate(it.id)}
                                 deleting={deleteMutation.isPending && deleteMutation.variables === it.id}
+                                goal={data?.clubHoursGoal ?? 0}
                               />
                             ))}
                           </TableBody>
@@ -533,17 +502,35 @@ function HoursRow({
   canDelete,
   onDelete,
   deleting,
+  goal,
 }: {
   item: HoursItem
   canDelete: boolean
   onDelete: () => void
   deleting: boolean
+  /** Monthly club hours goal — powers the inline progress bar in the Hours cell.
+      0/undefined = no bar (spec: "If no goal, skip the bar"). Purely visual. */
+  goal?: number
 }) {
+  const pct = goal && goal > 0 ? Math.min(100, Math.round((item.hours / goal) * 100)) : 0
   return (
     <TableRow className="hover:bg-muted/30 transition-colors">
       <TableCell className="text-xs text-muted-foreground">{fmtDate(item.dateOfService)}</TableCell>
       <TableCell>
-        <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold tabular-nums">{item.hours}</span>
+          {goal && goal > 0 && pct > 0 && (
+            <span
+              className="h-1 w-16 shrink-0 rounded-full bg-muted overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="block h-full rounded-full bg-club"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell className="max-w-xs">
         <div className="line-clamp-2 text-sm">{item.reasonText}</div>

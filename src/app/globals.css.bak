@@ -1,0 +1,399 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =========================================================================
+   ClubHub Design System — see DESIGN.md
+   Restraint over decoration. 1px borders, not shadows. Sentence case.
+   The member's hours number + the club accent carry the personality.
+   ========================================================================= */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Per-club accent — set dynamically by ClubAccentProvider.
+     --club-ink is the accent darkened for readable TEXT on surfaces. */
+  --color-club: var(--club-accent, #0B8A5F);
+  --color-club-foreground: var(--club-accent-foreground, #ffffff);
+  --color-club-ink: var(--club-ink, #0B8A5F);
+  --color-club-muted: var(--club-accent-muted, rgba(11, 138, 95, 0.12));
+  --color-club-subtle: var(--club-accent-subtle, rgba(11, 138, 95, 0.08));
+
+  /* Semantic status — soft tinted backgrounds + readable foreground text.
+     Success is deliberately NOT the club accent (which varies per club). */
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-subtle: var(--info-subtle);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+
+  /* Legacy status aliases (map to the new semantic tokens so existing
+     chip-* classes keep working until the views are rebuilt in later phases). */
+  --color-status-pending: var(--warning-subtle);
+  --color-status-pending-fg: var(--warning-foreground);
+  --color-status-approved: var(--success-subtle);
+  --color-status-approved-fg: var(--success-foreground);
+  --color-status-rejected: var(--danger-subtle);
+  --color-status-rejected-fg: var(--danger-foreground);
+  --color-status-progress: var(--info-subtle);
+  --color-status-progress-fg: var(--info-foreground);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.5rem; /* 8px — drives rounded-md. Cards/dialogs use rounded-xl (12px). */
+
+  /* Neutral scale */
+  --background: #F5F6F8;   /* canvas */
+  --foreground: #12161C;   /* ink */
+  --card: #FFFFFF;         /* surface */
+  --card-foreground: #12161C;
+  --popover: #FFFFFF;
+  --popover-foreground: #12161C;
+
+  --primary: #0B8A5F;       /* default club accent (overridden per-club) */
+  --primary-foreground: #ffffff;
+  --secondary: #EEF0F3;    /* subtle fill */
+  --secondary-foreground: #12161C;
+  --muted: #EEF0F3;        /* subtle fill */
+  --muted-foreground: #5B6470; /* muted ink */
+  --accent: #EEF0F3;
+  --accent-foreground: #12161C;
+  --destructive: #C2362E;
+  --destructive-foreground: #ffffff;
+  --border: #E3E6EB;       /* line */
+  --input: #E3E6EB;
+  --ring: #0B8A5F;
+
+  /* Default club accent (overridden at runtime) */
+  --club-accent: #0B8A5F;
+  --club-accent-foreground: #ffffff;
+  --club-ink: #0B8A5F;     /* darkened-for-text version; for the default green this is itself */
+  --club-accent-muted: rgba(11, 138, 95, 0.12);
+  --club-accent-subtle: rgba(11, 138, 95, 0.07);
+
+  /* Semantic status — tinted background + readable foreground */
+  --danger: #C2362E;
+  --danger-foreground: #9E2A23;
+  --danger-subtle: #FBE9E7;
+  --warning: #B26A00;
+  --warning-foreground: #8A5200;
+  --warning-subtle: #FBEEE0;
+  --info: #2563A8;
+  --info-foreground: #1C4F87;
+  --info-subtle: #E6EEF7;
+  --success: #1F7A4D;
+  --success-foreground: #166039;
+  --success-subtle: #E4F3EC;
+
+  --chart-1: #0B8A5F;
+  --chart-2: #2563A8;
+  --chart-3: #B26A00;
+  --chart-4: #7C3AED;
+  --chart-5: #C2362E;
+
+  --sidebar: #FFFFFF;       /* surface */
+  --sidebar-foreground: #12161C;
+  --sidebar-primary: #0B8A5F;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #EEF0F3;
+  --sidebar-accent-foreground: #12161C;
+  --sidebar-border: #E3E6EB;
+  --sidebar-ring: #0B8A5F;
+}
+
+.dark {
+  --background: #0F1216;    /* canvas */
+  --foreground: #ECEEF1;   /* ink */
+  --card: #171B21;         /* surface */
+  --card-foreground: #ECEEF1;
+  --popover: #171B21;
+  --popover-foreground: #ECEEF1;
+
+  --primary: #0B8A5F;
+  --primary-foreground: #ffffff;
+  --secondary: #1F242C;    /* subtle fill */
+  --secondary-foreground: #ECEEF1;
+  --muted: #1F242C;
+  --muted-foreground: #98A1AE; /* muted ink */
+  --accent: #1F242C;
+  --accent-foreground: #ECEEF1;
+  --destructive: #E0554A;
+  --destructive-foreground: #F4B8B2;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #0B8A5F;
+
+  --club-accent: #0B8A5F;
+  --club-accent-foreground: #ffffff;
+  --club-ink: #2BB67E;
+  --club-accent-muted: rgba(11, 138, 95, 0.18);
+  --club-accent-subtle: rgba(11, 138, 95, 0.12);
+
+  --danger: #E0554A;
+  --danger-foreground: #F4B8B2;
+  --danger-subtle: rgba(224, 85, 74, 0.16);
+  --warning: #D4892E;
+  --warning-foreground: #F0C896;
+  --warning-subtle: rgba(212, 137, 46, 0.16);
+  --info: #5B9BD5;
+  --info-foreground: #B4D2EE;
+  --info-subtle: rgba(91, 155, 213, 0.16);
+  --success: #3CB377;
+  --success-foreground: #A8E0C2;
+  --success-subtle: rgba(60, 179, 119, 0.16);
+
+  --chart-1: #2BB67E;
+  --chart-2: #5B9BD5;
+  --chart-3: #D4892E;
+  --chart-4: #A78BFA;
+  --chart-5: #E0554A;
+
+  --sidebar: #171B21;
+  --sidebar-foreground: #ECEEF1;
+  --sidebar-primary: #2BB67E;
+  --sidebar-primary-foreground: #0F1216;
+  --sidebar-accent: #1F242C;
+  --sidebar-accent-foreground: #ECEEF1;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #2BB67E;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/40;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    text-rendering: optimizeLegibility;
+  }
+  /* One consistent focus ring: 2px at full opacity, 2px offset. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  /* Tabular numbers for counts/tables — keeps layouts stable */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Respect reduced motion: disable all non-essential animation. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Type scale — 12 / 14 / 16 / 20 / 28 / 44. Body is 14px @ 1.5 line height.
+     Display face (Bricolage) only for page titles + numerals. */
+  .text-page-title {
+    font-family: var(--font-display);
+    font-size: 1.75rem;   /* 28px */
+    line-height: 2.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .text-section-title {
+    font-size: 1.25rem;   /* 20px */
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .text-card-title {
+    font-size: 1rem;      /* 16px */
+    line-height: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .text-body {
+    font-size: 0.875rem;  /* 14px */
+    line-height: 1.5rem;
+    font-weight: 400;
+  }
+  .text-body-medium {
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+    font-weight: 500;
+  }
+  .text-caption {
+    font-size: 0.75rem;   /* 12px */
+    line-height: 1rem;
+    font-weight: 400;
+    color: var(--muted-foreground);
+  }
+  .text-caption-medium {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  /* The big numeral — display face, 44px, tabular-nums. Used for the hours
+     hero and any large stat that should feel like the "memorable" number. */
+  .text-numeral {
+    font-family: var(--font-display);
+    font-size: 2.75rem;   /* 44px */
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Status chips — soft tinted background (not saturated fills),
+     12px medium text. See DESIGN.md. */
+  .chip-pending   { background: var(--warning-subtle);  color: var(--warning-foreground); }
+  .chip-approved  { background: var(--success-subtle);  color: var(--success-foreground); }
+  .chip-rejected  { background: var(--danger-subtle);   color: var(--danger-foreground); }
+  .chip-progress  { background: var(--info-subtle);     color: var(--info-foreground); }
+  .chip-neutral   { background: var(--muted);           color: var(--muted-foreground); }
+
+  /* Card — 1px border, no shadow. Shadows appear only on popovers/dialogs/drag. */
+  .card-quiet {
+    @apply border border-border bg-card rounded-xl;
+  }
+
+  /* Fade-in for newly loaded content (still used by views pending rebuild —
+     removed globally in Phase 7 once all views drop it). */
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in {
+    animation: fade-in 200ms ease-out;
+  }
+
+  /* Gentle float — still used by the auth screen until Phase 6 rebuilds it. */
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-20px); }
+  }
+
+  /* Confetti popup — used when a member earns a new badge. */
+  @keyframes badge-confetti-fall {
+    0%   { transform: translate3d(0, -10px, 0) rotate(0deg); opacity: 1; }
+    80%  { opacity: 1; }
+    100% { transform: translate3d(var(--confetti-x, 0), 320px, 0) rotate(720deg); opacity: 0; }
+  }
+  .badge-confetti-piece {
+    position: absolute;
+    top: 0;
+    width: 8px;
+    height: 14px;
+    border-radius: 2px;
+    will-change: transform, opacity;
+    animation: badge-confetti-fall 2.4s ease-in forwards;
+  }
+  @keyframes badge-pop-in {
+    0%   { transform: scale(0.85); opacity: 0; }
+    60%  { transform: scale(1.02); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .animate-badge-pop {
+    animation: badge-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Dialog entrance — only for centered modals that don't use animate-in. */
+  @keyframes dialog-scale-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+}
+
+[role="dialog"]:not(.animate-in):not([data-slot="sheet-content"]) {
+  animation: dialog-scale-in 150ms ease-out;
+}
+
+/* Thin, unobtrusive scrollbars (Notion/Linear style) */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+}
+
+/* ═══ Motion system — CSS variables ════════════════════════════════════════
+   Durations and easing used everywhere. Under prefers-reduced-motion,
+   everything is instant (already handled above). */
+@layer base {
+  :root {
+    --motion-fast: 120ms;
+    --motion-normal: 180ms;
+    --motion-slow: 240ms;
+    --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --motion-ease-out: ease-out;
+  }
+}
+
+/* ═══ Performance utilities ═══════════════════════════════════════════════
+   content-visibility: auto skips rendering off-screen content, dramatically
+   improving scroll perf on long lists (chat messages, activity log, members,
+   transactions). contain-intrinsic-size reserves space so there's no CLS. */
+@layer utilities {
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+  }
+}

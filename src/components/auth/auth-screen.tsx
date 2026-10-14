@@ -86,35 +86,19 @@ function AuthScreenInner() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    // Use redirect: true with callbackUrl: "/" so NextAuth performs the
-    // redirect itself. With redirect: false, the in-memory SessionProvider
-    // state can desync from the freshly-set cookie after a manual
-    // reload()/assign(), leaving the app stuck on the "loading" spinner
-    // (especially on a sign-out → sign-in cycle where the provider's cached
-    // "unauthenticated" state conflicts with the new session). Letting
-    // NextAuth handle the redirect gives a clean "loading → authenticated"
-    // transition on the destination page.
     const res = await signIn("credentials", {
       email: loginEmail,
       password: loginPassword,
       redirect: false,
     })
+    setLoading(false)
     if (res?.error) {
-      setLoading(false)
       toast.error("Invalid email or password")
       return
     }
     writeHasAccount()
-    // Don't toast here — the full navigation below will unmount this
-    // component before the toast can render. The destination page shows the
-    // signed-in state implicitly.
-    // Hard navigate to "/" with a cache-busting query param. This forces a
-    // full page load (new React tree, fresh SessionProvider) which is the
-    // most reliable way to clear any desynced session state. 400ms lets the
-    // Set-Cookie header from the signIn response settle.
-    setTimeout(() => {
-      window.location.href = "/?fresh=" + Date.now()
-    }, 400)
+    toast.success("Welcome back!")
+    setTimeout(() => window.location.reload(), 200)
   }
 
   async function handleSignup(e: React.FormEvent) {
@@ -132,10 +116,8 @@ function AuthScreenInner() {
       })
       if (res?.error) throw new Error("Login failed after signup")
       writeHasAccount()
-      // See handleLogin for why we hard-navigate with a cache-busting query.
-      setTimeout(() => {
-        window.location.href = "/?fresh=" + Date.now()
-      }, 400)
+      toast.success("Account created! Welcome to ClubHub.")
+      setTimeout(() => window.location.reload(), 200)
     } catch (err: any) {
       toast.error(err.message || "Signup failed")
       setLoading(false)
@@ -143,7 +125,7 @@ function AuthScreenInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-transparent text-[#1a1815] dark:text-[#f0ebe0] relative z-10">
+    <div className="min-h-screen flex flex-col bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
       {/* ── Header (in-flow at top — never overlaps anything) ─────────────── */}
       <header className="flex items-center px-5 sm:px-8 py-5 shrink-0">
         <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
@@ -479,7 +461,7 @@ function ResetPasswordScreen({
     "h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-transparent text-[#1a1815] dark:text-[#f0ebe0] z-10">
+    <div className="relative min-h-screen overflow-hidden bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
       {/* Wordmark */}
       <header className="absolute top-0 left-0 z-10 p-6 sm:p-8 flex items-center">
         <span className="text-xl font-extrabold tracking-tight">ClubHub</span>

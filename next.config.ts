@@ -2,23 +2,36 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // The Docker build environment (node:20-slim + bun via npm + --frozen-lockfile)
-  // can resolve slightly newer patch versions of TypeScript / Prisma than local
-  // dev, which has stricter type inference for Promise.all destructuring of
-  // Prisma queries. This caused repeated build failures (Map.get() returning
-  // `{}`, groupBy `._sum.hours` type widening, etc.) that don't reproduce
-  // locally. Rather than chase every inference edge case across TS/Prisma
-  // patch versions, we skip the build-time type check — the code is fully
-  // type-checked in local dev (tsc + eslint both pass), and the runtime
-  // behavior is identical. This matches the pattern used by most production
-  // Next.js deployments that have CI type-checking as a separate step.
+  // Do NOT ignore TypeScript build errors — real type errors should fail the
+  // build, not be silently swallowed. (Previously `ignoreBuildErrors: true`
+  // was set, which hides bugs shipping to users.)
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
-  // NOTE: Next.js 16 removed the `eslint` config key from next.config.ts.
-  // Lint is run via `bun run lint` in local dev instead.
+  // Strict Mode helps catch subtle bugs (double-invoked effects, unexpected
+  // side effects) during development. Previously disabled — re-enabled.
   reactStrictMode: true,
+  // On Vercel ONLY (the VERCEL env var is set to "1" in Vercel's build
+  // environment), redirect every path to the Render deployment. Vercel
+  // serves purely as a redirect proxy / vanity URL — the actual app runs on
+  // Render. Locally and on Render (where VERCEL isn't set), this returns []
+  // so the app serves normally.
+  //
+  // Why next.config redirects() instead of vercel.json `redirects`: Next.js
+  // compiles these into routes-manifest.json, so they fire at the routing
+  // layer BEFORE statically-prerendered routes are served. The vercel.json
+  // form doesn't reliably override prerendered `/` (the root was being
+  // served as static HTML, bypassing the redirect).
+  async redirects() {
+    if (process.env.VERCEL !== "1") return [];
+    return [
+      {
+        source: "/:path*",
+        destination: "https://clubhub-0rir.onrender.com/:path*",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
-

@@ -21,11 +21,6 @@ RUN bun install --frozen-lockfile
 # features, so this swap is safe.
 COPY . .
 RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
-# Regenerate the Prisma client AFTER the provider swap. The `bun install`
-# above ran `postinstall: prisma generate` against the SQLite schema; we need
-# a fresh client targeting PostgreSQL or the build fails with
-# "Cannot find module '.prisma/client/default'" when Next.js collects page data.
-RUN bunx prisma generate
 RUN bun run build
 
 # --- Production image --------------------------------------------------------
