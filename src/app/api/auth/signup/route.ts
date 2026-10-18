@@ -3,6 +3,7 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { hashPassword, isPasswordStrong } from "@/lib/auth"
 import { notify } from "@/lib/activity"
+import { rateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit"
 
 const schema = z.object({
   name: z.string().min(1).max(80),
@@ -10,8 +11,17 @@ const schema = z.object({
   password: z.string().min(8),
 })
 
+// 5 signups per IP per hour — plenty for a human, hopeless for a bot farm
+// filling the DB with junk accounts.
+const SIGNUP_LIMIT = 5
+const SIGNUP_WINDOW = 60 * 60_000
+
 export async function POST(req: Request) {
   try {
+    // Brute-force/spam guard BEFORE any DB work.
+    const rl = rateLimit(`signup:ip:${getClientIp(req)}`, SIGNUP_LIMIT, SIGNUP_WINDOW)
+    if (!rl.ok) return tooManyRequests(rl.retryAfterMs, "Too many signups")
+
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
@@ -43,6 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, userId: user.id })
   } catch (err: any) {
     console.error("[signup] error:", err?.message, err?.code, err?.meta)
-    return NextResponse.json({ error: "Signup failed: " + (err?.message || "Unknown error") }, { status: 500 })
+    // Generic message — never echo internal error text to the client.
+    return NextResponse.json({ error: "Signup failed — please try again" }, { status: 500 })
   }
 }

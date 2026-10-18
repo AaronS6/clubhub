@@ -13,6 +13,7 @@ import {
   UserPlus,
   Bell,
   Award,
+  Sparkles,
 } from "lucide-react"
 
 /**
@@ -131,6 +132,33 @@ const META: Record<string, NotifMeta> = {
     label: "Badge awarded",
     view: "members",
     tone: "badge",
+  },
+  join_request_pending: {
+    icon: UserPlus,
+    label: "Join request",
+    view: "members",
+    tone: "member",
+  },
+  join_request_approved: {
+    icon: CheckCircle2,
+    label: "Request approved",
+    view: "dashboard",
+    tone: "approved",
+  },
+  join_request_rejected: {
+    icon: XCircle,
+    label: "Request declined",
+    view: "dashboard",
+    tone: "rejected",
+  },
+  // Local-only (client-synthesized, never stored in DB): the v7 release
+  // notes notification that lives in the bell after the What's New modal is
+  // closed. Clicking it re-opens the modal instead of navigating.
+  release_notes: {
+    icon: Sparkles,
+    label: "What's new",
+    view: "dashboard",
+    tone: "announcement",
   },
 }
 

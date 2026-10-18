@@ -1,9 +1,9 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { Loader2 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { AppShell } from "@/components/app-shell"
+import { FeedSkeleton } from "@/components/shared/page-header"
 
 // The dashboard is the default landing view, so it stays eagerly imported —
 // its recharts dependency is needed on initial paint anyway.
@@ -26,17 +26,21 @@ import { DashboardView } from "@/components/views/dashboard-view"
 // chunk. The chat view alone is ~2400 LOC + cmdk/emoji helpers, so this is
 // a clear bundle-size win for the initial load.
 //
-// A tiny centered spinner serves as the loading fallback for every view —
-// small enough to not flash on fast connections, visible enough to indicate
-// progress on slow ones.
+// A content-shaped skeleton serves as the loading fallback for every view
+// — matches the app's skeleton language (ghost page title + description +
+// three feed-card ghosts) so the flash reads as "content loading", not
+// "app missing". It renders inside the shell's keyed content wrapper
+// (max-w-7xl + top padding + horizontal padding all come from there), so
+// it aligns exactly with where real content lands. Modest by design: it
+// should flash <400ms on fast connections.
 function ViewLoader() {
   return (
-    <div
-      className="flex h-[60vh] w-full items-center justify-center"
-      role="status"
-      aria-label="Loading view"
-    >
-      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    <div className="space-y-6" role="status" aria-label="Loading view">
+      <div className="space-y-2">
+        <div className="h-7 w-44 rounded-md bg-muted animate-pulse" />
+        <div className="h-4 w-64 rounded bg-muted animate-pulse" />
+      </div>
+      <FeedSkeleton count={3} />
     </div>
   )
 }

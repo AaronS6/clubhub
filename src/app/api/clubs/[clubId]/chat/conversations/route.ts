@@ -24,7 +24,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
               userId: true,
               lastReadAt: true,
               joinedAt: true,
-              user: { select: { id: true, name: true, avatarUrl: true } },
+              user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
             },
           },
           messages: {
@@ -59,7 +59,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
       })
       const memberCount = conv.members.length
 
-      let otherUser: { id: string; name: string; avatarUrl: string | null } | null = null
+      let otherUser: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null } | null = null
       if (conv.type === "direct") {
         const other = conv.members.find((mm) => mm.userId !== c.user.id)
         if (other) {
@@ -67,6 +67,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
             id: other.user.id,
             name: other.user.name,
             avatarUrl: other.user.avatarUrl ?? null,
+            avatarDecoration: other.user.avatarDecoration ?? "none",
           }
         }
       }
@@ -219,7 +220,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         where: { id: existingId },
         include: {
           members: {
-            select: { userId: true, role: true, user: { select: { id: true, name: true, avatarUrl: true } } },
+            select: { userId: true, role: true, user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } } },
           },
         },
       })
@@ -234,7 +235,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
           myRole: (mine?.role ?? "member") as "owner" | "member",
           memberCount: existing.members.length,
           otherUser: other
-            ? { id: other.user.id, name: other.user.name, avatarUrl: other.user.avatarUrl ?? null }
+            ? { id: other.user.id, name: other.user.name, avatarUrl: other.user.avatarUrl ?? null, avatarDecoration: other.user.avatarDecoration ?? "none" }
             : null,
           createdAt: existing.createdAt,
         },
@@ -254,7 +255,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         },
       },
       include: {
-        members: { select: { userId: true, user: { select: { id: true, name: true, avatarUrl: true } } } },
+        members: { select: { userId: true, user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } } } },
       },
     })
     const other = created.members.find((mm) => mm.userId !== c.user.id)
@@ -289,7 +290,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
           myRole: "member",
           memberCount: created.members.length,
           otherUser: other
-            ? { id: other.user.id, name: other.user.name, avatarUrl: other.user.avatarUrl ?? null }
+            ? { id: other.user.id, name: other.user.name, avatarUrl: other.user.avatarUrl ?? null, avatarDecoration: other.user.avatarDecoration ?? "none" }
             : null,
           createdAt: created.createdAt,
         },
@@ -321,7 +322,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     },
     include: {
       members: {
-        select: { userId: true, role: true, user: { select: { id: true, name: true, avatarUrl: true } } },
+        select: { userId: true, role: true, user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } } },
       },
     },
   })
@@ -351,6 +352,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
           role: m.role,
           name: m.user.name,
           avatarUrl: m.user.avatarUrl ?? null,
+          avatarDecoration: m.user.avatarDecoration ?? "none",
         })),
         createdAt: created.createdAt,
       },

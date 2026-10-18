@@ -284,6 +284,37 @@ If you ever want instant sync (sub-second instead of 5-30s polling), you can add
 
 ---
 
+## Optional: Enable Password-Reset Emails via Resend (5 min)
+
+Password reset is self-service — members enter their email on the login
+screen ("Forgot?"), get a 1-hour single-use reset link, and set a new
+password themselves. No exec involvement.
+
+Without email configured the flow still works in development (the reset link
+is returned directly in the dialog), but **in production emails are
+required** — otherwise nobody can reset a password.
+
+1. Create a free account at **https://resend.com** (3,000 emails/month free)
+2. (Recommended) Verify your domain: Dashboard → Domains → Add Domain, then
+   add the DNS records Resend shows you. With a verified domain you can send
+   to ANY address.
+   - No domain? Use Resend's sandbox sender `onboarding@resend.dev` — but it
+     only delivers to YOUR Resend account's own email address. Fine for
+     testing, not for a real club.
+3. Create an API key: Dashboard → API Keys → Create API Key (Full access)
+4. Add two env vars to your web service / `.env`:
+   - `RESEND_API_KEY` → `re_...` (the key from step 3)
+   - `EMAIL_FROM` → `ClubHub <noreply@yourdomain.com>` (or
+     `ClubHub <onboarding@resend.dev>` while testing)
+5. Redeploy / restart — "Forgot?" now sends a real email with a
+   **Reset password** button
+
+**Verify:** request a reset for your own account and confirm the email
+arrives (check spam on first send). The link expires in 1 hour and works
+once — after a successful reset the token is deleted server-side.
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -306,6 +337,8 @@ If you ever want instant sync (sub-second instead of 5-30s polling), you can add
 | `NEXTAUTH_URL` | `https://your-web-name.onrender.com` |
 | `ADMIN_CLUB_PASSCODE` | `buildtogether12$` |
 | `NODE_ENV` | `production` |
+| `RESEND_API_KEY` | (optional — `re_...` from resend.com; enables password-reset emails) |
+| `EMAIL_FROM` | (optional — `ClubHub <noreply@yourdomain.com>` once your domain is verified) |
 
 ---
 

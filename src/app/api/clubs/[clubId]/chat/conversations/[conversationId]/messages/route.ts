@@ -8,7 +8,7 @@ const PAGE_SIZE = 50
 const RATE_LIMIT_MAX = 30
 const RATE_LIMIT_WINDOW_MS = 60_000
 
-type ReactionUser = { id: string; name: string; avatarUrl: string | null }
+type ReactionUser = { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
 type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
 
 interface RawMessage {
@@ -19,11 +19,11 @@ interface RawMessage {
   deletedAt: Date | null
   pinnedAt: Date | null
   authorId: string
-  author: { id: string; name: string; avatarUrl: string | null }
+  author: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   reactions: {
     emoji: string
     userId: string
-    user: { id: string; name: string; avatarUrl: string | null }
+    user: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   }[]
 }
 
@@ -48,7 +48,7 @@ function serialize(m: RawMessage, myUserId: string) {
   let myReaction: string | null = null
   for (const r of m.reactions) {
     const g = groups[r.emoji]
-    const u: ReactionUser = { id: r.user.id, name: r.user.name, avatarUrl: r.user.avatarUrl ?? null }
+    const u: ReactionUser = { id: r.user.id, name: r.user.name, avatarUrl: r.user.avatarUrl ?? null, avatarDecoration: r.user.avatarDecoration ?? null }
     if (g) {
       g.count += 1
       g.users.push(u)
@@ -69,6 +69,7 @@ function serialize(m: RawMessage, myUserId: string) {
       id: m.author.id,
       name: m.author.name,
       avatarUrl: m.author.avatarUrl ?? null,
+      avatarDecoration: m.author.avatarDecoration ?? "none",
     },
     reactions: Object.values(groups),
     myReaction,
@@ -77,12 +78,12 @@ function serialize(m: RawMessage, myUserId: string) {
 }
 
 const messageIncludes = {
-  author: { select: { id: true, name: true, avatarUrl: true } },
+  author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
   reactions: {
     select: {
       emoji: true,
       userId: true,
-      user: { select: { id: true, name: true, avatarUrl: true } },
+      user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
     },
   },
 } as const

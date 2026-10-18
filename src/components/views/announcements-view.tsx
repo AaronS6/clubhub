@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useLayoutEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react"
 import { useSession } from "next-auth/react"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
@@ -17,6 +17,7 @@ import {
   relativeTime,
 } from "@/components/shared/page-header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DecoratedAvatar } from "@/components/shared/decorated-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -75,12 +76,14 @@ interface AuthorInfo {
   id: string
   name: string
   avatarUrl: string | null
+  avatarDecoration?: string | null
 }
 
 interface ReactionUser {
   id: string
   name: string
   avatarUrl: string | null
+  avatarDecoration?: string | null
 }
 
 interface ReactionSummary {
@@ -190,6 +193,7 @@ export function AnnouncementsView() {
         id: session.user.id,
         name: session.user.name,
         avatarUrl: session.user.image ?? null,
+        avatarDecoration: session.user.avatarDecoration ?? null,
       }
     : undefined
 
@@ -255,7 +259,7 @@ export function AnnouncementsView() {
           margins (contained by the outer flow-root). No negative TOP margin —
           that caused the scroll container to miscalculate content height and
           left scrollable empty space past the last item. */}
-      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/45 backdrop-blur-xl -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Announcements"
           description="Stay up to date with club news, pinned notices, and discussions."
@@ -269,7 +273,7 @@ export function AnnouncementsView() {
         />
       </div>
       {/* Mobile (non-sticky) header — also pulled flush to the top bar. */}
-      <div className="sm:hidden -mx-4 -mt-4 px-4 pt-2 pb-3 border-b border-border/60 bg-background">
+      <div className="sm:hidden -mx-4 -mt-4 px-4 pt-2 pb-3 border-b border-border/60">
         <PageHeader
           title="Announcements"
           description="Stay up to date with club news, pinned notices, and discussions."
@@ -304,10 +308,11 @@ export function AnnouncementsView() {
         />
       ) : (
         <div className="max-w-[720px] mx-auto space-y-4">
-          {items.map((a) => (
+          {items.map((a, index) => (
             <AnnouncementCard
               key={a.id}
               announcement={a}
+              index={index}
               clubId={clubId}
               isExec={isExec}
               currentUserId={currentUserId}
@@ -352,6 +357,7 @@ export function AnnouncementsView() {
 
 function AnnouncementCard({
   announcement,
+  index,
   clubId,
   isExec,
   currentUserId,
@@ -359,6 +365,7 @@ function AnnouncementCard({
   onMutated,
 }: {
   announcement: AnnouncementItem
+  index: number
   clubId: string
   isExec: boolean
   currentUserId?: string
@@ -470,17 +477,20 @@ function AnnouncementCard({
 
   return (
     <div className={cn(
-      "rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
+      "stagger-in rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
       announcement.isPinned && "border-l-4 border-l-amber-400 bg-warning-subtle/30 dark:bg-warning-subtle/10"
-    )}>
+    )}
+      style={{ "--stagger-i": index } as CSSProperties}>
       <div className="p-4 md:p-5 space-y-3">
         {/* Header — avatar + name + relative time + pills in one inline row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <Avatar className="h-10 w-10 shrink-0">
-              <AvatarImage src={announcement.author.avatarUrl ?? undefined} alt={announcement.author.name} />
-              <AvatarFallback>{initials(announcement.author.name)}</AvatarFallback>
-            </Avatar>
+            <DecoratedAvatar
+              decoration={announcement.author.avatarDecoration}
+              src={announcement.author.avatarUrl ?? undefined}
+              name={announcement.author.name}
+              className="h-10 w-10 shrink-0"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold truncate">{announcement.author.name}</span>
@@ -950,10 +960,13 @@ function CommentRow({
   }
   return (
     <li className="flex gap-2 group">
-      <Avatar className="h-8 w-8 mt-0.5 shrink-0">
-        <AvatarImage src={comment.author?.avatarUrl ?? undefined} alt={comment.author?.name} />
-        <AvatarFallback className="text-xs">{initials(comment.author?.name)}</AvatarFallback>
-      </Avatar>
+      <DecoratedAvatar
+        decoration={comment.author?.avatarDecoration}
+        src={comment.author?.avatarUrl ?? undefined}
+        name={comment.author?.name ?? "Unknown"}
+        className="h-8 w-8 mt-0.5 shrink-0"
+        avatarClassName="text-xs"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-caption-medium text-foreground truncate min-w-0">{comment.author?.name ?? "Unknown"}</span>

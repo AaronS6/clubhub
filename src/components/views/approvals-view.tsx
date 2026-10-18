@@ -372,7 +372,12 @@ export function ApprovalsView() {
           Only shown on the Pending tab (bulk-approving reviewed entries doesn't
           make sense). */}
       {tab === "pending" && selectedInScope.size > 0 && (
-        <div className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 backdrop-blur p-2 max-w-full">
+        <div
+          /* PERF: no backdrop-blur — at 95% opacity the blur is visually
+             imperceptible, but the floating bar re-rastered every frame
+             while overlay fades ran above it (choppy mobile sheet opens). */
+          className="sticky bottom-3 z-20 mx-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-background/95 p-2 max-w-full shadow-card"
+        >
           <span className="text-caption-medium text-muted-foreground px-2">
             {selectedInScope.size} selected
           </span>
@@ -428,7 +433,7 @@ export function ApprovalsView() {
           {/* Desktop: table */}
           <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
-              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/85 [&_th]:z-10">
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
@@ -498,7 +503,7 @@ export function ApprovalsView() {
           {/* Reviewed tab — desktop table */}
           <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
             <Table>
-              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/85 [&_th]:z-10">
                 <TableRow>
                   <TableHead className="min-w-[10rem]">Member</TableHead>
                   <TableHead className="min-w-[7rem]">Date</TableHead>

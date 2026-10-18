@@ -56,9 +56,14 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
 
   return (
     <>
+      {/* `ch-bg-idle` — globals.css pauses every animation under this root
+          while a modal overlay (sheet/dialog) is open: the overlay's dark
+          scrim hides the background entirely, so freezing the heavy blurred
+          layers for those few seconds is visually free and removes the
+          per-frame compositing cost that made mobile sheet opens choppy. */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 overflow-hidden"
+        className="ch-bg-idle pointer-events-none fixed inset-0 overflow-hidden"
         style={{
           ["--ambient-opacity" as string]: String(opacity),
           ["--ambient-base" as string]: palette.base,
@@ -126,20 +131,22 @@ function Aurora() {
       `}</style>
       {/* Left column */}
       <div
-        className="ch-aurora-col absolute left-[-10%] top-[-15%] h-[130%] w-[45%] blur-3xl"
+        className="ch-aurora-col absolute left-[-10%] top-[-15%] h-[130%] w-[45%]"
         style={{
           background: `linear-gradient(160deg, transparent 0%, var(--ambient-base) 40%, var(--ambient-c2) 70%, transparent 100%)`,
           animation: "ch-aurora-sway1 32s ease-in-out infinite",
           filter: "blur(60px)",
+          willChange: "transform",
         }}
       />
       {/* Right column */}
       <div
-        className="ch-aurora-col absolute right-[-10%] top-[-10%] h-[120%] w-[40%] blur-3xl"
+        className="ch-aurora-col absolute right-[-10%] top-[-10%] h-[120%] w-[40%]"
         style={{
           background: `linear-gradient(200deg, transparent 0%, var(--ambient-c3) 35%, var(--ambient-base) 65%, transparent 100%)`,
           animation: "ch-aurora-sway2 38s ease-in-out infinite",
           filter: "blur(60px)",
+          willChange: "transform",
         }}
       />
     </div>
@@ -154,33 +161,41 @@ function Blobs() {
   return (
     <div className="absolute inset-0" style={{ opacity: "var(--ambient-opacity)" }}>
       <style>{`
+        /* PERF: keyframes animate ONLY transform + opacity (compositor-only —
+           no style recalc / repaint). The original blobs also morphed
+           border-radius every frame, which forced a re-raster of the huge
+           blurred layers ~40×/s and made the mobile notification/More sheets
+           feel choppy whenever they opened over this background. */
         @keyframes ch-blob-morph1 {
-          0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: translate(0,0) scale(1); }
-          34%      { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: translate(4%, -3%) scale(1.05); }
-          67%      { border-radius: 50% 50% 33% 67% / 30% 70% 40% 60%; transform: translate(-3%, 4%) scale(0.96); }
+          0%, 100% { transform: translate(0,0) scale(1); }
+          34%      { transform: translate(4%, -3%) scale(1.05); }
+          67%      { transform: translate(-3%, 4%) scale(0.96); }
         }
         @keyframes ch-blob-morph2 {
-          0%, 100% { border-radius: 40% 60% 70% 30% / 40% 70% 30% 60%; transform: translate(0,0) scale(1); }
-          40%      { border-radius: 70% 30% 50% 50% / 30% 50% 50% 70%; transform: translate(-5%, 3%) scale(1.08); }
-          80%      { border-radius: 30% 70% 40% 60% / 60% 40% 60% 40%; transform: translate(3%, -4%) scale(0.94); }
+          0%, 100% { transform: translate(0,0) scale(1); }
+          40%      { transform: translate(-5%, 3%) scale(1.08); }
+          80%      { transform: translate(3%, -4%) scale(0.94); }
         }
         @keyframes ch-blob-morph3 {
-          0%, 100% { border-radius: 50% 50% 60% 40% / 30% 60% 40% 70%; transform: translate(0,0) scale(1); }
-          50%      { border-radius: 70% 30% 40% 60% / 50% 40% 60% 50%; transform: translate(2%, 5%) scale(1.04); }
+          0%, 100% { transform: translate(0,0) scale(1); }
+          50%      { transform: translate(2%, 5%) scale(1.04); }
         }
         @media (prefers-reduced-motion: reduce) { .ch-blob { animation: none !important; } }
       `}</style>
+      {/* PERF: ONE blur only (the inline filter). The old markup ALSO had the
+          blur-3xl utility class, so every blob was blurred twice — 2× the
+          raster memory and paint cost for the same visual. */}
       <div
-        className="ch-blob absolute left-[-10%] top-[-10%] h-[55vh] w-[55vh] blur-3xl"
-        style={{ background: "var(--ambient-base)", animation: "ch-blob-morph1 26s ease-in-out infinite", opacity: 0.45 }}
+        className="ch-blob absolute left-[-10%] top-[-10%] h-[55vh] w-[55vh] rounded-full"
+        style={{ background: "var(--ambient-base)", animation: "ch-blob-morph1 26s ease-in-out infinite", opacity: 0.45, filter: "blur(60px)", willChange: "transform" }}
       />
       <div
-        className="ch-blob absolute right-[-10%] top-[15%] h-[50vh] w-[50vh] blur-3xl"
-        style={{ background: "var(--ambient-c2)", animation: "ch-blob-morph2 32s ease-in-out infinite", opacity: 0.4 }}
+        className="ch-blob absolute right-[-10%] top-[15%] h-[50vh] w-[50vh] rounded-full"
+        style={{ background: "var(--ambient-c2)", animation: "ch-blob-morph2 32s ease-in-out infinite", opacity: 0.4, filter: "blur(60px)", willChange: "transform" }}
       />
       <div
-        className="ch-blob absolute left-[25%] bottom-[-15%] h-[60vh] w-[60vh] blur-3xl"
-        style={{ background: "var(--ambient-c3)", animation: "ch-blob-morph3 28s ease-in-out infinite", opacity: 0.35 }}
+        className="ch-blob absolute left-[25%] bottom-[-15%] h-[60vh] w-[60vh] rounded-full"
+        style={{ background: "var(--ambient-c3)", animation: "ch-blob-morph3 28s ease-in-out infinite", opacity: 0.35, filter: "blur(60px)", willChange: "transform" }}
       />
     </div>
   )
@@ -231,6 +246,7 @@ function Bubbles() {
             animation: `ch-bubble-rise ${b.duration}s ease-in-out infinite`,
             animationDelay: `${b.delay}s`,
             filter: "blur(20px)",
+            willChange: "transform",
           }}
         />
       ))}
@@ -259,21 +275,23 @@ function Mesh() {
         @media (prefers-reduced-motion: reduce) { .ch-mesh-layer { animation: none !important; } }
       `}</style>
       <div
-        className="ch-mesh-layer absolute inset-[-20%] blur-3xl"
+        className="ch-mesh-layer absolute inset-[-20%]"
         style={{
           background: `radial-gradient(ellipse 60% 50% at 30% 30%, var(--ambient-base) 0%, transparent 70%)`,
           animation: "ch-mesh-shift 40s ease-in-out infinite",
           opacity: 0.5,
           filter: "blur(40px)",
+          willChange: "transform",
         }}
       />
       <div
-        className="ch-mesh-layer absolute inset-[-20%] blur-3xl"
+        className="ch-mesh-layer absolute inset-[-20%]"
         style={{
           background: `radial-gradient(ellipse 50% 60% at 70% 70%, var(--ambient-c2) 0%, transparent 70%)`,
           animation: "ch-mesh-shift2 50s ease-in-out infinite",
           opacity: 0.45,
           filter: "blur(40px)",
+          willChange: "transform",
         }}
       />
     </div>

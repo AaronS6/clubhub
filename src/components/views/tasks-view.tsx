@@ -422,12 +422,13 @@ export function TasksView() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 sm:p-6">
+    <div className="flex flex-col gap-6">
       {/* §37 — Sticky page header on desktop. Wraps PageHeader in a sticky,
           backdrop-blurred bar so it stays visible while scrolling long task
           lists. Hidden on mobile to avoid double-stacking with the mobile tab
-          switcher. */}
-      <div className="hidden sm:block sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-background/95 backdrop-blur-sm border-b border-border/60">
+          switcher. The negative margins mirror the shell's gutters exactly
+          (px-4 md:px-6) so the bar bleeds edge-to-edge at every breakpoint. */}
+      <div className="hidden sm:block sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-background/45 backdrop-blur-xl border-b border-border/60">
         <PageHeader
           title="Tasks"
           description="Track club work, subtasks, and assignments."

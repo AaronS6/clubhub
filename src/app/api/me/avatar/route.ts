@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import sharp from "sharp"
 import { db } from "@/lib/db"
 import { getSessionUser } from "@/lib/server-auth"
+import { saveImage, deleteImage, publicUrl } from "@/lib/image-store"
 
 /** 5MB upload cap for avatars. */
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024
@@ -12,8 +13,10 @@ const AVATAR_QUALITY = 80
 /**
  * POST /api/me/avatar
  * Accepts a multipart file upload (field name "file"), processes it with
- * sharp (resize 256×256, JPEG q80), and stores the result as a base64 data
- * URL in `User.avatarUrl`. Returns { avatarUrl }.
+ * sharp (resize 256×256, JPEG q80), and stores the result as a JPEG file in
+ * `storage/avatars/{userId}.jpg`. The DB keeps only a short URL
+ * (`/api/avatars/{userId}?v=…` served by the cached public route).
+ * Returns { avatarUrl }.
  *
  * 5MB cap on the raw upload. Auth via getSessionUser().
  */
@@ -52,14 +55,17 @@ export async function POST(req: Request) {
       .jpeg({ quality: AVATAR_QUALITY, mozjpeg: true })
       .toBuffer()
 
-    const dataUrl = `data:image/jpeg;base64,${processed.toString("base64")}`
+    // Write the processed JPEG to disk and keep a short versioned URL in
+    // the DB (v = Date.now() so re-uploads bust the immutable HTTP cache).
+    await saveImage("avatar", user.id, processed)
+    const url = publicUrl("avatar", user.id, Date.now())
 
     await db.user.update({
       where: { id: user.id },
-      data: { avatarUrl: dataUrl },
+      data: { avatarUrl: url },
     })
 
-    return NextResponse.json({ avatarUrl: dataUrl })
+    return NextResponse.json({ avatarUrl: url })
   } catch (e) {
     console.error("[avatar] POST failed:", e)
     return NextResponse.json(
@@ -71,7 +77,7 @@ export async function POST(req: Request) {
 
 /**
  * DELETE /api/me/avatar
- * Clears the user's avatarUrl (sets to null).
+ * Clears the user's avatarUrl (sets to null) and removes the stored file.
  */
 export async function DELETE() {
   try {
@@ -79,6 +85,7 @@ export async function DELETE() {
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+    await deleteImage("avatar", user.id)
     await db.user.update({
       where: { id: user.id },
       data: { avatarUrl: null },

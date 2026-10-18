@@ -58,7 +58,9 @@ import {
   History,
   ChevronDown,
   Calendar,
+  Target,
 } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 
 interface HoursItem {
@@ -132,6 +134,15 @@ export function HoursView() {
     queryFn: () => api<CategoryResponse>(`/api/clubs/${clubId}/hours/categories`),
     enabled: !!clubId,
     staleTime: 60_000,
+  })
+
+  // Personal service-hours goal for this club (0 = unset → the summary falls
+  // back to the club-wide goal). Editable via the SetGoalPopover.
+  const goalQuery = useQuery<{ personalGoal: number; clubGoal: number; role: string }>({
+    queryKey: ["my-goal", clubId],
+    queryFn: () => api<{ personalGoal: number; clubGoal: number; role: string }>(`/api/clubs/${clubId}/my-goal`),
+    enabled: !!clubId,
+    staleTime: 30_000,
   })
 
   const deleteMutation = useMutation({
@@ -247,8 +258,15 @@ export function HoursView() {
 
   const data = hoursQuery.data
   const approvedHours = data?.totals.approvedHours ?? 0
-  const goal = data?.clubHoursGoal ?? 0
-  const progressPct = goal > 0 ? Math.min(100, Math.round((approvedHours / goal) * 100)) : 0
+  // Effective goal: the member's PERSONAL goal takes priority; falls back
+  // to the club-wide goal the executives set. (Both are editable — personal
+  // here via the goal popover, club-wide by executives during the tour or
+  // in Members → Club settings.)
+  const personalGoal = goalQuery.data?.personalGoal ?? 0
+  const effectiveGoal = personalGoal > 0 ? personalGoal : (data?.clubHoursGoal ?? 0)
+  const goalIsPersonal = personalGoal > 0
+  const progressPct =
+    effectiveGoal > 0 ? Math.min(100, Math.round((approvedHours / effectiveGoal) * 100)) : 0
 
   return (
     <div className="space-y-6">
@@ -283,15 +301,27 @@ export function HoursView() {
               </div>
             </div>
           </div>
-          {goal > 0 && (
-            <div className="flex-1 sm:max-w-xs">
-              <div className="flex items-center justify-between text-caption-medium mb-1.5">
-                <span className="text-muted-foreground">Goal: {goal}h</span>
-                <span className="font-medium">{progressPct}%</span>
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
+            {effectiveGoal > 0 && (
+              <div className="flex-1 sm:max-w-xs">
+                <div className="flex items-center justify-between text-caption-medium mb-1.5">
+                  <span className="text-muted-foreground">
+                    {goalIsPersonal ? "Your goal" : "Club goal"}: {effectiveGoal}h
+                  </span>
+                  <span className="font-medium">{progressPct}%</span>
+                </div>
+                <Progress value={progressPct} className="h-2.5" />
               </div>
-              <Progress value={progressPct} className="h-2.5" />
-            </div>
-          )}
+            )}
+            <SetGoalPopover
+              clubId={clubId}
+              current={personalGoal}
+              onSaved={() => {
+                goalQuery.refetch()
+                qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -369,7 +399,7 @@ export function HoursView() {
                 {/* Desktop: table */}
                 <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
                   <Table>
-                    <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
+                    <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/85 [&_th]:z-10">
                       <TableRow>
                         <TableHead className="min-w-[7rem]">Date</TableHead>
                         <TableHead className="min-w-[3rem]">Hours</TableHead>
@@ -437,7 +467,7 @@ export function HoursView() {
                       </div>
                       <div className="card-quiet rounded-xl p-0 overflow-hidden hidden md:block">
                         <Table>
-                          <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/50 [&_th]:backdrop-blur-sm [&_th]:z-10">
+                          <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:bg-muted/85 [&_th]:z-10">
                             <TableRow>
                               <TableHead className="min-w-[7rem]">Date</TableHead>
                               <TableHead className="min-w-[3rem]">Hours</TableHead>
@@ -861,5 +891,117 @@ function SubmitHoursDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SetGoalPopover — compact editor for the member's PERSONAL service-hours
+// goal. Appears next to the summary's goal bar ("Your goal: 25h") or as the
+// "Set a goal" button when no goal exists yet. Saves via PATCH /my-goal.
+// ---------------------------------------------------------------------------
+
+function SetGoalPopover({
+  clubId,
+  current,
+  onSaved,
+}: {
+  clubId: string
+  current: number
+  onSaved?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState(String(current || ""))
+  const [saving, setSaving] = useState(false)
+
+  function clamp(raw: string): number {
+    const n = parseInt(raw.replace(/[^\d]/g, ""), 10)
+    if (isNaN(n) || n < 0) return 0
+    return Math.min(n, 10000)
+  }
+
+  async function save() {
+    const goal = clamp(value)
+    setSaving(true)
+    try {
+      await api(`/api/clubs/${clubId}/my-goal`, { method: "PATCH", json: { goal } })
+      toast.success(goal > 0 ? `Personal goal set — ${goal}h` : "Personal goal cleared")
+      setOpen(false)
+      onSaved?.()
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't save your goal")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) setValue(current > 0 ? String(current) : "")
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5 h-8">
+          <Target className="h-3.5 w-3.5" />
+          {current > 0 ? "Change goal" : "Set a goal"}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-4" aria-label="Edit personal goal">
+        <p className="text-sm font-semibold">Personal goal</p>
+        <p className="text-caption text-muted-foreground mt-0.5 mb-3">
+          Your own target for this club. The club-wide goal applies when you
+          don&apos;t set one.
+        </p>
+        <div className="flex items-center gap-2">
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+            inputMode="numeric"
+            placeholder="e.g. 25"
+            aria-label="Goal in hours"
+            className="h-9 w-24 tabular-nums"
+            onKeyDown={(e) => { if (e.key === "Enter") save() }}
+          />
+          <span className="text-caption-medium text-muted-foreground">hours</span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {[10, 25, 50, 100].map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setValue(String(p))}
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-medium tabular-nums transition-colors",
+                value === String(p)
+                  ? "border-club/40 bg-club-subtle text-club-ink"
+                  : "border-border text-muted-foreground hover:border-club/30 hover:text-foreground"
+              )}
+            >
+              {p}h
+            </button>
+          ))}
+          {current > 0 && (
+            <button
+              type="button"
+              onClick={() => setValue("")}
+              className="rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="club" onClick={save} disabled={saving}>
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

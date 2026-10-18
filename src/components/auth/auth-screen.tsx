@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -19,6 +20,7 @@ import {
   ArrowRight,
   AlertTriangle,
   LifeBuoy,
+  X,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -53,9 +55,10 @@ function writeHasAccount() {
 export function AuthScreen() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const resetToken = searchParams.get("reset")
+  // ?reset=TOKEN → emailed (or legacy exec-generated) reset link. Both
+  // `reset` (current) and `resetToken` (older links) are accepted.
+  const resetToken = searchParams.get("reset") || searchParams.get("resetToken")
 
-  // ?reset=TOKEN → exec-generated reset link (no email involved).
   if (resetToken) {
     return <ResetPasswordScreen token={resetToken} onDone={() => router.replace("/")} />
   }
@@ -64,6 +67,8 @@ export function AuthScreen() {
 }
 
 function AuthScreenInner() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const authView = useAppStore((s) => s.authView)
   const setAuthView = useAppStore((s) => s.setAuthView)
   const [loading, setLoading] = useState(false)
@@ -77,12 +82,21 @@ function AuthScreenInner() {
   const [signupPassword, setSignupPassword] = useState("")
 
   // Mount-only: default view from the durable flag.
+  // The `?auth=login|signup` param (linked from the public landing page's
+  // Log In / Sign Up buttons) takes precedence so the visitor lands on the
+  // tab they asked for; without it the behavior is unchanged — first visit
+  // defaults to Sign Up, returning visitors to Log In.
   const didInit = useRef(false)
   useEffect(() => {
     if (didInit.current) return
     didInit.current = true
+    const authParam = searchParams.get("auth")
+    if (authParam === "login" || authParam === "signup") {
+      setAuthView(authParam)
+      return
+    }
     setAuthView(readHasAccount() ? "login" : "signup")
-  }, [setAuthView])
+  }, [setAuthView, searchParams])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -132,9 +146,20 @@ function AuthScreenInner() {
         initial={{ opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-        className="flex items-center px-5 sm:px-8 py-5 shrink-0"
+        className="flex items-center justify-between px-5 sm:px-8 py-5 shrink-0"
       >
         <span className="text-xl font-extrabold tracking-tight">ClubHub</span>
+        {/* Back to the public landing page — always available on the auth
+            screen (login + signup tabs). Matches the editorial square style. */}
+        <button
+          type="button"
+          onClick={() => router.replace("/")}
+          aria-label="Back to home"
+          title="Back to home"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-none border border-[#1a1815]/15 dark:border-[#f0ebe0]/15 text-[#1a1815]/70 dark:text-[#f0ebe0]/70 hover:text-club hover:border-club/60 hover:bg-club/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </motion.header>
 
       {/* ── Two-column body (in-flow flex). Each column is bounded so the
@@ -371,15 +396,17 @@ function AuthScreenInner() {
 }
 
 /**
- * Forgot-password dialog.
+ * Forgot-password dialog — the real email-based flow.
  *
- * Email-based reset is disabled (the email provider isn't configured and
- * shouldn't be relied on). Instead, members ask their club's executives
- * to reset their password — execs can generate a reset link per-member
- * from the Members view (POST /api/clubs/[clubId]/members/[userId]/reset-password)
- * and hand it to the member via chat/text.
+ * POSTs the address to /api/auth/forgot-password, which generates a
+ * single-use 1-hour reset token and emails the link via Resend
+ * (https://resend.com — set RESEND_API_KEY + EMAIL_FROM in .env). The API
+ * is anti-enumeration (always ok:true) so the dialog can't reveal whether
+ * an address is registered; it just says "check your inbox".
  *
- * This dialog just communicates that, in the same editorial style.
+ * Dev fallback: without RESEND_API_KEY the API (non-production only)
+ * returns resetUrl in the response so the flow stays testable — we surface
+ * it as a direct "Open reset link" button instead of an email.
  */
 function ForgotPasswordDialog({
   open,
@@ -388,6 +415,47 @@ function ForgotPasswordDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
 }) {
+  const [email, setEmail] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Fresh state whenever the dialog is reopened.
+  useEffect(() => {
+    if (open) {
+      setEmail("")
+      setSent(false)
+      setDevResetUrl(null)
+      setErrorMsg(null)
+      setLoading(false)
+    }
+  }, [open])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setErrorMsg(null)
+    if (!email.trim()) return
+    setLoading(true)
+    try {
+      const res = await api<{ ok: boolean; resetUrl?: string; error?: string }>(
+        "/api/auth/forgot-password",
+        { method: "POST", json: { email: email.trim() } },
+      )
+      setSent(true)
+      // Non-production convenience: no RESEND_API_KEY → the API hands back
+      // the reset link directly so the flow is demoable before email is set up.
+      if (res?.resetUrl) setDevResetUrl(res.resetUrl)
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Something went wrong — please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const inputCls =
+    "h-12 rounded-none border-0 border-b-2 border-[#1a1815]/20 dark:border-[#f0ebe0]/20 bg-transparent px-0 py-2.5 text-base focus-visible:border-club focus-visible:ring-0 placeholder:text-[#1a1815]/35 dark:placeholder:text-[#f0ebe0]/35"
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md rounded-none border-2 border-[#1a1815] dark:border-[#f0ebe0] bg-[#f6f1e8] dark:bg-[#16130e] p-7 sm:p-8 gap-0 shadow-[6px_6px_0_0_var(--club-accent,#10b981)]">
@@ -396,54 +464,132 @@ function ForgotPasswordDialog({
             <span className="flex h-8 w-8 items-center justify-center rounded-none bg-club text-club-foreground">
               <LifeBuoy className="h-4 w-4" />
             </span>
-            Can&apos;t log in?
+            {sent ? "Check your inbox" : "Reset your password"}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            {sent
+              ? "A password-reset link has been requested."
+              : "Enter your email to receive a password-reset link."}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3.5 text-[#1a1815] dark:text-[#f0ebe0]">
-          <p className="text-sm leading-relaxed">
-            We don&apos;t use email-based password reset. Instead, ask a{" "}
-            <strong className="font-bold">club executive</strong> to reset it for you —
-            they can generate a fresh sign-in link from the{" "}
-            <span className="font-bold">Members</span> view and send it to you
-            directly (via chat or text).
-          </p>
-
-          <div className="flex items-start gap-2.5 rounded-none border border-[#1a1815]/15 dark:border-[#f0ebe0]/15 px-3.5 py-3 text-sm">
-            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-club" />
-            <div>
-              <p className="font-bold">No email is sent — ever.</p>
-              <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-0.5">
-                Execs hand-deliver the reset link. If you&apos;re an exec and
-                locked out of your own account, ask another exec.
-              </p>
+        {!sent ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm leading-relaxed text-[#1a1815]/80 dark:text-[#f0ebe0]/80">
+              Enter the email you signed up with and we&apos;ll send you a link
+              to choose a new password. The link expires in 1 hour.
+            </p>
+            <div className="space-y-2">
+              <Label
+                htmlFor="forgot-email"
+                className="text-sm font-bold tracking-wide uppercase"
+              >
+                Email
+              </Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@school.edu"
+                className={inputCls}
+                autoFocus
+              />
             </div>
-          </div>
+            {errorMsg && (
+              <div className="flex items-start gap-2.5 rounded-none border border-danger/30 bg-danger-subtle px-3.5 py-3 text-sm text-danger-foreground">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+            <Button
+              type="submit"
+              variant="club"
+              disabled={loading}
+              className="w-full h-11 rounded-none font-bold tracking-wide uppercase shadow-none hover:brightness-105"
+            >
+              {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Send reset link
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-sm text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club hover:underline transition-colors"
+              onClick={() => onOpenChange(false)}
+            >
+              Back to sign in
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-3.5">
+            <p className="text-sm leading-relaxed">
+              If an account exists for{" "}
+              <strong className="font-bold break-all">{email.trim()}</strong>, a
+              password-reset link is on its way. It expires in 1 hour.
+            </p>
+            <div className="flex items-start gap-2.5 rounded-none border border-[#1a1815]/15 dark:border-[#f0ebe0]/15 px-3.5 py-3 text-sm">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-club" />
+              <div>
+                <p className="font-bold">Didn&apos;t get it?</p>
+                <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-0.5">
+                  Check your spam folder, double-check the address, then request
+                  another link. Nothing arrives if the email isn&apos;t registered.
+                </p>
+              </div>
+            </div>
 
-          <Button
-            variant="club"
-            onClick={() => onOpenChange(false)}
-            className="w-full h-11 rounded-none font-bold tracking-wide uppercase shadow-none hover:brightness-105"
-          >
-            Got it
-          </Button>
-          <button
-            type="button"
-            className="w-full text-center text-sm text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club hover:underline transition-colors"
-            onClick={() => onOpenChange(false)}
-          >
-            Back to sign in
-          </button>
-        </div>
+            {devResetUrl ? (
+              <div className="rounded-none border-2 border-dashed border-club/50 px-3.5 py-3.5">
+                <p className="text-xs font-bold tracking-wide uppercase text-club">
+                  Email not configured on this install
+                </p>
+                <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1 leading-relaxed">
+                  Add your Resend API key (RESEND_API_KEY in .env) to send real
+                  emails — until then, use the link directly:
+                </p>
+                <Button
+                  type="button"
+                  variant="club"
+                  onClick={() => {
+                    // Navigate on the CURRENT origin (works behind proxies /
+                    // preview iframes) — extract just the token from the URL
+                    // the API returned rather than jumping to its host.
+                    try {
+                      const u = new URL(devResetUrl, window.location.origin)
+                      const token =
+                        u.searchParams.get("reset") || u.searchParams.get("resetToken")
+                      window.location.href = token
+                        ? `/?reset=${encodeURIComponent(token)}`
+                        : "/"
+                    } catch {
+                      window.location.href = "/"
+                    }
+                  }}
+                  className="mt-3 w-full h-10 rounded-none font-bold tracking-wide uppercase shadow-none hover:brightness-105"
+                >
+                  Open reset link
+                </Button>
+              </div>
+            ) : null}
+
+            <Button
+              variant="club"
+              onClick={() => onOpenChange(false)}
+              className="w-full h-11 rounded-none font-bold tracking-wide uppercase shadow-none hover:brightness-105"
+            >
+              Back to sign in
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
 }
 
 /**
- * Reset-password screen — shown when the URL contains ?reset=TOKEN
- * (a link an exec generated and handed to the member). Same editorial
- * treatment as the auth screen.
+ * Reset-password screen — shown when the URL contains ?reset=TOKEN (the
+ * link we emailed via Resend). Same editorial treatment as the auth screen.
  */
 function ResetPasswordScreen({
   token,
@@ -504,7 +650,7 @@ function ResetPasswordScreen({
               Set a new password.
             </h1>
             <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-2">
-              Your exec sent you this link. Choose a new password to sign back in.
+              We emailed you this link. Choose a new password to sign back in.
             </p>
           </div>
 

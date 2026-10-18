@@ -26,6 +26,10 @@ interface ClubSummary {
   accentColor: string
   clubCode: string
   role: "member" | "executive"
+  /** Null until an executive confirms the Executive Admin Handbook popup
+   *  for this club (stamped once per club lifetime in the DB). Optional —
+   *  older cached payloads may not include it. */
+  handbookAcceptedAt?: string | null
 }
 
 interface AppState {

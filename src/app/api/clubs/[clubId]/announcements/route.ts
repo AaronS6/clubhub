@@ -35,7 +35,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
       take: PAGE_SIZE,
       include: {
         author: {
-          select: { id: true, name: true, avatarUrl: true },
+          select: { id: true, name: true, avatarUrl: true, avatarDecoration: true },
         },
         reactions: {
           select: {
@@ -44,7 +44,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
             emoji: true,
             createdAt: true,
             user: {
-              select: { id: true, name: true, avatarUrl: true },
+              select: { id: true, name: true, avatarUrl: true, avatarDecoration: true },
             },
           },
         },
@@ -53,7 +53,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
     }),
   ])
 
-  type ReactionUser = { id: string; name: string; avatarUrl: string | null }
+  type ReactionUser = { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
 
   const items = rows.map((a) => {
@@ -66,7 +66,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
         g.users.push({
           id: r.user.id,
           name: r.user.name,
-          avatarUrl: r.user.avatarUrl ?? null,
+          avatarUrl: r.user.avatarUrl ?? null, avatarDecoration: r.user.avatarDecoration ?? null,
         })
       } else {
         groups[r.emoji] = {
@@ -76,7 +76,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
             {
               id: r.user.id,
               name: r.user.name,
-              avatarUrl: r.user.avatarUrl ?? null,
+              avatarUrl: r.user.avatarUrl ?? null, avatarDecoration: r.user.avatarDecoration ?? null,
             },
           ],
         }
@@ -97,6 +97,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
         id: a.author.id,
         name: a.author.name,
         avatarUrl: a.author.avatarUrl ?? null,
+        avatarDecoration: a.author.avatarDecoration ?? null,
       },
       reactions: Object.values(groups),
       myReaction,
@@ -150,12 +151,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       isUrgent,
     },
     include: {
-      author: { select: { id: true, name: true, avatarUrl: true } },
+      author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
       reactions: {
         select: {
           userId: true,
           emoji: true,
-          user: { select: { id: true, name: true, avatarUrl: true } },
+          user: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
         },
       },
       _count: { select: { comments: { where: { deletedAt: null } } } },
@@ -183,7 +184,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
 
   await emitClubEvent(clubId, "announcement_created", { announcementId: created.id })
 
-  type ReactionUser = { id: string; name: string; avatarUrl: string | null }
+  type ReactionUser = { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
   const groups: Record<string, ReactionGroup> = {}
   for (const r of created.reactions) {
@@ -214,6 +215,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         id: created.author.id,
         name: created.author.name,
         avatarUrl: created.author.avatarUrl ?? null,
+        avatarDecoration: created.author.avatarDecoration ?? null,
       },
       reactions: Object.values(groups),
       myReaction: null,

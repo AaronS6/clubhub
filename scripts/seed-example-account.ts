@@ -99,6 +99,14 @@ async function main() {
         "We design, build, and compete with robots in the FIRST Robotics Competition. " +
         "New members welcome — no experience required.",
       accentColor: CLUB_ACCENT,
+      // Demo banner — a cinematic workshop photo served from /public/banners.
+      // Real clubs upload their own via the exec "Edit banner" control
+      // (stored as a data URL); this static path just seeds the demo club.
+      bannerUrl: "/banners/robotics-banner.jpg",
+      bannerFocalY: 0.6,
+      // Listed in the public landing-page directory (see
+      // seed-public-clubs.ts for the extra demo clubs).
+      isListedPublic: true,
       clubCode: CLUB_CODE,
       clubPasswordEnc: encryptClubPassword(CLUB_PASSWORD),
       hoursGoal: 200,

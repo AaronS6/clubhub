@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 import { Suspense } from "react";
 import { ClubAccentProvider } from "@/components/club-accent-provider";
 import { CustomizationProvider } from "@/components/customization-provider";
+import { WhatsNewModal } from "@/components/whats-new-modal";
 
 // Bricolage Grotesque — the display face. Used only for .text-page-title and
 // .text-numeral (the big hours number). 600/700 only — keeps the bundle small.
@@ -87,7 +87,12 @@ export default function RootLayout({
             </CustomizationProvider>
           </ClubAccentProvider>
         </Providers>
-        <Toaster />
+        {/* v7 release-notes modal — mounted globally so it shows on every
+            surface (landing, auth, public profiles, the app). Auto-opens once
+            for returning visitors; after closing, it lives in the
+            notification bell as a "What's new" row. Client-side only (all
+            state is localStorage), renders nothing on the server. */}
+        <WhatsNewModal />
       </body>
     </html>
   );

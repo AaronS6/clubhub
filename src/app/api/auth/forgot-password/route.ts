@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { db } from "@/lib/db"
 import { sendEmail, renderEmailHtml, isEmailConfigured } from "@/lib/email"
+import { rateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit"
+
+// 5 reset requests per IP per hour — blocks token-spam / mail-bombing while
+// leaving a forgetful human plenty of retries.
+const FORGOT_LIMIT = 5
+const FORGOT_WINDOW = 60 * 60_000
 
 /**
  * POST /api/auth/forgot-password
@@ -14,12 +20,20 @@ import { sendEmail, renderEmailHtml, isEmailConfigured } from "@/lib/email"
  * Anti-enumeration: ALWAYS returns { ok: true } regardless of whether the
  * email exists, so an attacker can't probe which emails are registered.
  *
- * However, if email sending fails (Resend not configured, network error, etc.)
- * we return the resetUrl in the response body so the user can see what went
- * wrong (useful in dev / first-run setups without an email provider).
+ * ⚠️ SECURITY: the reset URL is returned in the response body ONLY in
+ * non-production (dev / first-run without an email provider). In production
+ * that would be an account-takeover hole — anyone hitting the endpoint would
+ * receive the victim's valid reset token without touching their inbox.
  */
+const MAY_EXPOSE_RESET_URL = process.env.NODE_ENV !== "production"
+
 export async function POST(req: Request) {
   try {
+    // Rate limit first — the rest of the flow is identical whether the email
+    // exists or not, so this can't leak account existence either.
+    const rl = rateLimit(`forgot:ip:${getClientIp(req)}`, FORGOT_LIMIT, FORGOT_WINDOW)
+    if (!rl.ok) return tooManyRequests(rl.retryAfterMs, "Too many reset requests")
+
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 })
@@ -53,9 +67,11 @@ export async function POST(req: Request) {
       })
 
       const origin = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_BASE_URL || ""
+      // The auth screen reads `?reset=TOKEN` — keep this in sync with
+      // AuthScreen (it also accepts `?resetToken=` as a legacy fallback).
       const resetUrl = origin
-        ? `${origin.replace(/\/$/, "")}/?resetToken=${token}`
-        : `/?resetToken=${token}`
+        ? `${origin.replace(/\/$/, "")}/?reset=${token}`
+        : `/?reset=${token}`
 
       // Only attempt the email send if Resend is configured. Otherwise fall
       // through to the email-failed path so the user sees the resetUrl.
@@ -79,23 +95,36 @@ export async function POST(req: Request) {
         })
 
         if (!result.ok) {
-          // Email send failed — surface the resetUrl so the user isn't stuck
-          // (especially useful in dev without a configured email provider).
+          // Email send failed. DEV ONLY: surface the resetUrl so the user isn't
+          // stuck without an email provider. Production NEVER returns the URL
+          // (it would hand a valid reset token to whoever called the API).
           console.error("[forgot-password] sendEmail failed:", result.reason)
+          if (MAY_EXPOSE_RESET_URL) {
+            return NextResponse.json({
+              ok: true,
+              error: result.reason ?? "Email send failed",
+              resetUrl,
+            })
+          }
           return NextResponse.json({
             ok: true,
-            error: result.reason ?? "Email send failed",
-            resetUrl,
+            error: "Couldn't send the reset email right now — please try again later.",
           })
         }
       } else {
-        // No email provider configured — return the resetUrl so the user can
-        // still complete the flow (dev / first-run scenario).
-        return NextResponse.json({
-          ok: true,
-          error: "Email is not configured — use this reset URL directly.",
-          resetUrl,
-        })
+        // No email provider configured — dev convenience only (see
+        // MAY_EXPOSE_RESET_URL). Production responds with the same generic
+        // ok:true shape as the anti-enumeration path.
+        if (MAY_EXPOSE_RESET_URL) {
+          return NextResponse.json({
+            ok: true,
+            error: "Email is not configured — use this reset URL directly.",
+            resetUrl,
+          })
+        }
+        console.warn(
+          "[forgot-password] email is not configured and NODE_ENV=production — reset link was NOT delivered or exposed.",
+        )
       }
     }
 
@@ -104,11 +133,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error("[forgot-password] failed:", e)
-    // Even on hard failure, return ok:true to avoid leaking info — but include
-    // the error message so the operator can debug.
-    return NextResponse.json(
-      { ok: true, error: e instanceof Error ? e.message : "Unknown error" },
-      { status: 200 },
-    )
+    // Even on hard failure, return ok:true to avoid leaking info — the exact
+    // error is server-side only.
+    return NextResponse.json({ ok: true })
   }
 }

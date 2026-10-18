@@ -229,7 +229,7 @@ export function MeetingsView() {
 
   if (!currentClubId || !currentClub) {
     return (
-      <div className="p-6">
+      <div>
         <EmptyState
           icon={<CalendarDays className="h-8 w-8" />}
           title="No club selected"
@@ -242,7 +242,7 @@ export function MeetingsView() {
   const isExec = currentClub.role === "executive"
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-4 p-4 sm:p-6">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-4">
       <PageHeader
         title="Meetings"
         description="RSVP, plan, and track club meetings."
@@ -458,10 +458,11 @@ function MeetingsList({
         <div key={b.label}>
           <h3 className="text-xs font-medium text-muted-foreground mb-2">{b.label}</h3>
           <div className="grid gap-3">
-            {b.items.map((m) => (
+            {b.items.map((m, index) => (
               <MeetingCard
                 key={m.id}
                 meeting={m}
+                index={index}
                 isExec={isExec}
                 readOnly={readOnly}
                 onEdit={() => onEdit(m)}
@@ -477,12 +478,14 @@ function MeetingsList({
 
 function MeetingCard({
   meeting,
+  index,
   isExec,
   readOnly,
   onEdit,
   onOpenDetail,
 }: {
   meeting: MeetingItem
+  index: number
   isExec: boolean
   readOnly?: boolean
   onEdit: () => void
@@ -494,78 +497,85 @@ function MeetingCard({
   const flash = useRemoteChange("meeting", meeting.id)
   return (
     <div className={cn(
-      "rounded-xl border border-border bg-card p-4 sm:p-5 transition-[color,background-color,border-color,transform,box-shadow] duration-200",
+      "stagger-in rounded-xl border border-border bg-card p-4 sm:p-5 transition-[color,background-color,border-color,transform,box-shadow] duration-200",
       flash && "ring-2 ring-club/50"
-    )}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <button
-            onClick={onOpenDetail}
-            className="group flex w-full items-start gap-3 text-left"
+    )}
+      style={{ "--stagger-i": index } as React.CSSProperties}>
+      {/* Header row — the 3-dot actions menu sits INLINE at the top right
+          (not in its own row below). Previously the exec actions wrapper was
+          a second flex row on mobile — an almost-empty strip ~40px tall that
+          pushed the RSVP row down and wasted space. Inlining it at the top
+          right keeps the card tight on every viewport. */}
+      <div className="flex items-start justify-between gap-2">
+        <button
+          onClick={onOpenDetail}
+          className="group flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          {/* Calendar-page date badge — large day number + small month */}
+          <div
+            className="rounded-xl bg-club-muted text-club p-2 text-center w-16 shrink-0 transition-colors group-hover:bg-club-muted/70"
+            aria-hidden
           >
-            {/* Calendar-page date badge — large day number + small month */}
-            <div
-              className="rounded-xl bg-club-muted text-club p-2 text-center w-16 shrink-0 transition-colors group-hover:bg-club-muted/70"
-              aria-hidden
-            >
-              <div className="text-3xl font-bold leading-none">{format(start, "d")}</div>
-              <div className="mt-1 text-xs font-medium ">{format(start, "MMM")}</div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-card-title group-hover:text-club transition-colors">
-                  {meeting.title}
-                </h3>
-                {meeting.isRecurring && meeting.recurrenceRule && (
-                  <Badge variant="secondary" className="gap-1 capitalize">
-                    <RefreshCw className="size-3" />
-                    {meeting.recurrenceRule}
-                  </Badge>
-                )}
-                {meeting.team && (
-                  <Badge variant="outline" className="gap-1">
-                    <Users className="size-3" />
-                    {meeting.team.name}
-                  </Badge>
-                )}
-              </div>
-              {/* Time range — calendar/schedule feel, with Clock icon */}
-              <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Clock className="size-4 shrink-0" />
-                <span>{formatMeetingRange(meeting.startTime, meeting.endTime)}</span>
-              </div>
-              {/* Location — inline and scannable, with MapPin icon */}
-              {meeting.location && (
-                <div className="mt-1 inline-flex items-center gap-1.5 text-sm text-muted-foreground min-w-0">
-                  <MapPin className="size-4 shrink-0" />
-                  <span className="max-w-[14rem] truncate">{meeting.location}</span>
-                </div>
+            <div className="text-3xl font-bold leading-none">{format(start, "d")}</div>
+            <div className="mt-1 text-xs font-medium ">{format(start, "MMM")}</div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-card-title group-hover:text-club transition-colors">
+                {meeting.title}
+              </h3>
+              {meeting.isRecurring && meeting.recurrenceRule && (
+                <Badge variant="secondary" className="gap-1 capitalize">
+                  <RefreshCw className="size-3" />
+                  {meeting.recurrenceRule}
+                </Badge>
+              )}
+              {meeting.team && (
+                <Badge variant="outline" className="gap-1">
+                  <Users className="size-3" />
+                  {meeting.team.name}
+                </Badge>
               )}
             </div>
-          </button>
-        </div>
+            {/* Time range — calendar/schedule feel, with Clock icon */}
+            <div className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Clock className="size-4 shrink-0" />
+              <span>{formatMeetingRange(meeting.startTime, meeting.endTime)}</span>
+            </div>
+            {/* Location — inline and scannable, with MapPin icon */}
+            {meeting.location && (
+              <div className="mt-1 inline-flex items-center gap-1.5 text-sm text-muted-foreground min-w-0">
+                <MapPin className="size-4 shrink-0" />
+                <span className="max-w-[14rem] truncate">{meeting.location}</span>
+              </div>
+            )}
+          </div>
+        </button>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {isExec && !readOnly && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Meeting actions">
-                  <MoreVertical className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={onEdit} className="gap-2">
-                  <Pencil className="size-4" /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <CancelMeetingMenuItem meeting={meeting} />
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+        {isExec && !readOnly && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-mt-1 shrink-0"
+                aria-label="Meeting actions"
+              >
+                <MoreVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit} className="gap-2">
+                <Pencil className="size-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <CancelMeetingMenuItem meeting={meeting} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-caption text-muted-foreground">
           {meeting.rsvpCounts.going} going · {meeting.rsvpCounts.maybe} maybe
           {meeting.rsvpCounts.notGoing > 0 && ` · ${meeting.rsvpCounts.notGoing} not going`}

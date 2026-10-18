@@ -9,6 +9,7 @@ import { onRealtimeEvent } from "@/lib/realtime-client"
 import {
   notifMeta, notifToneClasses, targetViewFor, ALL_NOTIF_TYPE_KEYS,
 } from "@/lib/notif-meta"
+import { useWhatsNewNotif, openWhatsNew } from "@/lib/whats-new"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -129,6 +130,11 @@ export function NotificationsView() {
   const total = data?.pages[0]?.total ?? 0
   const unread = data?.pages[0]?.unread ?? 0
 
+  // Local v7 release-notes notification — pinned to the top of the list,
+  // always shown regardless of filters (it lives in localStorage, not the
+  // server). Clicking it re-opens the What's New modal.
+  const { notif: releaseNotif } = useWhatsNewNotif()
+
   // ---- Mutations (mark read / mark all read) ------------------------------
   // We update the cache optimistically so the UI flips to "read" instantly,
   // then the API call reconciles. On error we invalidate to re-fetch.
@@ -186,6 +192,11 @@ export function NotificationsView() {
   }, [markingAll, qc])
 
   function handleRowClick(n: NotifItem) {
+    // The local release-notes row re-opens the What's New modal.
+    if (n.type === "release_notes") {
+      openWhatsNew()
+      return
+    }
     const { view } = targetViewFor(n)
     const targetView = view as View
     if (!n.isRead) markRead(n.id)
@@ -254,7 +265,7 @@ export function NotificationsView() {
 
       {isLoading ? (
         <NotificationsSkeleton />
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !releaseNotif ? (
         <EmptyState
           icon={<Bell className="h-8 w-8" />}
           title={
@@ -282,6 +293,14 @@ export function NotificationsView() {
       ) : (
         <div className="card-quiet p-0 overflow-hidden">
           <ul className="divide-y" aria-label="All notifications">
+            {/* Pinned local release-notes row (What's New in v7). */}
+            {releaseNotif && (
+              <NotifListItem
+                n={releaseNotif}
+                onClick={() => handleRowClick(releaseNotif)}
+                onMarkRead={() => undefined}
+              />
+            )}
             {items.map((n) => (
               <NotifListItem
                 key={n.id}

@@ -5,14 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,transform,translate,scale,rotate] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
         default:
           "bg-primary text-primary-foreground hover:bg-primary/90",
+        // Press feedback (active:scale-[0.98]) lives in the shared base
+        // classes above so every variant gets it; the arbitrary transition
+        // list keeps the same default 150ms timing the old `transition-colors`
+        // had, just widened with transform/translate/scale/rotate (Tailwind v4
+        // emits `scale` as a standalone property) so the press eases instead
+        // of snapping. Color transitions keep their original durations.
         club:
-          "bg-club text-club-foreground hover:brightness-95 active:scale-[0.98]",
+          "bg-club text-club-foreground hover:brightness-95",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 dark:bg-destructive/60",
         outline:

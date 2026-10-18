@@ -31,7 +31,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
       where: { announcementId: id },
       orderBy: { createdAt: "asc" },
       include: {
-        author: { select: { id: true, name: true, avatarUrl: true } },
+        author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
       },
     }),
   ])
@@ -57,6 +57,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
             id: cm.author.id,
             name: cm.author.name,
             avatarUrl: cm.author.avatarUrl ?? null,
+            avatarDecoration: cm.author.avatarDecoration ?? null,
           },
         }
   )
@@ -90,7 +91,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
 
   const created = await db.announcementComment.create({
     data: { announcementId: id, authorId: c.user.id, body: text },
-    include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+    include: { author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } } },
   })
 
   // Mentioned users: parse from text using the already-fetched club members.
@@ -145,6 +146,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         id: created.author.id,
         name: created.author.name,
         avatarUrl: created.author.avatarUrl ?? null,
+        avatarDecoration: created.author.avatarDecoration ?? null,
       },
     },
   }, 201)

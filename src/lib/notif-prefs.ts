@@ -23,6 +23,7 @@ export type NotifType =
   | "meeting_reminder"
   | "new_announcement"
   | "chat_message"
+  | "join_request_approved"
 
 export const ALL_NOTIF_TYPES: NotifType[] = [
   "hours_approved",
@@ -33,6 +34,7 @@ export const ALL_NOTIF_TYPES: NotifType[] = [
   "meeting_reminder",
   "new_announcement",
   "chat_message",
+  "join_request_approved",
 ]
 
 export interface NotifPrefs {
@@ -78,6 +80,10 @@ export const NOTIF_TYPE_META: Record<
     label: "Chat messages",
     description: "When someone sends you a direct or group chat message.",
   },
+  join_request_approved: {
+    label: "Join request approved",
+    description: "When a club executive approves your request to join their club.",
+  },
 }
 
 /**
@@ -95,6 +101,7 @@ export function getDefaultPrefs(): NotifPrefs {
     meeting_reminder: true,
     new_announcement: false,
     chat_message: false,
+    join_request_approved: true,
   }
   const inApp: Record<NotifType, boolean> = {
     hours_approved: true,
@@ -105,6 +112,7 @@ export function getDefaultPrefs(): NotifPrefs {
     meeting_reminder: true,
     new_announcement: true,
     chat_message: true,
+    join_request_approved: true,
   }
   return { email, emailMode: "instant", inApp }
 }

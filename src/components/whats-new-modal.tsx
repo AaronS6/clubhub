@@ -1,0 +1,281 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
+import { Sparkles, X } from "lucide-react"
+import {
+  checkAndMarkVisited,
+  shouldShowWhatsNew,
+  ackWhatsNew,
+  setWhatsNewNotif,
+  OPEN_WHATS_NEW_EVENT,
+  WHATS_NEW_VERSION,
+} from "@/lib/whats-new"
+
+/**
+ * ============================================================================
+ * WhatsNewModal — the "ClubHub v7 is officially HERE!" announcement
+ * ============================================================================
+ *
+ * Shown ONCE to returning visitors (first time they come back after the
+ * release), centered on a blurred backdrop — never full-screen. Always in
+ * the ClubHub editorial dark palette (#16130e / #f0ebe0 / teal) so it reads
+ * as a "release moment" in both the app and the public site.
+ *
+ * Closing it:
+ *   - marks this release as acknowledged (won't auto-open again)
+ *   - files the announcement into the notification bell as a local
+ *     "What's new" notification — clicking that row re-opens this modal
+ *     (open-whats-new window event), so the notes stay reachable forever.
+ * ============================================================================
+ */
+
+const EASE = [0.22, 1, 0.36, 1] as const
+
+export function WhatsNewModal() {
+  const [open, setOpen] = useState(false)
+
+  // Auto-open: the first time a RETURNING visitor opens the site after this
+  // release. Brand-new visitors just get marked (they'll be "returning" the
+  // next time something ships).
+  useEffect(() => {
+    const handler = () => setOpen(true)
+    window.addEventListener(OPEN_WHATS_NEW_EVENT, handler as EventListener)
+    // Defer to a microtask — no synchronous setState inside the effect body
+    // (React 19 lint rule).
+    Promise.resolve().then(() => {
+      const returning = checkAndMarkVisited()
+      if (returning && shouldShowWhatsNew()) setOpen(true)
+    })
+    return () => window.removeEventListener(OPEN_WHATS_NEW_EVENT, handler as EventListener)
+  }, [])
+
+  const close = useCallback(() => {
+    setOpen(false)
+    ackWhatsNew()
+    // File it into the notifications area as a local notification.
+    setWhatsNewNotif(true)
+  }, [])
+
+  // "Pick your effect" — acknowledge the release AND hand the user straight
+  // to Settings → Profile, where the outer-effect picker lives (same
+  // open-settings CustomEvent the bell/other surfaces use; the app shell
+  // routes it to the dialog on the requested tab).
+  const openEffectsInSettings = useCallback(() => {
+    close()
+    window.dispatchEvent(
+      new CustomEvent("open-settings", { detail: { tab: "profile" } })
+    )
+  }, [close])
+
+  // Escape closes; body scroll lock while open (same pattern as the
+  // onboarding tour).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close()
+    }
+    window.addEventListener("keydown", onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prev
+    }
+  }, [open, close])
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22, ease: EASE }}
+          className="fixed inset-0 z-[210] flex items-center justify-center p-4 sm:p-6"
+          style={{ background: "rgba(10,9,7,0.45)", backdropFilter: "blur(12px) saturate(130%)" }}
+          onClick={close}
+          role="dialog"
+          aria-modal="true"
+          aria-label="ClubHub v7 — what's new"
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.99 }}
+            transition={{ duration: 0.42, ease: EASE }}
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-lg max-h-[86dvh] flex flex-col overflow-hidden rounded-2xl border border-[#f0ebe0]/12 bg-[#16130e] text-[#f0ebe0] shadow-2xl"
+          >
+            {/* Ambient teal glow — a quiet release-moment cue. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-40"
+              style={{
+                background:
+                  "radial-gradient(420px 160px at 50% -60px, rgba(11,138,95,0.28), transparent 70%)",
+              }}
+            />
+
+            {/* ── Header ─────────────────────────────────────────────────── */}
+            <div className="flex items-start justify-between gap-3 px-6 sm:px-8 pt-6 sm:pt-7 pb-1 shrink-0">
+              <div>
+                <p className="text-[0.6875rem] font-bold tracking-[0.22em] uppercase text-club">
+                  What&apos;s new
+                </p>
+                <h2
+                  className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
+                  style={{ letterSpacing: "-0.03em" }}
+                >
+                  ClubHub v{WHATS_NEW_VERSION} is officially HERE!
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close what's new"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-[#f0ebe0]/15 text-[#f0ebe0]/70 hover:text-club hover:border-club/60 hover:bg-club/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* ── Scrollable body ────────────────────────────────────────── */}
+            <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
+              <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
+                This is our biggest update yet, and we&apos;re really excited for
+                everyone to check out what&apos;s new. We&apos;ve been working on making
+                ClubHub better, easier to use, and a lot more than just a place
+                to manage your club.
+              </p>
+
+              <p className="mt-5 text-xs font-bold tracking-[0.18em] uppercase text-[#f0ebe0]/45">
+                Here&apos;s what&apos;s new in v{WHATS_NEW_VERSION}
+              </p>
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="🌐" title="A brand-new landing page">
+                  ClubHub now has a new way for students to discover what
+                  we&apos;re all about and get started. Whether you&apos;re new to
+                  ClubHub or already using it, getting into the platform is
+                  easier than ever.
+                </ReleaseNote>
+                <ReleaseNote emoji="🔎" title="Introducing Explore Clubs">
+                  Looking for a new club to join? You can now explore available
+                  clubs, check out their descriptions, see their banners, and
+                  find something that matches your interests — even before
+                  creating an account!
+                </ReleaseNote>
+                <ReleaseNote emoji="🎨" title="Custom club banners">
+                  Clubs can now have their own look and identity with custom
+                  banners. It&apos;s a small change that makes each club feel more
+                  personal and gives everyone a better experience when using
+                  ClubHub.
+                </ReleaseNote>
+                <ReleaseNote emoji="🤝" title="A better way to join clubs">
+                  Finding a club you like is one thing. Actually joining it
+                  should be easy, too. With the new membership experience,
+                  clubs can manage how students join, whether it&apos;s through a
+                  club code or a request that executives approve.
+                </ReleaseNote>
+                <ReleaseNote emoji="✨" title="A fresh new experience">
+                  We&apos;ve also been working on the overall look and feel of
+                  ClubHub to make everything cleaner, more modern, and easier
+                  to navigate.
+                </ReleaseNote>
+                {/* Outer effects — gets its own card + a direct CTA into
+                    Settings → Profile so people actually find the picker. */}
+                <div className="py-3.5 last:pb-1">
+                  <div className="flex items-baseline gap-2">
+                    <span aria-hidden className="text-sm leading-none">💫</span>
+                    <h3 className="text-sm font-bold tracking-tight">
+                      Avatar outer effects
+                    </h3>
+                  </div>
+                  <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
+                    Make your avatar stand out with animated outer effects —
+                    rings, glows, and more, visible in chat, announcements, and
+                    the members list. Pick yours in Settings.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openEffectsInSettings}
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-none border border-club/50 bg-club/10 px-3 h-9 text-xs font-bold tracking-wide uppercase text-club hover:bg-club/20 hover:border-club/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Choose your effect
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl border border-club/25 bg-club/[0.07] p-4">
+                <p className="text-xs font-bold tracking-[0.18em] uppercase text-club">
+                  Our goal
+                </p>
+                <p className="mt-2 text-sm text-[#f0ebe0]/80 leading-relaxed">
+                  We want ClubHub to be more than just a place where executives
+                  post announcements or manage tasks. We want it to be a place
+                  where students can discover new interests, find communities,
+                  get involved, and keep their club activities organized in one
+                  place.
+                </p>
+                <p className="mt-2 text-sm text-[#f0ebe0]/60 leading-relaxed">
+                  v{WHATS_NEW_VERSION} is a big step toward that vision, and
+                  there&apos;s still plenty more we&apos;d love to build.
+                </p>
+              </div>
+
+              <p className="mt-5 text-sm text-[#f0ebe0]/75 leading-relaxed">
+                A huge thank-you to everyone who&apos;s been using ClubHub so far.
+              </p>
+              <p className="mt-2 text-sm text-[#f0ebe0]/75 leading-relaxed">
+                Go check out ClubHub v{WHATS_NEW_VERSION} and let us know what
+                you think! 👀
+              </p>
+              <p className="mt-4 text-xs text-[#f0ebe0]/45 font-medium">
+                — The ClubHub Team | Aaron Shan
+              </p>
+            </div>
+
+            {/* ── Footer ─────────────────────────────────────────────────── */}
+            <div
+              className="shrink-0 border-t border-[#f0ebe0]/10 bg-[#f0ebe0]/[0.03] px-6 sm:px-8 py-4"
+              style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+            >
+              <button
+                type="button"
+                onClick={close}
+                className="w-full h-11 rounded-none bg-club text-club-foreground text-sm font-bold tracking-wide uppercase hover:brightness-110 active:scale-[0.99] transition-[filter,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                Let&apos;s go
+              </button>
+              <p className="mt-2.5 text-center text-xs text-[#f0ebe0]/40">
+                You can find these notes anytime in your notifications.
+              </p>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/** One release-note row: emoji + bold title + body copy. */
+function ReleaseNote({
+  emoji,
+  title,
+  children,
+}: {
+  emoji: string
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="py-3.5 first:pt-1 last:pb-1">
+      <div className="flex items-baseline gap-2">
+        <span aria-hidden className="text-sm leading-none">{emoji}</span>
+        <h3 className="text-sm font-bold tracking-tight">{title}</h3>
+      </div>
+      <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">{children}</p>
+    </div>
+  )
+}

@@ -50,3 +50,22 @@ export function rateLimit(
   }
   return { ok: true }
 }
+
+/** Best-effort client IP for rate-limit keys (behind the Caddy gateway /
+ *  Render's proxy). Falls back to "unknown" — a shared bucket — when no
+ *  proxy headers exist (e.g. direct local access). */
+export function getClientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for")
+  if (xff) return xff.split(",")[0].trim()
+  return req.headers.get("x-real-ip") ?? "unknown"
+}
+
+/** Standard 429 response with a human-friendly message + Retry-After. */
+export function tooManyRequests(retryAfterMs: number, what = "Too many attempts") {
+  const mins = Math.ceil(retryAfterMs / 60_000)
+  const wait = mins > 1 ? `${mins} minutes` : "a minute"
+  return Response.json(
+    { error: `${what} — please wait ${wait} and try again.` },
+    { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } },
+  )
+}

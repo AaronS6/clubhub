@@ -3,12 +3,16 @@ import { authOptions } from "@/lib/authOptions"
 import { db } from "@/lib/db"
 
 export interface ClubContext {
-  user: { id: string; name: string; email: string; avatarUrl?: string }
+  user: { id: string; name: string; email: string; avatarUrl?: string; avatarDecoration?: string }
   membership: {
     id: string
     role: "member" | "executive"
     status: string
     clubId: string
+    // Personal service-hours goal in this club (0 = unset). Included so
+    // per-member surfaces (dashboard, tour) can read it without a second
+    // ClubMember query.
+    personalHoursGoal: number
   }
   club: {
     id: string
@@ -24,7 +28,7 @@ export async function getSessionUser() {
   if (!session?.user?.id) return null
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, avatarUrl: true },
+    select: { id: true, name: true, email: true, avatarUrl: true, avatarDecoration: true },
   })
   return user
 }
@@ -46,11 +50,12 @@ export async function getSessionUserWithMemberships() {
       name: true,
       email: true,
       avatarUrl: true,
+      avatarDecoration: true,
       memberships: {
         where: { status: "active" },
         include: {
           club: {
-            select: { id: true, name: true, logoUrl: true, accentColor: true, clubCode: true },
+            select: { id: true, name: true, logoUrl: true, accentColor: true, clubCode: true, handbookAcceptedAt: true },
           },
         },
         orderBy: { joinedAt: "asc" },
@@ -78,12 +83,14 @@ export async function getClubContext(clubId: string): Promise<ClubContext | null
       name: user.name,
       email: user.email,
       avatarUrl: user.avatarUrl ?? undefined,
+      avatarDecoration: user.avatarDecoration ?? "none",
     },
     membership: {
       id: membership.id,
       role: membership.role as "member" | "executive",
       status: membership.status,
       clubId: membership.clubId,
+      personalHoursGoal: membership.personalHoursGoal ?? 0,
     },
     club: membership.club,
   }

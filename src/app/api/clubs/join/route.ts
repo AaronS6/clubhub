@@ -5,15 +5,26 @@ import { getSessionUser } from "@/lib/server-auth"
 import { verifyClubPassword } from "@/lib/club-crypto"
 import { logActivity, notifyClub } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit"
 
 const joinSchema = z.object({
   clubCode: z.string().min(4).max(10),
   clubPassword: z.string().min(1),
 })
 
+// 20 join attempts per user per 10 min — club codes are short and passwords
+// are shared, so without this an authenticated user could script-guess them.
+const JOIN_LIMIT = 20
+const JOIN_WINDOW = 10 * 60_000
+
 export async function POST(req: Request) {
   const user = await getSessionUser()
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  // Brute-force guard on club codes + join passwords.
+  const rl = rateLimit(`join:user:${user.id}`, JOIN_LIMIT, JOIN_WINDOW)
+  if (!rl.ok) return tooManyRequests(rl.retryAfterMs)
+
   const body = await req.json().catch(() => null)
   const parsed = joinSchema.safeParse(body)
   if (!parsed.success) {

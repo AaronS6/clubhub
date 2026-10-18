@@ -1,5 +1,6 @@
 import { createServer, Server as HttpServer, IncomingMessage, ServerResponse } from "http"
 import { Server } from "socket.io"
+import crypto from "crypto"
 
 // Socket.io server — gateway forwards browser ws connections to this port.
 // Path MUST be "/" so Caddy routes it correctly.
@@ -10,6 +11,39 @@ const io = new Server(wsServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
 })
+
+// ── Ticket verification ────────────────────────────────────────────────────
+// The Next.js app issues short-lived HMAC tickets via /api/realtime/ticket:
+//   ticket = HMAC-SHA256(`${userId}|${clubIds.join(",")}|${exp}`, REALTIME_TOKEN)
+// The browser sends that payload on the "auth" event; we verify the HMAC +
+// expiry and join rooms using the VERIFIED values only. This closes the old
+// hole where any client could claim any userId / clubIds and eavesdrop on
+// other clubs' realtime streams (presence, typing, change events).
+const TICKET_TTL_SKEW_MS = 5 * 60_000 // tolerate modest clock drift app<->service
+const INTERNAL_TOKEN = process.env.REALTIME_TOKEN || "dev-realtime-token"
+
+function verifyTicket(payload: any): { userId: string; clubIds: string[] } | null {
+  if (!payload || typeof payload !== "object") return null
+  const { ticket, userId, clubIds, exp } = payload
+  if (typeof ticket !== "string" || typeof userId !== "string") return null
+  if (!Array.isArray(clubIds) || !clubIds.every((c: unknown) => typeof c === "string")) return null
+  if (typeof exp !== "number" || !Number.isFinite(exp)) return null
+  if (exp + TICKET_TTL_SKEW_MS < Date.now()) return null // expired
+
+  const expected = crypto
+    .createHmac("sha256", INTERNAL_TOKEN)
+    .update(`${userId}|${clubIds.join(",")}|${exp}`)
+    .digest("hex")
+  // Constant-time compare over equal-length hex digests.
+  const a = Buffer.from(expected, "hex")
+  const b = Buffer.from(ticket, "hex")
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null
+
+  // Sanitize ids (defensive — the ticket was signed by our own app, but this
+  // also keeps room names clean).
+  const id = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, "")
+  return { userId: id(userId), clubIds: clubIds.map((c: string) => id(c)).filter(Boolean) }
+}
 
 // Presence: map socketId -> { userId, clubIds: Set }. We broadcast presence
 // deltas to the affected club rooms so clients can show online dots on avatars.
@@ -71,25 +105,34 @@ function broadcastPresence(clubId: string) {
 
 io.on("connection", (socket) => {
   console.log(`[realtime] socket connected: ${socket.id}`)
-  socket.on("auth", (payload: { userId: string; clubIds: string[] }) => {
-    if (!payload?.userId) return
-    console.log(`[realtime] auth: socket=${socket.id} user=${payload.userId} clubs=${payload.clubIds?.length ?? 0}`)
-    const clubSet = new Set(payload.clubIds ?? [])
-    socketPresence.set(socket.id, { userId: payload.userId, clubIds: clubSet })
-    socket.join(`user:${payload.userId}`)
+  socket.on("auth", (payload: any) => {
+    // SECURITY: verify the HMAC ticket issued by the Next.js app before
+    // joining ANY room. The verified payload is authoritative — the
+    // client's self-reported ids are never trusted.
+    const verified = verifyTicket(payload)
+    if (!verified) {
+      console.warn(`[realtime] auth REJECTED (bad/expired ticket): socket=${socket.id}`)
+      socket.emit("realtime:auth-error", { error: "invalid ticket" })
+      return
+    }
+    console.log(`[realtime] auth: socket=${socket.id} user=${verified.userId} clubs=${verified.clubIds.length}`)
+    const clubSet = new Set(verified.clubIds)
+    socketPresence.set(socket.id, { userId: verified.userId, clubIds: clubSet })
+    socket.join(`user:${verified.userId}`)
     for (const clubId of clubSet) {
       socket.join(`club:${clubId}`)
       broadcastPresence(clubId)
     }
   })
   socket.on("join-club", (clubId: string) => {
-    if (!clubId) return
-    socket.join(`club:${clubId}`)
+    if (!clubId || typeof clubId !== "string") return
+    // Only clubs the VERIFIED ticket already covers may be joined. A client
+    // joining a new club gets a fresh ticket (app-shell re-runs
+    // authenticateSocket when its club list changes).
     const p = socketPresence.get(socket.id)
-    if (p) {
-      p.clubIds.add(clubId)
-      broadcastPresence(clubId)
-    }
+    if (!p || !p.clubIds.has(clubId)) return
+    socket.join(`club:${clubId}`)
+    broadcastPresence(clubId)
   })
   socket.on("leave-club", (clubId: string) => {
     if (!clubId) return
@@ -101,17 +144,20 @@ io.on("connection", (socket) => {
   })
   socket.on("viewing", (payload: { clubId: string; view: string }) => {
     // Used by the "X people viewing" indicator (e.g. approvals queue).
-    if (!payload?.clubId || !payload.view) return
+    // Only VERIFIED sockets broadcast, and always under their verified id.
+    const p = socketPresence.get(socket.id)
+    if (!p || !payload?.clubId || !payload.view || !p.clubIds.has(payload.clubId)) return
     io.to(`club:${payload.clubId}`).emit("realtime:viewing", {
-      userId: socketPresence.get(socket.id)?.userId,
+      userId: p.userId,
       view: payload.view,
       clubId: payload.clubId,
     })
   })
   socket.on("stop-viewing", (payload: { clubId: string; view: string }) => {
-    if (!payload?.clubId) return
+    const p = socketPresence.get(socket.id)
+    if (!p || !payload?.clubId || !p.clubIds.has(payload.clubId)) return
     io.to(`club:${payload.clubId}`).emit("realtime:stop-viewing", {
-      userId: socketPresence.get(socket.id)?.userId,
+      userId: p.userId,
       view: payload.view,
       clubId: payload.clubId,
     })
@@ -130,7 +176,12 @@ io.on("connection", (socket) => {
   // who closes their tab mid-typing has their indicator cleared for others
   // immediately rather than waiting for the per-client TTL sweep (3s).
   socket.on("typing", (payload: { clubId?: string; conversationId?: string; userId?: string }) => {
-    if (!payload?.clubId || !payload.conversationId || !payload.userId) return
+    // Only VERIFIED sockets broadcast typing, always under their VERIFIED id
+    // (the client's self-reported userId is ignored).
+    const presence = socketPresence.get(socket.id)
+    if (!presence?.userId || !payload?.clubId || !payload.conversationId) return
+    if (!presence.clubIds.has(payload.clubId)) return
+    const userId = presence.userId
     // Track typing state for this socket so we can clear it on disconnect.
     let convs = socketTyping.get(socket.id)
     if (!convs) {
@@ -138,7 +189,7 @@ io.on("connection", (socket) => {
       socketTyping.set(socket.id, convs)
     }
     convs.add(payload.conversationId)
-    const key = `${payload.userId}::${payload.conversationId}`
+    const key = `${userId}::${payload.conversationId}`
     let typers = conversationTypers.get(key)
     if (!typers) {
       typers = new Set()
@@ -148,19 +199,22 @@ io.on("connection", (socket) => {
     io.to(`club:${payload.clubId}`).emit("realtime:club", {
       type: "chat_typing",
       conversationId: payload.conversationId,
-      userId: payload.userId,
+      userId,
       clubId: payload.clubId,
     })
   })
   socket.on("typing:stop", (payload: { clubId?: string; conversationId?: string; userId?: string }) => {
-    if (!payload?.clubId || !payload.conversationId || !payload.userId) return
+    const presence = socketPresence.get(socket.id)
+    if (!presence?.userId || !payload?.clubId || !payload.conversationId) return
+    if (!presence.clubIds.has(payload.clubId)) return
+    const userId = presence.userId
     // Mirror the tracking update so we don't leak memory in the maps.
     const convs = socketTyping.get(socket.id)
     if (convs) {
       convs.delete(payload.conversationId)
       if (convs.size === 0) socketTyping.delete(socket.id)
     }
-    const key = `${payload.userId}::${payload.conversationId}`
+    const key = `${userId}::${payload.conversationId}`
     const typers = conversationTypers.get(key)
     let stillTyping = false
     if (typers) {
@@ -178,7 +232,7 @@ io.on("connection", (socket) => {
       io.to(`club:${payload.clubId}`).emit("realtime:club", {
         type: "chat_typing:stop",
         conversationId: payload.conversationId,
-        userId: payload.userId,
+        userId,
         clubId: payload.clubId,
       })
     }
@@ -199,7 +253,6 @@ io.on("connection", (socket) => {
 
 // Separate internal HTTP API (port 3004) for the Next.js app to emit events.
 // This avoids the socket.io path:"/" handler intercepting plain POSTs.
-const INTERNAL_TOKEN = process.env.REALTIME_TOKEN || "dev-realtime-token"
 const emitServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   if (req.method !== "POST") {
     res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "not found" }))

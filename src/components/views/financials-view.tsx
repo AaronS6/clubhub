@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type CSSProperties } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -115,7 +115,7 @@ export function FinancialsView() {
           <div className="lg:col-span-7 space-y-2">
             <h3 className="text-card-title mb-1">By Category</h3>
             {cats.map((c, i) => (
-              <div key={c.cat} className="rounded-lg border border-border bg-card px-4 py-2.5" style={{ animation: `fade-in 300ms ease-out ${i * 60}ms both` }}>
+              <div key={c.cat} className="stagger-in rounded-lg border border-border bg-card px-4 py-2.5" style={{ "--stagger-i": i } as CSSProperties}>
                 <div className="flex items-center justify-between gap-3 mb-1.5">
                   <span className="text-sm font-medium truncate">{c.cat}</span>
                   <span className={cn("text-sm font-bold tabular-nums", c.net >= 0 ? "text-success-foreground" : "text-danger-foreground")}>
@@ -252,8 +252,8 @@ function DonutChart({ revenue, expense }: { revenue: number; expense: number }) 
 function TransactionCard({ t, isExec, index, onDelete, onEdit }: { t: Transaction; isExec: boolean; index: number; onDelete: () => void; onEdit: () => void }) {
   const isRev = t.type === "revenue"
   return (
-    <div className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 cv-auto  transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/20 hover:shadow-sm"
-      style={{ animation: `fade-in 300ms ease-out ${Math.min(index * 40, 400)}ms both` }}>
+    <div className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 cv-auto  transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/20 hover:shadow-sm stagger-in"
+      style={{ "--stagger-i": index } as CSSProperties}>
       <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform group-hover:scale-110",
         isRev ? "bg-success-subtle text-success-foreground" : "bg-danger-subtle text-danger-foreground")}>
         {isRev ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}

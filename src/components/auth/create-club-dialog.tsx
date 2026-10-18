@@ -20,7 +20,9 @@ export function CreateClubDialog({
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  onCreated: () => void
+  /** Called with the club that was just created so the caller can switch
+   *  straight into it (and surface the Executive Admin Handbook). */
+  onCreated: (club?: { id: string; name: string; clubCode: string; accentColor: string }) => void
 }) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -63,7 +65,7 @@ export function CreateClubDialog({
         setLoading(false)
         return
       }
-      await api("/api/clubs", {
+      const created = await api<{ club: { id: string; name: string; clubCode: string; accentColor: string } }>("/api/clubs", {
         method: "POST",
         json: { name, description, accentColor, clubPassword, adminPasscode },
       })
@@ -75,7 +77,7 @@ export function CreateClubDialog({
       setNameError(null)
       setPasswordError(null)
       setPasscodeError(null)
-      onCreated()
+      onCreated(created.club)
       onOpenChange(false)
     } catch (err: any) {
       toast.error(err.message)

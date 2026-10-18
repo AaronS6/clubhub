@@ -1,6 +1,6 @@
 import { db } from "@/lib/db"
 import { getClubContext, error } from "@/lib/server-auth"
-import { buildVisibilityFilter } from "@/app/api/clubs/[clubId]/notes/route"
+import { buildVisibilityFilter, noteVisibleTo } from "@/app/api/clubs/[clubId]/notes/route"
 
 /** GET /api/clubs/[clubId]/notes/export — stream a markdown bundle of all
  *  notes visible to the current user. Content-Disposition triggers a browser
@@ -12,7 +12,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
   if (!c) return error("Not a member of this club", 403)
 
   // Fetch notes + club name in parallel. Bounded by 500 (the per-club cap).
-  const [notes, club] = await Promise.all([
+  // Viewer visibility is applied JS-side (SQLite has no JSON filters).
+  const [allNotes, club] = await Promise.all([
     db.clubNote.findMany({
       where: buildVisibilityFilter(clubId, c.user.id),
       orderBy: { createdAt: "asc" },
@@ -24,6 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
     }),
     db.club.findUnique({ where: { id: clubId }, select: { name: true } }),
   ])
+  const notes = allNotes.filter((n) => noteVisibleTo(n, c.user.id))
 
   const clubName = club?.name ?? "Club"
   const exportDate = new Date().toISOString()

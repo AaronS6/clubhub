@@ -3,6 +3,38 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 import { db } from "@/lib/db"
 import { verifyPassword } from "@/lib/auth"
+import { rateLimit } from "@/lib/rate-limit"
+
+/**
+ * ⚠️ FAIL CLOSED in production: the historic fallback secret is committed to
+ * the public repo, so any deployment without NEXTAUTH_SECRET set would sign
+ * session JWTs with a KNOWN key — anyone could forge an admin session. A hard
+ * startup error is far better than silently-forgeable sessions. (Dev keeps a
+ * local .env value; the dev fallback only ever exists on a dev machine.)
+ */
+function requireSessionSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[auth] NEXTAUTH_SECRET is not set. Generate one with `openssl rand -hex 32` and set it in the environment — refusing to start with forgeable sessions.",
+    )
+  }
+  return secret ?? "dev-secret-change-me-in-production"
+}
+
+/** Best-effort client IP (behind the Caddy gateway / Render's proxy). */
+function clientIpFromHeaders(h: Headers): string {
+  const xff = h.get("x-forwarded-for")
+  if (xff) return xff.split(",")[0].trim()
+  return h.get("x-real-ip") ?? "unknown"
+}
+
+// Brute-force guard on the credentials login: per-email (tighter) and
+// per-IP (catches one attacker spraying many emails) sliding windows.
+const LOGIN_EMAIL_LIMIT = 10 // attempts …
+const LOGIN_EMAIL_WINDOW = 5 * 60_000 // …per 5 minutes
+const LOGIN_IP_LIMIT = 30
+const LOGIN_IP_WINDOW = 5 * 60_000
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days
@@ -20,10 +52,25 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         try {
           if (!credentials?.email || !credentials?.password) return null
           const email = credentials.email.toLowerCase().trim()
+
+          // Rate limit BEFORE touching bcrypt/the DB (also blunts timing oracles
+          // and password-guessing). Deliberately returns the same null as a
+          // wrong-password so the response can't reveal which check failed.
+          const headers = (req as any)?.headers ?? new Headers()
+          const ip = clientIpFromHeaders(
+            headers instanceof Headers ? headers : new Headers(headers as Record<string, string>),
+          )
+          const emailOk = rateLimit(`login:email:${email}`, LOGIN_EMAIL_LIMIT, LOGIN_EMAIL_WINDOW)
+          const ipOk = rateLimit(`login:ip:${ip}`, LOGIN_IP_LIMIT, LOGIN_IP_WINDOW)
+          if (!emailOk.ok || !ipOk.ok) {
+            console.warn(`[auth] rate-limited login: email=${email} ip=${ip}`)
+            return null
+          }
+
           const user = await db.user.findUnique({ where: { email } })
           if (!user) return null
           const ok = await verifyPassword(credentials.password, user.passwordHash ?? "")
@@ -81,12 +128,13 @@ export const authOptions: NextAuthOptions = {
           session.user.id = token.id as string
           const dbUser = await db.user.findUnique({
             where: { id: token.id as string },
-            select: { name: true, email: true, avatarUrl: true, bio: true },
+            select: { name: true, email: true, avatarUrl: true, bio: true, avatarDecoration: true },
           })
           if (dbUser) {
             session.user.name = dbUser.name
             session.user.email = dbUser.email
             session.user.image = dbUser.avatarUrl ?? undefined
+            session.user.avatarDecoration = dbUser.avatarDecoration ?? "none"
           }
         }
       } catch (e) {
@@ -95,5 +143,5 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
-  secret: process.env.NEXTAUTH_SECRET ?? "dev-secret-change-me-in-production",
+  secret: requireSessionSecret(),
 }

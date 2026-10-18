@@ -101,18 +101,35 @@ export function shapeNote(n: any, currentUserId: string): NoteShape {
   }
 }
 
-/** Visibility filter: public notes + private notes where the viewer is the
- *  author or in the sharedWith list. Excludes soft-deleted notes. */
+/** DB-level note filter: all non-deleted notes for the club. Viewer-level
+ *  visibility (public OR author OR sharedWith) is applied afterwards in JS
+ *  via noteVisibleTo() — see the comment there for why. */
 export function buildVisibilityFilter(clubId: string, userId: string) {
+  void userId // kept for API compatibility; visibility is JS-side now
   return {
     clubId,
     deletedAt: null,
-    OR: [
-      { isPrivate: false },
-      { authorId: userId },
-      { sharedWith: { path: [], array_contains: userId } },
-    ],
   } as any
+}
+
+/** Viewer-level visibility check: a note is visible when it is public,
+ *  authored by the viewer, or the viewer's id is in the sharedWith JSON
+ *  array.
+ *
+ *  Why not SQL? The original Prisma filter used
+ *  `sharedWith: { array_contains: userId }`, but Prisma's SQLite connector
+ *  does not support JSON filter operations (array_contains/path) — those
+ *  are Postgres/MySQL-only. Local dev runs SQLite, so the list + export
+ *  endpoints 500'd. Fetching the club's non-deleted notes (bounded by the
+ *  500-per-club cap) and filtering in JS is portable across providers and
+ *  preserves the exact same visibility semantics. */
+export function noteVisibleTo(
+  note: { isPrivate: boolean; authorId: string; sharedWith: unknown },
+  userId: string,
+): boolean {
+  if (!note.isPrivate) return true
+  if (note.authorId === userId) return true
+  return readSharedWith(note.sharedWith).includes(userId)
 }
 
 export const NOTES_CONSTANTS = {
@@ -133,7 +150,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
   if (!c) return error("Not a member of this club", 403)
 
   // Parallel: notes (visible to this user) + all club tags (for the picker).
-  const [notes, tags] = await Promise.all([
+  // Visibility is applied JS-side (see noteVisibleTo) because SQLite doesn't
+  // support Prisma's JSON array_contains filter.
+  const [allNotes, tags] = await Promise.all([
     db.clubNote.findMany({
       where: buildVisibilityFilter(clubId, c.user.id),
       orderBy: { createdAt: "desc" },
@@ -161,7 +180,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
   })
 
   return json({
-    notes: notes.map((n) => shapeNote(n, c.user.id)),
+    notes: allNotes
+      .filter((n) => noteVisibleTo(n, c.user.id))
+      .map((n) => shapeNote(n, c.user.id)),
     tags: tags.map((t) => ({
       id: t.id,
       name: t.name,

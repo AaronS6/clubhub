@@ -42,17 +42,36 @@ export function getRealtimeSocket(): Socket {
 }
 
 /**
- * Emit auth info so the server can place this socket into user + club rooms.
- * Call this on the client once we know the userId + clubs.
+ * Authenticates the realtime socket.
+ *
+ * SECURITY: the server no longer trusts the client-supplied userId/clubIds —
+ * we first fetch a short-lived HMAC ticket from /api/realtime/ticket (which
+ * derives the user + their ACTIVE clubs from the session, server-side) and
+ * emit THAT payload on the "auth" event. The mini-service verifies the ticket
+ * before joining any rooms, so a hostile client can't claim another user's
+ * identity or eavesdrop on clubs it isn't in. If the ticket fetch fails we
+ * simply don't authenticate (fail closed) — the polling fallback still
+ * refreshes all data.
+ *
+ * Call this on the client once we know the user + clubs (the ids passed in
+ * are only used as a fallback shape, never trusted by the server).
  */
 export function authenticateSocket(userId: string, clubIds: string[]) {
   const s = getRealtimeSocket()
-  if (!s.connected) {
-    s.connect()
-    s.on("connect", () => s.emit("auth", { userId, clubIds }))
-  } else {
-    s.emit("auth", { userId, clubIds })
-  }
+  void fetch("/api/realtime/ticket", { credentials: "same-origin" })
+    .then(async (res) => (res.ok ? res.json() : null))
+    .then((payload: { ticket?: string; userId?: string; clubIds?: string[]; exp?: number } | null) => {
+      if (!payload?.ticket || !payload.userId || !Array.isArray(payload.clubIds)) return
+      if (!s.connected) {
+        s.connect()
+        s.on("connect", () => s.emit("auth", payload))
+      } else {
+        s.emit("auth", payload)
+      }
+    })
+    .catch(() => {
+      /* fail closed — no rooms joined; polling keeps data fresh */
+    })
 }
 
 /** Subscribe to a realtime event. Returns an unsubscribe fn. */

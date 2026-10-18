@@ -5,12 +5,14 @@ import { useSession } from "next-auth/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAppStore } from "@/lib/store"
 import { usePresence } from "@/lib/use-presence"
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset"
 import { api } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { usePollingFallback } from "@/lib/realtime-store"
 import { toast } from "sonner"
 import { getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DecoratedAvatar } from "@/components/shared/decorated-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -101,7 +103,7 @@ interface ConversationItem {
   unreadCount: number
   memberCount: number
   myRole: "owner" | "member"
-  otherUser: { id: string; name: string; avatarUrl: string | null } | null
+  otherUser: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null } | null
   updatedAt: string
 }
 
@@ -114,6 +116,7 @@ interface AuthorInfo {
   id: string
   name: string
   avatarUrl: string | null
+  avatarDecoration?: string | null
 }
 
 interface ReactionUser {
@@ -160,13 +163,14 @@ interface MemberListItem {
   role?: string
   name: string
   avatarUrl: string | null
+  avatarDecoration?: string | null
 }
 
 interface MemberListResponse {
   members: {
     membershipId: string
     role: string
-    user: { id: string; name: string; email: string; avatarUrl: string | null; bio: string | null }
+    user: { id: string; name: string; email: string; avatarUrl: string | null; avatarDecoration?: string | null; bio: string | null }
   }[]
   myUserId: string
   myRole: "member" | "executive"
@@ -278,6 +282,14 @@ function ChatPane({ clubId }: { clubId: string }) {
   const [newDmOpen, setNewDmOpen] = useState(false)
   const [isMobileShowingMessages, setIsMobileShowingMessages] = useState(false)
 
+  // iOS keyboard handling (mobile only). Safari doesn't resize the layout
+  // viewport when the soft keyboard opens — `100dvh` doesn't shrink, so the
+  // composer used to end up buried under the keys while the page jumped
+  // around. Instead we shrink the chat panel by the measured keyboard
+  // height (VisualViewport API): the conversation pane gets smaller while
+  // the user types, and the composer stays pinned above the keys.
+  const keyboardInset = useKeyboardInset()
+
   // Hooks must be called unconditionally. online is empty when no club.
   const online = usePresence(clubId)
 
@@ -328,11 +340,20 @@ function ChatPane({ clubId }: { clubId: string }) {
 
   return (
     // Mobile: dynamic viewport height (dvh) instead of vh so the chat panel
-    // shrinks correctly when the soft keyboard opens or the mobile browser's
-    // URL bar is visible. With 100vh, the input ended up buried under the
-    // keyboard. Desktop uses dvh too — same math, no behavioral change
-    // because desktop browsers don't hide the URL bar.
-    <div className="h-[calc(100dvh-7rem)] md:h-[calc(100dvh-5rem)]">
+    // shrinks correctly when the mobile browser's URL bar is visible. When
+    // the iOS/Android soft keyboard is open we ALSO subtract the measured
+    // keyboard inset (see useKeyboardInset) so the whole pane — including
+    // the composer — fits above the keys instead of scrolling under them.
+    // Desktop uses dvh too — same math, no behavioral change because desktop
+    // browsers don't hide the URL bar and have no soft keyboard.
+    <div
+      className="h-[calc(100dvh-7rem)] md:h-[calc(100dvh-5rem)]"
+      style={
+        keyboardInset > 0
+          ? { height: `calc(100dvh - 7rem - ${keyboardInset}px)` }
+          : undefined
+      }
+    >
       <div className="flex h-full gap-0 md:gap-3">
         {/* Conversation list — floating panel on desktop */}
         <aside
@@ -608,12 +629,13 @@ function ConversationRow({
     >
       <div className="relative shrink-0">
         {isDirect ? (
-          <Avatar className="size-9">
-            <AvatarImage src={conversation.otherUser?.avatarUrl ?? undefined} alt={title} />
-            <AvatarFallback className={cn("text-xs", avatarColor(initialsText))}>
-              {initials(initialsText)}
-            </AvatarFallback>
-          </Avatar>
+          <DecoratedAvatar
+            decoration={conversation.otherUser?.avatarDecoration}
+            src={conversation.otherUser?.avatarUrl ?? undefined}
+            name={title}
+            className="size-9"
+            avatarClassName={cn("text-xs", avatarColor(initialsText))}
+          />
         ) : (
           <div
             className={cn(
@@ -1270,12 +1292,13 @@ function ConversationAvatar({
   if (isDirect) {
     return (
       <div className="relative shrink-0">
-        <Avatar className="size-9">
-          <AvatarImage src={conversation.otherUser?.avatarUrl ?? undefined} alt={title} />
-          <AvatarFallback className={cn("text-xs", avatarColor(title))}>
-            {initials(title)}
-          </AvatarFallback>
-        </Avatar>
+        <DecoratedAvatar
+          decoration={conversation.otherUser?.avatarDecoration}
+          src={conversation.otherUser?.avatarUrl ?? undefined}
+          name={title}
+          className="size-9"
+          avatarClassName={cn("text-xs", avatarColor(title))}
+        />
         {isOnline && (
           <span
             className="absolute bottom-0 right-0 size-2.5 rounded-full bg-club ring-2 ring-card"
@@ -1349,12 +1372,13 @@ function MembersDropdown({
         ) : (
           onlineMembers.slice(0, 12).map((m) => (
             <DropdownMenuItem key={m.user.id} className="gap-2 py-1.5">
-              <Avatar className="size-6">
-                <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
-                  {initials(m.user.name)}
-                </AvatarFallback>
-              </Avatar>
+              <DecoratedAvatar
+                decoration={m.user.avatarDecoration}
+                src={m.user.avatarUrl ?? undefined}
+                name={m.user.name}
+                className="size-6"
+                avatarClassName={cn("text-xs", avatarColor(m.user.name))}
+              />
               <span className="text-sm truncate">{m.user.name}</span>
               {m.role === "executive" && (
                 <span className="ml-auto text-xs text-muted-foreground">exec</span>
@@ -1530,12 +1554,13 @@ function MessageList({
               {/* Avatar (only for group chats, others' messages) */}
               <div className="w-8 shrink-0">
                 {showAuthorHeader && (
-                  <Avatar className="size-8 mt-1">
-                    <AvatarImage src={first.author.avatarUrl ?? undefined} alt={first.author.name} />
-                    <AvatarFallback className={cn("text-xs", avatarColor(first.author.name))}>
-                      {initials(first.author.name)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <DecoratedAvatar
+                    decoration={first.author.avatarDecoration}
+                    src={first.author.avatarUrl ?? undefined}
+                    name={first.author.name}
+                    className="size-8 mt-1"
+                    avatarClassName={cn("text-xs", avatarColor(first.author.name))}
+                  />
                 )}
               </div>
               <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
@@ -2193,12 +2218,13 @@ function NewGroupChatDialog({
                         onChange={() => toggle(m.user.id)}
                         className="size-4 accent-[var(--club-accent)]"
                       />
-                      <Avatar className="size-7">
-                        <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                        <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
-                          {initials(m.user.name)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <DecoratedAvatar
+                        decoration={m.user.avatarDecoration}
+                        src={m.user.avatarUrl ?? undefined}
+                        name={m.user.name}
+                        className="size-7"
+                        avatarClassName={cn("text-xs", avatarColor(m.user.name))}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm truncate">{m.user.name}</div>
                         {m.role === "executive" && (
@@ -2310,12 +2336,13 @@ function NewDirectChatDialog({
                   disabled={submitting}
                   className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent/50 text-left"
                 >
-                  <Avatar className="size-7">
-                    <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                    <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
-                      {initials(m.user.name)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <DecoratedAvatar
+                    decoration={m.user.avatarDecoration}
+                    src={m.user.avatarUrl ?? undefined}
+                    name={m.user.name}
+                    className="size-7"
+                    avatarClassName={cn("text-xs", avatarColor(m.user.name))}
+                  />
                   <div className="min-w-0">
                     <div className="text-sm truncate">{m.user.name}</div>
                     <div className="text-xs text-muted-foreground truncate">{m.user.email}</div>
@@ -2478,12 +2505,13 @@ function AddMemberDialog({
                 const isAdded = added.has(m.user.id)
                 return (
                   <div key={m.user.id} className="flex items-center gap-3 px-3 py-2">
-                    <Avatar className="size-7">
-                      <AvatarImage src={m.user.avatarUrl ?? undefined} alt={m.user.name} />
-                      <AvatarFallback className={cn("text-xs", avatarColor(m.user.name))}>
-                        {initials(m.user.name)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <DecoratedAvatar
+                      decoration={m.user.avatarDecoration}
+                      src={m.user.avatarUrl ?? undefined}
+                      name={m.user.name}
+                      className="size-7"
+                      avatarClassName={cn("text-xs", avatarColor(m.user.name))}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm truncate">{m.user.name}</div>
                       {m.role === "executive" && (

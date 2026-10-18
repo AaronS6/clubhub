@@ -49,6 +49,8 @@ export type ConnectionState = "connecting" | "connected" | "disconnected"
  *  - hours_*           → hours, approvals, dashboard, activity
  *  - team_*            → teams, members, dashboard, activity
  *  - member_*          → members, dashboard, activity
+ *  - join_request_*    → join-requests, join-settings, members, dashboard, activity
+ *  - club_banner_updated → dashboard (hero card)
  *  - chat_message      → conversations, messages
  *  - chat_typing*      → no-op (ephemeral; ChatView subscribes directly)
  *  - presence_update   → presence, members
@@ -183,6 +185,19 @@ export function useRealtimeSync(): ConnectionState {
         case "main_goal_updated":
           // Main goal lives on Club and is consumed by the Tasks view.
           apply([["tasks", cid], ["dashboard", cid]])
+          break
+        case "club_banner_updated":
+          // Banner lives on Club and is consumed by the dashboard hero card.
+          apply([["dashboard", cid]])
+          break
+        case "join_request_created":
+        case "join_request_reviewed":
+          // New pending request (execs see it in Members) or a decision (the
+          // queue + member roster may have changed).
+          apply(
+            [["join-requests", cid], ["join-settings", cid], ["members", cid], ["dashboard", cid], ["activity", cid]],
+            { type: "member" }
+          )
           break
         case "member_promoted":
         case "member_demoted":

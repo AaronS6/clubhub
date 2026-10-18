@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword, isPasswordStrong } from "@/lib/auth"
+import { rateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit"
+
+// 10 attempts per IP per 15 min — the token itself is 256-bit entropy so
+// brute-forcing is hopeless; this just stops a script from hammering the
+// endpoint (log noise + bcrypt CPU burn).
+const RESET_LIMIT = 10
+const RESET_WINDOW = 15 * 60_000
 
 /**
  * POST /api/auth/reset-password
@@ -15,6 +22,9 @@ import { hashPassword, isPasswordStrong } from "@/lib/auth"
  */
 export async function POST(req: Request) {
   try {
+    const rl = rateLimit(`reset:ip:${getClientIp(req)}`, RESET_LIMIT, RESET_WINDOW)
+    if (!rl.ok) return tooManyRequests(rl.retryAfterMs)
+
     const body = await req.json().catch(() => null)
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 })

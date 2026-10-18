@@ -1,10 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { useAppStore, View } from "@/lib/store"
 import { api, apiUpload } from "@/lib/api/client"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,13 @@ import { initials, relativeTime } from "@/components/shared/page-header"
 import { UnreadDot, UnreadBadge } from "@/components/shared/unread-indicator"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DecoratedAvatar,
+  DECORATION_IDS,
+  DECORATION_LABELS,
+  toDecorationId,
+  type DecorationId,
+} from "@/components/shared/decorated-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,15 +47,14 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   LayoutDashboard, Megaphone, Clock, CheckSquare, CalendarDays, Users,
   ScrollText, Wallet, Settings, Bell, LogOut, LogIn, Menu, Plus, ChevronDown,
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
-  MessageSquare, CheckCheck, ChevronRight, AlertTriangle, X, RefreshCw,
-  Upload, Trash2, Palette, NotebookPen,
+  MessageSquare, CheckCheck, Check, ChevronRight, AlertTriangle, X, RefreshCw,
+  Upload, Trash2, Palette, NotebookPen, KeyRound, Compass, UserCheck,
+  BookOpen, BookOpenCheck,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -58,7 +64,6 @@ import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
 import { PublicClubProfile } from "@/components/public-club-profile"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
-import { useRealtimeSync } from "@/lib/use-realtime-sync"
 import { openGlobalSearch } from "@/components/global-search"
 // Lazy-load the GlobalSearch command palette (heavy: bundles cmdk). It's
 // only opened on Cmd+K / `/` / header click, so deferring it keeps the
@@ -68,14 +73,20 @@ const GlobalSearch = dynamic(
   () => import("@/components/global-search").then((m) => m.GlobalSearch),
   { ssr: false }
 )
-import {
-  ALL_NOTIF_TYPES, NOTIF_TYPE_META, getDefaultPrefs, type NotifPrefs, type NotifType,
-} from "@/lib/notif-prefs"
+// Public landing page — lazy-loaded because only UNAUTHENTICATED visitors
+// need it. Signed-in users never download this chunk, and it keeps the
+// unauth first paint snappy.
+const LandingPage = dynamic(
+  () => import("@/components/landing/landing-page").then((m) => m.LandingPage),
+  { ssr: false }
+)
 import {
   notifMeta, notifToneClasses, targetViewFor,
 } from "@/lib/notif-meta"
 import { useCustomizationStore, AMBIENT_PRESETS, THEME_COLOR_PRESETS } from "@/lib/customization-store"
+import { useWhatsNewNotif, openWhatsNew, WHATS_NEW_VERSION } from "@/lib/whats-new"
 import { OnboardingTour } from "@/components/onboarding-tour"
+import { ExecHandbookModal } from "@/components/exec-handbook-modal"
 
 interface MeResponse {
   user: { id: string; name: string; email: string; avatarUrl?: string | null } | null
@@ -86,8 +97,27 @@ interface MeResponse {
     accentColor: string
     clubCode: string
     role: "member" | "executive"
+    /** Null until an executive confirms the Executive Admin Handbook popup
+     *  for this club (stamped once per club lifetime in the DB). */
+    handbookAcceptedAt?: string | null
   }[]
 }
+
+/** The club payload returned by POST /api/clubs/join and POST /api/clubs —
+ *  carried into `onJoined`/`onCreated` so the app can switch straight into
+ *  the club the user just landed in (instead of the previously-open one). */
+interface JoinedClubInfo {
+  id: string
+  name: string
+  clubCode: string
+  accentColor: string
+}
+
+/** sessionStorage key set right before the public club profile navigates into
+ *  the app after an in-page join — app-shell consumes it after bootstrap to
+ *  land in the JUST-JOINED club (a full page load would otherwise restore the
+ *  previously-open club from the persisted store). */
+const SELECT_CLUB_KEY = "clubhub-select-club"
 
 /**
  * Sidebar navigation, organized into tiers.
@@ -141,6 +171,21 @@ const NAV_TIERS: NavTier[] = [
 
 /** Flat list of every nav item (used for `?view=` validation + filtering). */
 const NAV: NavItem[] = NAV_TIERS.flatMap((t) => t.items)
+
+/** Refresh memberships and switch straight into the given club — the one
+ *  just joined or created — instead of staying on the previously-open club
+ *  (fixes "after I joined it redirected me to my other club"). Reads the
+ *  store imperatively so any component (AppShell, UserMenu, dialogs) can
+ *  call it without prop-drilling. */
+function landInClub(clubId?: string | null) {
+  api<MeResponse>("/api/me")
+    .then((d) => {
+      const { setClubs, selectClub } = useAppStore.getState()
+      setClubs(d.memberships)
+      if (clubId) selectClub(clubId)
+    })
+    .catch(() => {})
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
@@ -246,30 +291,220 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setBootFailed(false)
   }
 
-  // ── First-club-join detection ────────────────────────────────────────────
-  // When the user transitions from "no clubs" to "has clubs" (after creating
-  // or joining their first club), we auto-open the OnboardingTour — but ONLY
-  // if they haven't completed it before (`onboardingCompleted` flag in the
-  // customization store). Returning users who add a second club won't see it
-  // again; they can replay it from the account menu if they want.
-  const onboardingCompleted = useCustomizationStore((s) => s.onboardingCompleted)
-  const prevClubsCountRef = useRef(clubs.length)
+  // ── Join intent (public site → authenticated join flow) ─────────────────
+  // When an unauthenticated visitor clicks "Join this club" on a public club
+  // profile, we store the club code in sessionStorage and route them to the
+  // auth screen. After they sign up / log in and the app bootstraps, we
+  // re-check membership: if they already belong to the club we open that
+  // club's workspace; otherwise we open the EXISTING join dialog with the
+  // code prefilled. The club password is still required — authentication
+  // alone never grants membership.
+  const [joinIntent, setJoinIntent] = useState<string | null>(null)
   useEffect(() => {
+    if (!bootstrapped) return
+    // Deferred to a microtask so we don't call setState synchronously inside
+    // the effect body (avoids cascading renders per the React 19 lint rule —
+    // same pattern as the onboarding-dismissal effect above).
+    let cancelled = false
+    Promise.resolve().then(() => {
+      if (cancelled) return
+      let intent: string | null = null
+      try {
+        intent = sessionStorage.getItem("clubhub-join-intent")
+      } catch {
+        intent = null
+      }
+      if (!intent) return
+      try {
+        sessionStorage.removeItem("clubhub-join-intent")
+      } catch {
+        /* ignore */
+      }
+      const code = intent.trim().toUpperCase()
+      const existing = clubs.find((c) => c.clubCode === code)
+      if (existing) {
+        toast(`You're already a member of ${existing.clubName} — opening it now.`)
+        selectClub(existing.clubId)
+        return
+      }
+      setJoinIntent(code)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrapped, clubs, selectClub])
+
+  // ── New-club-join detection ─────────────────────────────────────────────
+  // Whenever the user's club count INCREASES (joining a club, joining via a
+  // public profile, creating a club, or an exec approving their request),
+  // we auto-open the OnboardingTour so the introduction guide walks them
+  // through the club they just landed in — EVERY new club, not just the
+  // first one (per user request). The guide can always be dismissed, and
+  // it stays replayable from the account menu.
+  const prevClubsCountRef = useRef(clubs.length)
+  const tourArmedRef = useRef(false)
+  useEffect(() => {
+    // Pre-bootstrap (zustand persist hydration + the /api/me sync) is NOT a
+    // join — keep the baseline in sync without arming, otherwise every page
+    // reload would re-open the guide.
+    if (!bootstrapped) {
+      prevClubsCountRef.current = clubs.length
+      return
+    }
     const prev = prevClubsCountRef.current
     prevClubsCountRef.current = clubs.length
-    // Transition: 0 clubs → 1+ clubs, and tour not completed yet
-    if (prev === 0 && clubs.length > 0 && !onboardingCompleted) {
-      // Slight delay so the dashboard renders first (feels less jarring than
-      // the tour popping in instantly on top of a blank screen).
-      const t = setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 600)
-      return () => clearTimeout(t)
+    // Transition: ANY increase in club count (0→1 first club, or n→n+1 when
+    // joining/creating/approved into another club) → show the guide.
+    if (clubs.length > prev) {
+      tourArmedRef.current = true
     }
-  }, [clubs.length, onboardingCompleted])
+  }, [clubs.length, bootstrapped])
+
+  // ── Executive Admin Handbook (once per club lifetime) ────────────────────
+  // The FIRST club where the viewer is an active executive and the handbook
+  // hasn't been acknowledged (club.handbookAcceptedAt == null) gets the
+  // non-dismissible handbook popup. Typically that's the club they just
+  // created; confirming stamps the DB flag so it never shows again. If the
+  // handbook popup is up, the tour waits until it's confirmed.
+  //
+  // `confirmedThisSession` guards the brief window between the confirm POST
+  // succeeding and the memberships refetch landing (clubs is still stale
+  // there, so without the guard the modal would instantly re-open).
+  const [confirmedThisSession, setConfirmedThisSession] = useState<string[]>([])
+  const handbookDue = useMemo(
+    () =>
+      clubs.find(
+        (c) =>
+          c.role === "executive" &&
+          (c.handbookAcceptedAt ?? null) === null &&
+          !confirmedThisSession.includes(c.clubId),
+      ) ?? null,
+    [clubs, confirmedThisSession],
+  )
+
+  // The tour itself: fires 600ms after the club list settles, deferred
+  // behind the handbook popup when one is due (the exec confirms the
+  // handbook FIRST, then gets the introduction guide for the new club).
+  // Fire-and-forget on purpose: the handbook confirm triggers a SECOND
+  // render (the memberships refetch) whose effect cleanup would otherwise
+  // cancel the pending dispatch.
+  useEffect(() => {
+    if (!tourArmedRef.current) return
+    if (handbookDue) return // wait for the handbook modal to be confirmed
+    tourArmedRef.current = false
+    setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 600)
+  }, [clubs, handbookDue])
+
+  /** Handbook confirmed → mark it confirmed for this session (instantly
+   *  hides the modal) + refresh memberships (the DB flag is the permanent
+   *  record — this refetch lets the tour trigger release and re-evaluates
+   *  the next unacknowledged exec club, if any). */
+  const handleHandbookConfirmed = useCallback(
+    (clubId: string) => {
+      setConfirmedThisSession((prev) =>
+        prev.includes(clubId) ? prev : [...prev, clubId],
+      )
+      api<MeResponse>("/api/me").then((d) => setClubs(d.memberships)).catch(() => {})
+    },
+    [setClubs],
+  )
+
+  // ── Executive Admin Handbook — REVIEW mode ──────────────────────────────
+  // Execs can re-read the handbook anytime: Settings → Security (rendered
+  // only when the viewer is an exec of the ACTIVE club) dispatches the
+  // `open-exec-handbook` window event — same pattern as `open-onboarding-tour`.
+  // The settings dialog closes itself first (`close-settings`) so the handbook
+  // overlay never stacks on a Radix dialog.
+  const [handbookReview, setHandbookReview] = useState<{
+    clubId: string
+    clubName: string
+  } | null>(null)
+  useEffect(() => {
+    const openHandler = () => {
+      const c = useAppStore.getState().currentClub
+      if (!c || c.role !== "executive") return // execs of the active club only
+      setHandbookReview({ clubId: c.clubId, clubName: c.clubName })
+    }
+    window.addEventListener("open-exec-handbook", openHandler)
+    return () => window.removeEventListener("open-exec-handbook", openHandler)
+  }, [])
+
+  // ── Land in the just-joined club after a FULL page navigation ────────────
+  // The public club profile joins in-page, then does window.location.assign
+  // ("/") so the shell bootstraps fresh. Before navigating it stashes the
+  // joined club id under SELECT_CLUB_KEY — consumed here (once per load) to
+  // switch into that club and open the introduction guide for it.
+  const afterLoadTourFiredRef = useRef(false)
+  useEffect(() => {
+    if (!bootstrapped) return
+    let id: string | null = null
+    try {
+      id = sessionStorage.getItem(SELECT_CLUB_KEY)
+    } catch {
+      id = null
+    }
+    if (!id) return
+    try {
+      sessionStorage.removeItem(SELECT_CLUB_KEY)
+    } catch {
+      /* ignore */
+    }
+    if (!clubs.some((c) => c.clubId === id)) return
+    // Deferred to a microtask so we don't call setState synchronously inside
+    // the effect body (React 19 lint rule, same as the join-intent effect).
+    const clubId = id
+    Promise.resolve().then(() => {
+      selectClub(clubId)
+    })
+    // Joined a NEW club on the public profile → open the introduction guide
+    // for it. Fire-once per page load (no cleanup — later effect re-runs from
+    // refetches must not cancel the pending tour dispatch).
+    if (!afterLoadTourFiredRef.current) {
+      afterLoadTourFiredRef.current = true
+      setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 900)
+    }
+  }, [bootstrapped, clubs, selectClub])
 
   useEffect(() => {
     const v = params.get("view") as View | null
     if (v && NAV.some((n) => n.view === v)) setView(v)
   }, [params, setView])
+
+  // ── View-switch feel: scroll reset + URL mirroring ────────────────────
+  // Switching views (or clubs) remounts the keyed content wrapper below, so
+  // the scroll container would otherwise stay wherever the previous view
+  // left it — "switch views → land mid-page". Reset BEFORE paint
+  // (useLayoutEffect) with an explicit `instant` behavior: the container is
+  // `scroll-smooth`, so the default would glide visibly to the top.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, behavior: "instant" })
+  }, [view, currentClubId])
+
+  // Write side of the `?view=` param (the effect above is the read side).
+  // Native history API — next/navigation's router.replace would re-render
+  // the tree. "dashboard" is the default view and keeps the bare URL; all
+  // other query params (?public= / ?auth= / ?landing=) are preserved. On
+  // mount the URL is the source of truth (the read effect's setView may
+  // still be in flight), so the first run never overwrites a differing
+  // ?view= — otherwise a stale persisted view could clobber a fresh deep
+  // link before the read side lands.
+  const viewUrlFirstRun = useRef(true)
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const current = url.searchParams.get("view")
+    const target = view === "dashboard" ? null : view
+    if (viewUrlFirstRun.current) {
+      viewUrlFirstRun.current = false
+      // URL carries a different view than the store → the read effect's
+      // setView is already queued; let it land and re-run this effect.
+      if (current !== null && current !== target) return
+    }
+    if (current === target) return
+    if (target === null) url.searchParams.delete("view")
+    else url.searchParams.set("view", view)
+    window.history.replaceState(null, "", url.toString())
+  }, [view])
 
   // Authenticate the realtime socket once we know the user + clubs. We use
   // `effectiveUserId` (from the manual probe fallback) so the socket connects
@@ -324,8 +559,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <PublicClubProfile code={publicCode} />
   }
 
+  // `?landing=1` forces the public landing page even while signed in. The
+  // join dialog's "Explore clubs" tab navigates here so members can browse
+  // the full public directory (photos, descriptions, how to join) instead of
+  // the cramped inline mini-list. The landing page itself detects the
+  // session and shows an "Open the app" button instead of Log in / Sign up,
+  // so nobody gets stranded outside the app. (Unauthenticated visitors
+  // already get the landing page at "/" — this only changes logged-in users.)
+  if (params.get("landing")) {
+    return <LandingPage />
+  }
+
   if (effectiveStatus === "unauthenticated") {
-    return <AuthScreen />
+    // `?auth=login|signup` renders the EXISTING auth screen (the component
+    // itself is unchanged) — this is what the public landing page's Log In /
+    // Sign Up buttons link to. Without the param, unauthenticated visitors
+    // get the public landing page with club discovery instead of a login wall.
+    // `?reset=TOKEN` (an emailed password-reset link) ALSO needs the auth
+    // screen — AuthScreen internally swaps in the reset-password form when
+    // it sees the token (it accepts both `reset` and legacy `resetToken`).
+    const authParam = params.get("auth")
+    const hasResetToken = params.get("reset") || params.get("resetToken")
+    if (authParam === "login" || authParam === "signup" || hasResetToken) {
+      return <AuthScreen />
+    }
+    return <LandingPage />
   }
 
   // No clubs yet -> onboarding
@@ -342,11 +600,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Button variant="club" size="lg" onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Create a club
               </Button>
-              <JoinClubInline onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
+              <JoinClubInline onJoined={(club) => landInClub(club?.id)} />
             </div>
           </div>
         </div>
-        <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
+        <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(club) => landInClub(club?.id)} />
+        {/* Join-intent resume (public site → this brand-new account): the
+            prefilled join dialog opens here too, right on the onboarding
+            screen. */}
+        {joinIntent && (
+          <JoinClubDialog
+            key={joinIntent}
+            open
+            onOpenChange={(o) => { if (!o) setJoinIntent(null) }}
+            onJoined={(club) => {
+              setJoinIntent(null)
+              landInClub(club?.id)
+            }}
+            defaultClubCode={joinIntent}
+          />
+        )}
       </div>
     )
   }
@@ -379,7 +652,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-lg w-full h-9 px-2.5 text-left text-sm font-medium transition-[background-color,color,box-shadow] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                    "group relative flex items-center gap-2.5 rounded-lg w-full h-9 px-2.5 text-left text-sm font-medium transition-[background-color,color,box-shadow,transform,translate,scale,rotate] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
                     active
                       ? "bg-club-subtle text-club-ink shadow-card"
                       : "text-muted-foreground hover:bg-accent/70 hover:text-foreground"
@@ -428,8 +701,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //   CENTER: global search trigger
   //   RIGHT:  connection dot, notification bell, profile avatar
   // The club switcher + theme toggle live in the sidebar (top + bottom).
+  // PERF: no backdrop-blur on the header (was bg-background/80 +
+  // backdrop-blur-md) — a blurred full-width header re-rasters EVERY frame
+  // while a sheet/dialog overlay fades in over it AND while the ambient
+  // background morphs behind it, which was the single biggest cause of the
+  // choppy More / notifications sheet opens on mobile. A nearly-opaque solid
+  // background looks identical for ~0 paint cost (same fix the bottom tab
+  // bar got earlier).
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/80 bg-background/80 backdrop-blur-md shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/80 bg-background/95 shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
           The wordmark competed with the club switcher in the sidebar.
           Mobile nav is via the bottom tab bar's "More" button — no hamburger
@@ -461,7 +741,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {pageTitle}
       </div>
 
-      {/* Right side: search icon (mobile), connection, bell, profile avatar */}
+      {/* Right side: search icon (mobile), bell, profile avatar */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
@@ -473,7 +753,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <SearchIcon className="h-4 w-4" />
         </Button>
-        <ConnectionIndicator />
         <NotificationBell />
         {/* Profile avatar menu — moved to the RIGHT side of the top bar */}
         <div className="shrink-0">
@@ -484,7 +763,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden relative z-10">
+    // `ch-app` marks the in-app (non-portal) DOM subtree — globals.css uses
+    // it to pause background decoration animations while modal overlays are
+    // open (decorations rendered inside sheet/dialog PORTALS keep animating,
+    // e.g. the settings effect picker previews).
+    <div className="ch-app h-dvh flex flex-col overflow-hidden relative z-10">
       {/* The ambient background (CustomizationProvider renders this) sits at
           z-0 behind this z-10 shell. We use `bg-transparent` here so the
           ambient shows through. Cards/surfaces inside (bg-card) remain opaque
@@ -514,8 +797,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
           {/* No top padding so view headers connect flush to the app top bar.
               Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */}
-          <div className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
-            <div className="max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
+            {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
+                view/club switch (replayed by the remount key below);
+                neutralized under prefers-reduced-motion in globals.css. */}
+            <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
               {children}
             </div>
           </div>
@@ -526,12 +812,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           Safe-area padding, accent on the active tab. */}
       <MobileTabBar />
 
-      <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
+      <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(club) => landInClub(club?.id)} />
+      {/* Join-intent resume — a visitor who clicked "Join this club" on the
+          public site gets the join dialog with the code prefilled after
+          signing in. They still confirm with the club password. */}
+      {joinIntent && (
+        <JoinClubDialog
+          key={joinIntent}
+          open
+          onOpenChange={(o) => { if (!o) setJoinIntent(null) }}
+          onJoined={(club) => {
+            setJoinIntent(null)
+            landInClub(club?.id)
+          }}
+          defaultClubCode={joinIntent}
+        />
+      )}
       <GlobalSearch />
       <BadgeConfettiPopup />
       {/* Onboarding tour — auto-opens on first club join, or replayable from
           the account menu via the `open-onboarding-tour` window event. */}
       <OnboardingTour />
+      {/* Executive Admin Handbook — the one-time acknowledgment popup for
+          clubs the viewer runs that haven't confirmed it yet (typically the
+          club they just created). Non-dismissible until confirmed. In REVIEW
+          mode (opened from Settings → Security by an exec) the same content
+          renders dismissibly so the guide can be re-read anytime. */}
+      <ExecHandbookModal
+        club={
+          handbookReview ??
+          (handbookDue ? { clubId: handbookDue.clubId, clubName: handbookDue.clubName } : null)
+        }
+        mode={handbookReview ? "review" : "acknowledge"}
+        onConfirmed={handleHandbookConfirmed}
+        onClose={() => setHandbookReview(null)}
+      />
     </div>
   )
 }
@@ -587,41 +902,87 @@ function InstallHint() {
 }
 
 /**
- * SwipeDownToClose — a grab-handle bar at the top of a bottom sheet /
- * dropdown. A small rounded pill visualizes "grab here", and dragging it
- * down past 80px (or a click) closes the parent. Used by the mobile "More"
- * bottom sheet and the notification bell dropdown so users can swipe down
- * from the top to dismiss on mobile.
+ * PullDownSheet — a bottom Sheet whose WHOLE CONTENT follows the finger
+ * while dragging the grab handle, and springs back (or dismisses past the
+ * threshold) on release. The previous implementation only translated the
+ * little handle bar itself, which felt broken: the line moved but the sheet
+ * stayed put until it suddenly closed.
+ *
+ * Implementation notes:
+ *  - Pointer events with pointer capture keep the gesture tracking the
+ *    finger even as the sheet (and handle) move under it.
+ *  - The transform is applied to the SheetContent itself; while the radix
+ *    enter/exit animations are CSS *animations* they take precedence over
+ *    inline styles, so open/close transitions still play normally.
+ *  - On release below the threshold, a 240ms spring-ease transition eases
+ *    the sheet back to its resting position.
  */
-function SwipeDownToClose({ onClose }: { onClose: () => void }) {
-  const startY = useRef<number | null>(null)
+function PullDownSheet({
+  open,
+  onOpenChange,
+  trigger,
+  ariaLabel,
+  className,
+  children,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  trigger?: React.ReactNode
+  ariaLabel?: string
+  className?: string
+  children: React.ReactNode
+}) {
   const [dragY, setDragY] = useState(0)
-  function onPointerDown(e: React.PointerEvent) {
-    startY.current = e.clientY
-    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-  }
-  function onPointerMove(e: React.PointerEvent) {
-    if (startY.current == null) return
-    const dy = e.clientY - startY.current
-    if (dy > 0) setDragY(dy)
-  }
-  function onPointerUp() {
-    if (dragY > 80) onClose()
+  const [dragging, setDragging] = useState(false)
+  const startY = useRef<number | null>(null)
+
+  function endDrag() {
+    const shouldClose = dragY > 90
     setDragY(0)
+    setDragging(false)
     startY.current = null
+    if (shouldClose) onOpenChange(false)
   }
+
   return (
-    <div
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      className="shrink-0 flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing touch-none select-none"
-      style={{ transform: dragY ? `translateY(${Math.min(dragY, 120)}px)` : undefined, transition: dragY ? "none" : "transform 200ms ease" }}
-      aria-label="Swipe down to close"
-    >
-      <span className="h-1.5 w-10 rounded-full bg-muted-foreground/40" />
-    </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {trigger && <SheetTrigger asChild>{trigger}</SheetTrigger>}
+      <SheetContent
+        side="bottom"
+        aria-label={ariaLabel}
+        className={className}
+        style={{
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: dragging ? "none" : "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
+        <div
+          onPointerDown={(e) => {
+            startY.current = e.clientY
+            setDragging(true)
+            ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+          }}
+          onPointerMove={(e) => {
+            if (startY.current == null) return
+            const dy = e.clientY - startY.current
+            // Downward drag only; clamp so the sheet can't be flung
+            // unreasonably far past the viewport.
+            setDragY(Math.min(Math.max(0, dy), 480))
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={() => {
+            setDragY(0)
+            setDragging(false)
+            startY.current = null
+          }}
+          className="shrink-0 flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing touch-none select-none"
+          aria-label="Drag down to close"
+        >
+          <span className="h-1.5 w-10 rounded-full bg-muted-foreground/40" />
+        </div>
+        {children}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -645,8 +1006,12 @@ function MobileTabBar() {
 
   return (
     <>
+      {/* PERF: no backdrop-blur — a blurred full-width bar re-rastered every
+          frame while the notification/More sheet's overlay faded over it,
+          which was a big part of the sheets' choppy opening on mobile. A
+          nearly-opaque solid background looks the same for ~0 paint cost. */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/85 backdrop-blur-md"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/95"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Mobile primary"
       >
@@ -658,7 +1023,7 @@ function MobileTabBar() {
               key={t.view}
               onClick={() => setView(t.view)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-colors",
+                "relative flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,transform,translate,scale,rotate] active:scale-[0.96]",
                 active ? "text-club-ink" : "text-muted-foreground hover:text-foreground"
               )}
               aria-current={active ? "page" : undefined}
@@ -681,24 +1046,27 @@ function MobileTabBar() {
             </button>
           )
         })}
-        {/* More — opens the mobile drawer (full nav + club switcher + theme) */}
-        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-          <SheetTrigger asChild>
+        {/* More — opens the mobile drawer (full nav + club switcher + theme).
+            PullDownSheet: the whole sheet follows the finger on drag. */}
+        <PullDownSheet
+          open={mobileNavOpen}
+          onOpenChange={setMobileNavOpen}
+          ariaLabel="More navigation"
+          className="rounded-t-xl p-0 flex flex-col max-h-[80dvh] shadow-dialog"
+          trigger={
             <button
-              className="flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground hover:text-foreground transition-[color,transform,translate,scale,rotate] active:scale-95"
               aria-label="More"
             >
               <Menu className="h-5 w-5" />
               <span>More</span>
             </button>
-          </SheetTrigger>
-          <SheetContent side="bottom" className="rounded-t-xl p-0 flex flex-col max-h-[80dvh] shadow-dialog">
-            <SwipeDownToClose onClose={() => setMobileNavOpen(false)} />
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
-              <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
-            </div>
-          </SheetContent>
-        </Sheet>
+          }
+        >
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
+          </div>
+        </PullDownSheet>
       </nav>
     </>
   )
@@ -731,7 +1099,7 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
                   key={item.view}
                   onClick={() => onPick(item.view)}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm font-medium transition-colors",
+                    "flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm font-medium transition-[color,background-color,border-color,transform,translate,scale,rotate] active:scale-[0.98]",
                     active ? "bg-club-subtle text-club-ink" : "text-foreground hover:bg-accent"
                   )}
                 >
@@ -1180,11 +1548,21 @@ function ClubSwitcher({
         <DropdownMenuTrigger asChild>
           <Button variant="outline" className="w-full justify-between h-auto py-2.5 px-3 rounded-xl gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
+              {/* Club tile — the club's actual logo when one exists (kept in
+                  sync via /api/me + patchCurrentClub), initials otherwise. */}
               <div
                 className="flex h-10 w-10 items-center justify-center rounded-xl text-white text-sm font-bold shrink-0 overflow-hidden"
                 style={{ backgroundColor: currentClub?.accentColor ?? "#10b981" }}
               >
-                {currentClub ? initials(currentClub.clubName) : "?"}
+                {currentClub?.logoUrl ? (
+                  <img
+                    src={currentClub.logoUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  currentClub ? initials(currentClub.clubName) : "?"
+                )}
               </div>
               <div className="min-w-0 text-left">
                 <div className="text-sm font-semibold truncate">{currentClub?.clubName ?? "Select club"}</div>
@@ -1202,10 +1580,14 @@ function ClubSwitcher({
           {clubs.map((c) => (
             <DropdownMenuItem key={c.clubId} onClick={() => onSelect(c.clubId)} className="cursor-pointer gap-2.5 py-2">
               <div
-                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0 overflow-hidden"
                 style={{ backgroundColor: c.accentColor }}
               >
-                {initials(c.clubName)}
+                {c.logoUrl ? (
+                  <img src={c.logoUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  initials(c.clubName)
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{c.clubName}</div>
@@ -1232,22 +1614,22 @@ function ClubSwitcher({
 function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }) {
   const { data: session } = useSession()
   const [showSettings, setShowSettings] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<"profile" | "notifications" | "security" | "appearance">("profile")
+  const [settingsTab, setSettingsTab] = useState<"profile" | "security" | "appearance">("profile")
   const [showJoin, setShowJoin] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const user = session?.user
 
   // Listen for the `open-settings` custom event so other surfaces (e.g. the
-  // NotificationBell footer's "Notification settings" link) can open the
-  // dialog on a specific tab. The event detail carries `{ tab: "..." }`.
-  // Also listen for `close-settings` so the AppearanceTab can close the dialog
-  // before opening the onboarding tour (otherwise the tour is buried behind
-  // the modal).
+  // What's New modal's "Choose your effect" CTA) can open the dialog on a
+  // specific tab. The event detail carries `{ tab: "..." }`. Also listen
+  // for `close-settings` so the AppearanceTab can close the dialog before
+  // opening the onboarding tour (otherwise the tour is buried behind the
+  // modal).
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { tab?: string } | undefined
-      if (detail?.tab === "notifications" || detail?.tab === "security" || detail?.tab === "profile" || detail?.tab === "appearance") {
+      if (detail?.tab === "security" || detail?.tab === "profile" || detail?.tab === "appearance") {
         setSettingsTab(detail.tab)
       } else {
         setSettingsTab("profile")
@@ -1282,10 +1664,13 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
               className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
               aria-label="Account menu"
             >
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarImage src={user?.image ?? undefined} alt={user?.name} />
-                <AvatarFallback className="text-xs">{initials(user?.name)}</AvatarFallback>
-              </Avatar>
+              <DecoratedAvatar
+                decoration={user?.avatarDecoration}
+                src={user?.image ?? undefined}
+                name={user?.name ?? ""}
+                className="h-8 w-8"
+                avatarClassName="text-xs"
+              />
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </button>
           ) : desktop ? (
@@ -1294,10 +1679,13 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
               className="flex items-center gap-2.5 w-full rounded-md px-2 py-2 text-left hover:bg-accent transition-colors"
               aria-label="Account menu"
             >
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarImage src={user?.image ?? undefined} alt={user?.name} />
-                <AvatarFallback className="text-xs">{initials(user?.name)}</AvatarFallback>
-              </Avatar>
+              <DecoratedAvatar
+                decoration={user?.avatarDecoration}
+                src={user?.image ?? undefined}
+                name={user?.name ?? ""}
+                className="h-8 w-8"
+                avatarClassName="text-xs"
+              />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{user?.name}</div>
                 <div className="text-caption truncate">{user?.email}</div>
@@ -1306,10 +1694,13 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
             </button>
           ) : (
             <Button variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.image ?? undefined} alt={user?.name} />
-                <AvatarFallback className="text-xs">{initials(user?.name)}</AvatarFallback>
-              </Avatar>
+              <DecoratedAvatar
+                decoration={user?.avatarDecoration}
+                src={user?.image ?? undefined}
+                name={user?.name ?? ""}
+                className="h-8 w-8"
+                avatarClassName="text-xs"
+              />
             </Button>
           )}
         </DropdownMenuTrigger>
@@ -1341,103 +1732,379 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
-      <CreateClubDialog open={showCreate} onOpenChange={setShowCreate} onCreated={() => api<MeResponse>("/api/me").then((d) => setClubs(d.memberships))} />
+      <JoinClubDialog open={showJoin} onOpenChange={setShowJoin} onJoined={(club) => landInClub(club?.id)} />
+      <CreateClubDialog open={showCreate} onOpenChange={setShowCreate} onCreated={(club) => landInClub(club?.id)} />
       <SettingsDialog
         open={showSettings}
         onOpenChange={setShowSettings}
         tab={settingsTab}
-        onTabChange={(t) => setSettingsTab(t as "profile" | "notifications" | "security" | "appearance")}
+        onTabChange={(t) => setSettingsTab(t as "profile" | "security" | "appearance")}
         isExec={useAppStore.getState().currentClub?.role === "executive"}
       />
     </>
   )
 }
 
-/** Subtle dot showing realtime connection state — green=live, amber=reconnecting. */
-function ConnectionIndicator() {
-  const state = useRealtimeSync()
-  if (state === "connected") {
-    // Only render a very subtle dot; don't make it prominent.
-    return (
-      <span
-        className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-club shrink-0"
-        title="Live sync active"
-        aria-label="Live sync active"
-      />
-    )
-  }
-  return (
-    <span
-      className="hidden sm:inline-block h-1.5 w-1.5 rounded-full bg-warning shrink-0"
-      title="Reconnecting…"
-      aria-label="Reconnecting"
-    />
-  )
-}
-
-function JoinClubInline({ onJoined }: { onJoined: () => void }) {
+function JoinClubInline({ onJoined }: { onJoined: (club?: JoinedClubInfo) => void }) {
   const [open, setOpen] = useState(false)
   return (
     <>
       <Button variant="outline" onClick={() => setOpen(true)}>
-        Join a club with a code
+        Join a club
       </Button>
       <JoinClubDialog open={open} onOpenChange={setOpen} onJoined={onJoined} />
     </>
   )
 }
 
+/**
+ * JoinClubDialog — both ways in, always side by side (no mode switching):
+ *
+ *   1. "Join with a code": type the club code. The dialog live-detects the
+ *      club from the public API (its name appears under the input once a
+ *      real ≥4-char code is typed), then offers BOTH paths together:
+ *        - primary   → club password → instant join (POST /api/clubs/join)
+ *        - secondary → "Don't have the code? Send a join request instead"
+ *                      (POST /api/join-requests) in its own subtle accent
+ *                      box — an executive approves it from Members → Join
+ *                      requests. Optional 280-char note.
+ *      A wrong password gently points at the request path instead of
+ *      dead-ending.
+ *   2. "Explore clubs": redirects to the public landing page directory
+ *      (/?landing=1) — the full browsing experience with photos and
+ *      descriptions lives there, not in a cramped inline mini-list.
+ *
+ * The public club endpoint is unauthenticated and cheap — keyed + cached by
+ * TanStack Query so re-typing a code doesn't spam the server.
+ */
 function JoinClubDialog({
-  open, onOpenChange, onJoined,
+  open, onOpenChange, onJoined, defaultClubCode,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  onJoined: () => void
+  /** Called with the club that was just joined so the caller can switch
+   *  straight into it (instead of staying on the previously-open club). */
+  onJoined: (club?: JoinedClubInfo) => void
+  /** Optional prefilled code — used by the public-site join-intent flow so
+   *  the visitor lands back on a dialog with the club they were viewing. */
+  defaultClubCode?: string
 }) {
-  const [clubCode, setClubCode] = useState("")
+  const [tab, setTab] = useState<"code" | "explore">("code")
+  const [clubCode, setClubCode] = useState(defaultClubCode ?? "")
   const [clubPassword, setClubPassword] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState("")
+  const [joining, setJoining] = useState(false)
+  const [requesting, setRequesting] = useState(false)
+  /** Join-request success state — shows a confirmation instead of the form. */
+  const [requested, setRequested] = useState(false)
+  /** Set when a password join bounces, so we can gently point at the request
+   *  path ("you can also send a join request") instead of a dead end. */
+  const [pwFailed, setPwFailed] = useState(false)
+
+  // Reset the transient state whenever the dialog opens.
+  useEffect(() => {
+    if (!open) return
+    Promise.resolve().then(() => {
+      setRequested(false)
+      setTab("code")
+      setClubCode(defaultClubCode ?? "")
+      setClubPassword("")
+      setMessage("")
+      setPwFailed(false)
+    })
+  }, [open])
+
+  // Live club detection: once the typed code looks like a real code (≥4
+  // chars), fetch the public club profile (public-safe, unauth'd) so the
+  // club's name shows under the input before anything is submitted.
+  const codeKey = clubCode.trim().toUpperCase()
+  const {
+    data: clubInfo,
+    isLoading: clubInfoLoading,
+    isError: clubInfoError,
+  } = useQuery<{ club: { name: string } }>({
+    queryKey: ["public-club-mini", codeKey],
+    queryFn: () =>
+      api<{ club: { name: string } }>(
+        `/api/public/club/${encodeURIComponent(codeKey)}`,
+      ),
+    enabled: open && tab === "code" && codeKey.length >= 4,
+    staleTime: 30_000,
+    retry: 0,
+  })
+  const clubName = clubInfo?.club?.name
+
+  // ── Path 1 (primary): club code + password → instant join ──────────────
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    setJoining(true)
+    setPwFailed(false)
     try {
-      await api("/api/clubs/join", { method: "POST", json: { clubCode: clubCode.toUpperCase(), clubPassword } })
+      const res = await api<{ club: JoinedClubInfo }>("/api/clubs/join", {
+        method: "POST",
+        json: { clubCode: codeKey, clubPassword },
+      })
       toast.success("Joined club successfully!")
       setClubCode("")
       setClubPassword("")
-      onJoined()
+      setMessage("")
+      onJoined(res.club)
       onOpenChange(false)
     } catch (err: any) {
       toast.error(err.message)
+      if (String(err?.message ?? "").toLowerCase().includes("wrong club password")) {
+        setPwFailed(true)
+      }
     } finally {
-      setLoading(false)
+      setJoining(false)
     }
   }
+
+  // ── Path 2 (secondary): no code? → join request an executive approves ──
+  async function handleRequest() {
+    setRequesting(true)
+    try {
+      await api("/api/join-requests", {
+        method: "POST",
+        json: { clubCode: codeKey, message: message.trim() || undefined },
+      })
+      toast.success("Request sent — an executive will review it.")
+      setRequested(true)
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setRequesting(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Join a club</DialogTitle>
-          <DialogDescription>Enter the club code and password shared by the club organizer.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleJoin} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Club code</Label>
-            <Input value={clubCode} onChange={(e) => setClubCode(e.target.value.toUpperCase())} placeholder="e.g. AB3K9X" maxLength={10} className="uppercase font-mono tracking-wider" />
-          </div>
-          <div className="space-y-2">
-            <Label>Club password</Label>
-            <Input type="password" value={clubPassword} onChange={(e) => setClubPassword(e.target.value)} placeholder="••••••••" />
-          </div>
-          <DialogFooter>
-            <Button type="submit" variant="club" disabled={loading}>
-              {loading ? "Joining..." : "Join club"}
-            </Button>
-          </DialogFooter>
-        </form>
+      <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-md")} showCloseButton>
+        {/* Mobile-padding wrapper — DIALOG_CLASS is `p-0` full-screen on
+            mobile, so the dialog needs explicit padding there (same pattern
+            as the settings dialog). On sm+ the dialog has sm:p-6 already. */}
+        <div className="px-5 pt-5 pb-6 sm:px-0 sm:pt-0 sm:pb-0 flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Join a club</DialogTitle>
+            <DialogDescription>
+              Join with a code from an executive, or explore clubs to find one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={tab} onValueChange={(v) => setTab(v as "code" | "explore")}>
+            <TabsList className="grid grid-cols-2 w-full">
+              <TabsTrigger value="code">
+                <KeyRound className="h-3.5 w-3.5 mr-1" /> Join with a code
+              </TabsTrigger>
+              <TabsTrigger value="explore">
+                <Compass className="h-3.5 w-3.5 mr-1" /> Explore clubs
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Tab 1: both join paths, always side by side ── */}
+            <TabsContent value="code" className="mt-4">
+              {requested ? (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-club-subtle text-club">
+                    <UserCheck className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">Request sent</p>
+                    <p className="text-caption text-muted-foreground mt-1 max-w-xs mx-auto">
+                      An executive of {clubName ?? "the club"} will review your
+                      request. You&apos;ll get a notification the moment it&apos;s
+                      approved.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                    Done
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Primary path — plain form: club code + password →
+                      instant join. */}
+                  <form onSubmit={handleJoin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="join-club-code">Club code</Label>
+                      <Input
+                        id="join-club-code"
+                        value={clubCode}
+                        onChange={(e) => {
+                          setClubCode(e.target.value.toUpperCase())
+                          setPwFailed(false)
+                        }}
+                        placeholder="e.g. AB3K9X"
+                        maxLength={10}
+                        className="uppercase font-mono tracking-wider"
+                        autoFocus
+                      />
+                      {codeKey.length >= 4 && (
+                        <p className="text-caption text-muted-foreground min-h-4" aria-live="polite">
+                          {clubInfoLoading ? (
+                            "Checking that code…"
+                          ) : clubName ? (
+                            <span className="inline-flex items-center gap-1.5 font-medium text-club">
+                              <CheckCheck className="h-3.5 w-3.5" aria-hidden />
+                              {clubName}
+                            </span>
+                          ) : clubInfoError ? (
+                            "No club found with that code"
+                          ) : (
+                            ""
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="join-club-password">Club password</Label>
+                      <Input
+                        id="join-club-password"
+                        type="password"
+                        value={clubPassword}
+                        onChange={(e) => {
+                          setClubPassword(e.target.value)
+                          setPwFailed(false)
+                        }}
+                        placeholder="••••••••"
+                      />
+                      {pwFailed && (
+                        <p className="text-caption text-club-ink leading-relaxed">
+                          That password didn&apos;t work. You can also send a
+                          join request below — an executive will let you in.
+                        </p>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" variant="club" disabled={joining || requesting}>
+                        {joining ? "Joining..." : "Join club"}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+
+                  {/* Secondary path — clearly separated accent box: don't
+                      have the code? Send a join request an executive
+                      approves instead. */}
+                  <div className="space-y-3 rounded-xl border border-club/20 bg-club-subtle p-4">
+                    <div className="flex items-start gap-2.5">
+                      <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-club" />
+                      <div>
+                        <p className="text-sm font-semibold">Don&apos;t have the code?</p>
+                        <p className="mt-0.5 text-caption text-muted-foreground leading-relaxed">
+                          Send a join request instead — an executive will
+                          review it and let you in.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="join-request-note" className="text-caption text-muted-foreground">
+                        Note to the executives (optional)
+                      </Label>
+                      <Textarea
+                        id="join-request-note"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder="e.g. I'm interested in photography and would love to help at events!"
+                        rows={3}
+                        maxLength={280}
+                        className="resize-none bg-background/70"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={requesting || joining || codeKey.length < 4}
+                      onClick={handleRequest}
+                    >
+                      {requesting ? "Sending..." : "Send join request"}
+                    </Button>
+                    {codeKey.length < 4 && (
+                      <p className="text-caption text-muted-foreground/70">
+                        Enter the club&apos;s code above first — it&apos;s shown
+                        on the club&apos;s public page.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Tab 2: explore clubs → the public landing page ── */}
+            <TabsContent value="explore" className="mt-4">
+              <ExploreClubsRedirect onExplore={() => onOpenChange(false)} />
+            </TabsContent>
+          </Tabs>
+        </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * "Explore clubs" tab panel — a friendly redirect to the public landing
+ * page, which owns the FULL club directory (photos, descriptions, how to
+ * join). Shows a couple of live club-name chips as a teaser (no images —
+ * lightweight, cached by TanStack Query) and a big button that navigates to
+ * /?landing=1, where app-shell renders the landing page even for signed-in
+ * users (the landing page offers an "Open the app" way back).
+ *
+ * Only fetched while the tab is mounted (TabsContent unmounts inactive tabs
+ * by default in Radix, so the query is naturally gated).
+ */
+function ExploreClubsRedirect({ onExplore }: { onExplore: () => void }) {
+  const router = useRouter()
+  const { data } = useQuery<{ clubs: { name: string }[] }>({
+    queryKey: ["public-clubs"],
+    queryFn: () => api<{ clubs: { name: string }[] }>("/api/public/clubs"),
+    staleTime: 60_000,
+    retry: 1,
+  })
+
+  const clubs = data?.clubs ?? []
+  const preview = clubs.slice(0, 3)
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-5 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-club-subtle text-club">
+        <Compass className="h-5 w-5" />
+      </span>
+      <div className="max-w-[17rem]">
+        <p className="text-sm font-semibold">Explore the full directory</p>
+        <p className="mt-1 text-caption text-muted-foreground leading-relaxed">
+          Browse every public club on the ClubHub home page — photos,
+          descriptions, and how to join.
+        </p>
+      </div>
+      {preview.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          {preview.map((c) => (
+            <span
+              key={c.name}
+              className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-caption text-muted-foreground"
+            >
+              {c.name}
+            </span>
+          ))}
+          {clubs.length > preview.length && (
+            <span className="text-caption text-muted-foreground/70">
+              +{clubs.length - preview.length} more
+            </span>
+          )}
+        </div>
+      )}
+      <Button
+        variant="club"
+        className="w-full"
+        onClick={() => {
+          onExplore()
+          router.push("/?landing=1")
+        }}
+      >
+        <Compass className="h-4 w-4" />
+        Explore clubs
+      </Button>
+    </div>
   )
 }
 
@@ -1446,8 +2113,8 @@ function SettingsDialog({
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
-  tab: "profile" | "notifications" | "security" | "appearance"
-  onTabChange: (v: "profile" | "notifications" | "security" | "appearance") => void
+  tab: "profile" | "security" | "appearance"
+  onTabChange: (v: "profile" | "security" | "appearance") => void
   isExec: boolean
 }) {
   const { data: session, update } = useSession()
@@ -1464,8 +2131,41 @@ function SettingsDialog({
   const [cropFile, setCropFile] = useState<File | null>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
+  // §Outer effects in settings — Discord-style avatar decoration picker.
+  // Selected tile saves instantly via PATCH /api/me { avatarDecoration }
+  // (same pipeline as the onboarding tour) + session.update() so the header /
+  // account-menu avatar picks up the effect without a reload.
+  const [decoration, setDecoration] = useState<DecorationId>(() =>
+    toDecorationId(session?.user?.avatarDecoration)
+  )
+  const [decoSaving, setDecoSaving] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const avatarFileRef = useRef<HTMLInputElement>(null)
+
+  // Re-sync the picker with the freshest session value every time the dialog
+  // opens (the initial useState may have run before the session hydrated, and
+  // the onboarding tour can change the effect while settings are closed).
+  useEffect(() => {
+    if (open) setDecoration(toDecorationId(session?.user?.avatarDecoration))
+  }, [open, session?.user?.avatarDecoration])
+
+  async function selectDecoration(id: DecorationId) {
+    if (id === decoration || decoSaving) return
+    const prev = decoration
+    setDecoration(id) // optimistic — the preview flips instantly
+    setDecoSaving(true)
+    try {
+      await api("/api/me", { method: "PATCH", json: { avatarDecoration: id } })
+      // Refresh the session so the header/account-menu avatar updates live.
+      await update({ avatarDecoration: id })
+      toast.success(`Avatar effect: ${DECORATION_LABELS[id]}`)
+    } catch (err: any) {
+      setDecoration(prev) // revert the optimistic flip
+      toast.error(err?.message || "Couldn't save your avatar effect")
+    } finally {
+      setDecoSaving(false)
+    }
+  }
 
   // Avatar upload — opens the crop dialog with the chosen file. The actual
   // upload happens in handleCropConfirm once the user positions the crop and
@@ -1578,7 +2278,7 @@ function SettingsDialog({
         <div className="px-5 pt-5 pb-6 sm:px-0 sm:pt-0 sm:pb-0 flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Account settings</DialogTitle>
-            <DialogDescription>Update your profile, notifications, appearance, and password.</DialogDescription>
+            <DialogDescription>Update your profile, appearance, and password.</DialogDescription>
           </DialogHeader>
           {/* Theme toggle — mobile only (desktop has the sidebar toggle).
               Compact on mobile: smaller text, the toggle pill is contained
@@ -1602,19 +2302,15 @@ function SettingsDialog({
               />
             </button>
           </div>
-          <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "notifications" | "security" | "appearance")} className="w-full">
-            {/* Tab list — compact on mobile (smaller text + padding so all 4
+          <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "security" | "appearance")} className="w-full">
+            {/* Tab list — compact on mobile (smaller text + padding so all 3
                 tabs fit in the px-5 wrapper without overflowing). On sm+
-                they expand to normal size. */}
-            <TabsList
-              className={cn(
-                "w-full grid",
-                isExec ? "grid-cols-4 sm:grid-cols-4" : "grid-cols-3 sm:grid-cols-3"
-              )}
-            >
+                they expand to normal size. Security is for EVERYONE now
+                (self-service password change); the Executive Admin Handbook
+                card inside it is exec-only. */}
+            <TabsList className="w-full grid grid-cols-3 sm:grid-cols-3">
               <TabsTrigger value="profile" className="text-xs sm:text-sm px-1 sm:px-3">Profile</TabsTrigger>
-              <TabsTrigger value="notifications" className="text-xs sm:text-sm px-1 sm:px-3">Alerts</TabsTrigger>
-              {isExec && <TabsTrigger value="security" className="text-xs sm:text-sm px-1 sm:px-3">Security</TabsTrigger>}
+              <TabsTrigger value="security" className="text-xs sm:text-sm px-1 sm:px-3">Security</TabsTrigger>
               <TabsTrigger value="appearance" className="text-xs sm:text-sm px-1 sm:px-3">Look</TabsTrigger>
             </TabsList>
 
@@ -1696,6 +2392,75 @@ function SettingsDialog({
                     PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
                   </p>
                 </div>
+                {/* Outer effect — same Discord-style decoration picker as the
+                    onboarding tour, now reachable anytime from settings.
+                    Tiles preview the effect on the user's real avatar; the
+                    selection saves instantly (no "Save profile" needed). */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Outer effect</Label>
+                    {decoSaving && (
+                      <span className="flex items-center gap-1 text-caption text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Saving…
+                      </span>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-border bg-card/60 p-3 sm:p-4">
+                    <div className="flex items-center gap-3">
+                      {/* key on decoration → the soft pop replays on change */}
+                      <DecoratedAvatar
+                        key={decoration}
+                        decoration={decoration}
+                        src={avatarUrl || null}
+                        name={name || session?.user?.name || "You"}
+                        className="ch-tour-pop h-14 w-14 shrink-0"
+                        avatarClassName="border-2 border-card shadow-card"
+                      />
+                      <p className="text-caption leading-relaxed text-muted-foreground">
+                        An animated effect around your avatar, visible in chat,
+                        announcements, the members list, and your profile.
+                        Applies instantly.
+                      </p>
+                    </div>
+                    <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
+                      {DECORATION_IDS.map((id) => {
+                        const active = decoration === id
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            aria-pressed={active}
+                            disabled={decoSaving}
+                            onClick={() => selectDecoration(id)}
+                            className={cn(
+                              "relative flex flex-col items-center gap-1 rounded-xl border p-1.5 sm:p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                              active
+                                ? "border-club bg-club-muted/30"
+                                : "border-transparent hover:bg-accent"
+                            )}
+                          >
+                            {active && (
+                              <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-club text-club-foreground">
+                                <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                              </span>
+                            )}
+                            <DecoratedAvatar
+                              decoration={id}
+                              src={avatarUrl || null}
+                              name={name || session?.user?.name || "You"}
+                              className="h-11 w-11 sm:h-12 sm:w-12"
+                              avatarClassName="border-2 border-card"
+                            />
+                            <span className="text-center text-[0.625rem] font-medium leading-tight text-foreground/80">
+                              {DECORATION_LABELS[id]}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label>Bio</Label>
                   <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} />
@@ -1708,24 +2473,63 @@ function SettingsDialog({
               </div>
             </TabsContent>
 
-            <TabsContent value="notifications" className="mt-4">
-              <NotificationsTab userEmail={session?.user?.email ?? ""} />
-            </TabsContent>
-
-            {isExec && (
-              <TabsContent value="security" className="mt-4">
+            <TabsContent value="security" className="mt-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Change password</Label>
-                  {!isExec && (
-                    <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" />
-                  )}
-                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" />
+                  <Input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Current password"
+                    autoComplete="current-password"
+                  />
+                  <p className="text-caption text-muted-foreground">
+                    Required if you already have a password. Google accounts can set a first password without one.
+                  </p>
+                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" autoComplete="new-password" />
                   <Button variant="club" onClick={changePassword} disabled={loading}>
                     {loading ? "Saving..." : "Change password"}
                   </Button>
                 </div>
-              </TabsContent>
-            )}
+                {/* ── Executive Admin Handbook (execs of this club only) ──────
+                    The one-time acknowledgment popup is gone once confirmed,
+                    but the guide itself stays available here — clicking
+                    closes Settings and re-opens the handbook in dismissible
+                    REVIEW mode (same content + Google-Docs link). */}
+                {isExec && (
+                  <div className="rounded-xl border border-border bg-card/60 p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                        <BookOpenCheck className="h-5 w-5" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-tight">Executive Admin Handbook</p>
+                        <p className="mt-1 text-caption leading-relaxed text-muted-foreground">
+                          Your guide to running the club — responsibilities, member
+                          management, hour reviews, and policies. Re-readable anytime
+                          for executives.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="mt-3 w-full"
+                      onClick={() => {
+                        // Same hand-off the "Replay introduction guide" button
+                        // uses: close Settings first, then open the overlay —
+                        // never stack a fixed modal on a Radix dialog.
+                        window.dispatchEvent(new CustomEvent("close-settings"))
+                        window.dispatchEvent(new CustomEvent("open-exec-handbook"))
+                      }}
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      View guide
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
 
             <TabsContent value="appearance" className="mt-4">
               <AppearanceTab />
@@ -2099,153 +2903,6 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
   )
 }
 
-/**
- * Notifications tab inside the Account Settings dialog. Loads the user's
- * normalized prefs on mount, lets them toggle email/in-app per type, and
- * pick an email mode (instant | digest). Save calls PATCH endpoint.
- */
-function NotificationsTab({ userEmail }: { userEmail: string }) {
-  const [prefs, setPrefs] = useState<NotifPrefs>(() => getDefaultPrefs())
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    setLoading(true)
-    api<{ prefs: NotifPrefs; email: string }>("/api/me/notifications/preferences")
-      .then((data) => {
-        if (!active) return
-        setPrefs(data.prefs)
-      })
-      .catch((err: any) => {
-        toast.error(err?.message ?? "Failed to load preferences")
-      })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [])
-
-  function toggleEmail(type: NotifType, value: boolean) {
-    setPrefs((p) => ({ ...p, email: { ...p.email, [type]: value } }))
-  }
-  function toggleInApp(type: NotifType, value: boolean) {
-    setPrefs((p) => ({ ...p, inApp: { ...p.inApp, [type]: value } }))
-  }
-  function setMode(mode: "instant" | "digest") {
-    setPrefs((p) => ({ ...p, emailMode: mode }))
-  }
-
-  async function save() {
-    setSaving(true)
-    try {
-      const res = await api<{ prefs: NotifPrefs; email: string }>(
-        "/api/me/notifications/preferences",
-        { method: "PATCH", json: prefs },
-      )
-      setPrefs(res.prefs)
-      toast.success("Notification preferences saved")
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to save preferences")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="py-8 flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Email delivery mode — kept as the two radio cards; this is the only
-          binary choice that benefits from the larger card affordance. */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Email delivery</Label>
-        <p className="text-xs text-muted-foreground -mt-1">
-          Sent to <span className="font-medium text-foreground">{userEmail || "your account email"}</span>.
-        </p>
-        <RadioGroup
-          value={prefs.emailMode}
-          onValueChange={(v) => setMode(v as "instant" | "digest")}
-          className="grid grid-cols-2 gap-2"
-        >
-          <label
-            htmlFor="mode-instant"
-            className={cn(
-              "flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors text-sm",
-              prefs.emailMode === "instant" ? "border-club bg-club-subtle" : "border-border hover:bg-accent/50",
-            )}
-          >
-            <RadioGroupItem value="instant" id="mode-instant" />
-            <span className="font-medium">Instant</span>
-          </label>
-          <label
-            htmlFor="mode-digest"
-            className={cn(
-              "flex items-center gap-2 rounded-md border px-2.5 py-1.5 cursor-pointer transition-colors text-sm",
-              prefs.emailMode === "digest" ? "border-club bg-club-subtle" : "border-border hover:bg-accent/50",
-            )}
-          >
-            <RadioGroupItem value="digest" id="mode-digest" />
-            <span className="font-medium">Daily digest</span>
-          </label>
-        </RadioGroup>
-      </div>
-
-      {/* Compact per-type table — one row per notification type, with
-          In-app and Email toggles side by side. Replaces the previous
-          two tall stacked lists (which doubled the vertical length). */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Per type</Label>
-        <div className="rounded-md border overflow-hidden">
-          {/* Header row */}
-          <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1.5 bg-muted/40 border-b text-xs font-semibold  text-muted-foreground">
-            <span>Type</span>
-            <span className="w-14 text-center">In-app</span>
-            <span className="w-14 text-center">Email</span>
-          </div>
-          {/* Rows */}
-          {ALL_NOTIF_TYPES.map((type) => {
-            const meta = NOTIF_TYPE_META[type]
-            return (
-              <div
-                key={type}
-                className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-2 border-b last:border-b-0"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{meta.label}</div>
-                  <div className="text-xs text-muted-foreground truncate">{meta.description}</div>
-                </div>
-                <div className="w-14 flex justify-center">
-                  <Switch
-                    checked={prefs.inApp[type]}
-                    onCheckedChange={(v) => toggleInApp(type, v)}
-                    aria-label={`In-app ${meta.label}`}
-                  />
-                </div>
-                <div className="w-14 flex justify-center">
-                  <Switch
-                    checked={prefs.email[type]}
-                    onCheckedChange={(v) => toggleEmail(type, v)}
-                    aria-label={`Email ${meta.label}`}
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      <Button variant="club" onClick={save} disabled={saving}>
-        {saving ? "Saving..." : "Save preferences"}
-      </Button>
-    </div>
-  )
-}
-
 /** Shape of a notification item as returned by GET /api/notifications. */
 interface NotifItem {
   id: string
@@ -2281,6 +2938,9 @@ function NotificationBell() {
   const [markingAll, setMarkingAll] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const setView = useAppStore((s) => s.setView)
+  // Local v7 release-notes notification (filed when the What's New modal is
+  // closed). Clicking it re-opens the modal instead of navigating.
+  const { notif: releaseNotif, dismiss: dismissReleaseNotif } = useWhatsNewNotif()
 
   const refresh = useCallback(async () => {
     try {
@@ -2328,6 +2988,8 @@ function NotificationBell() {
     const prevItems = items
     setItems([])
     setUnread(0)
+    // The local release-notes notification clears with everything else.
+    dismissReleaseNotif()
     try {
       await api("/api/notifications", { method: "DELETE" })
       toast.success("All notifications cleared")
@@ -2357,16 +3019,15 @@ function NotificationBell() {
   }
 
   function handleNotifClick(n: NotifItem) {
+    // The local release-notes row re-opens the What's New modal.
+    if (n.type === "release_notes") {
+      openWhatsNew()
+      setOpen(false)
+      return
+    }
     const { view } = targetViewFor(n)
     if (!n.isRead) markRead(n.id)
     setView(view)
-    setOpen(false)
-  }
-
-  function openSettingsTab() {
-    window.dispatchEvent(
-      new CustomEvent("open-settings", { detail: { tab: "notifications" } })
-    )
     setOpen(false)
   }
 
@@ -2401,12 +3062,12 @@ function NotificationBell() {
       unread={unread}
       markingAll={markingAll}
       clearingAll={clearingAll}
+      releaseNotif={releaseNotif}
       onMarkAllRead={markAllRead}
       onClearAll={clearAll}
       onMarkRead={markRead}
       onNotifClick={handleNotifClick}
       onViewAll={viewAll}
-      onOpenSettings={openSettingsTab}
     />
   )
 
@@ -2415,20 +3076,18 @@ function NotificationBell() {
   if (isMobile) {
     // Mobile: full-width bottom Sheet that slides up from the bottom. The
     // anchored Popover is too cramped at 360–428px and its hover-only mark-read
-    // affordance is unreachable on touch.
+    // affordance is unreachable on touch. PullDownSheet makes the whole sheet
+    // follow the drag gesture (not just the handle).
     return (
-      <Sheet open={open} onOpenChange={(o) => { setOpen(o); if (o) refresh() }}>
-        <SheetTrigger asChild>{triggerButton}</SheetTrigger>
-        <SheetContent
-          side="bottom"
-          className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl"
-          aria-label="Recent notifications"
-        >
-          {/* Swipe-down-to-close grab handle (real gesture, not just visual) */}
-          <SwipeDownToClose onClose={() => setOpen(false)} />
-          {body}
-        </SheetContent>
-      </Sheet>
+      <PullDownSheet
+        open={open}
+        onOpenChange={(o) => { setOpen(o); if (o) refresh() }}
+        ariaLabel="Recent notifications"
+        className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl"
+        trigger={triggerButton}
+      >
+        {body}
+      </PullDownSheet>
     )
   }
 
@@ -2455,12 +3114,12 @@ function BellBody({
   unread,
   markingAll,
   clearingAll,
+  releaseNotif,
   onMarkAllRead,
   onClearAll,
   onMarkRead,
   onNotifClick,
   onViewAll,
-  onOpenSettings,
 }: {
   items: NotifItem[]
   newItems: NotifItem[]
@@ -2468,12 +3127,12 @@ function BellBody({
   unread: number
   markingAll: boolean
   clearingAll: boolean
+  releaseNotif: NotifItem | null
   onMarkAllRead: () => void
   onClearAll: () => void
   onMarkRead: (id: string) => void
   onNotifClick: (n: NotifItem) => void
   onViewAll: () => void
-  onOpenSettings: () => void
 }) {
   return (
     <>
@@ -2523,7 +3182,7 @@ function BellBody({
       </div>
 
       {/* List */}
-      {items.length === 0 ? (
+      {items.length === 0 && !releaseNotif ? (
         <div className="px-6 py-10 text-center">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <Bell className="h-5 w-5" />
@@ -2536,6 +3195,17 @@ function BellBody({
       ) : (
         <div className="max-h-[264px] overflow-y-auto scrollbar-thin">
           <div aria-label="Recent notifications">
+            {/* Pinned local release-notes row — re-opens the What's New
+                modal on click. Always first, above any unread items. */}
+            {releaseNotif && (
+              <NotifSection label={`ClubHub v${WHATS_NEW_VERSION}`}>
+                <NotifRow
+                  n={releaseNotif}
+                  onClick={() => onNotifClick(releaseNotif)}
+                  onMarkRead={() => undefined}
+                />
+              </NotifSection>
+            )}
             {newItems.length > 0 && (
               <NotifSection label={`New · ${newItems.length}`}>
                 {newItems.map((n) => (
@@ -2563,18 +3233,6 @@ function BellBody({
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="border-t px-3 py-2 shrink-0">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="inline-flex items-center gap-1.5 text-caption-medium text-muted-foreground hover:text-foreground transition-colors min-h-9"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Notification settings
-        </button>
-      </div>
     </>
   )
 }

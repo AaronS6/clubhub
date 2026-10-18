@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, type CSSProperties } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "@/lib/api/client"
@@ -215,15 +215,16 @@ export function TeamsView() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {data.teams.map((team, i) => (
-            <TeamCard
-              key={team.id}
-              clubId={clubId}
-              team={team}
-              isExec={isExec}
-              online={online}
-              onOpen={() => setSelectedTeamId(team.id)}
-              index={i}
-            />
+            <div key={team.id} className="stagger-in flex" style={{ "--stagger-i": i } as CSSProperties}>
+              <TeamCard
+                clubId={clubId}
+                team={team}
+                isExec={isExec}
+                online={online}
+                onOpen={() => setSelectedTeamId(team.id)}
+                index={i}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -315,7 +316,7 @@ function TeamCard({
         }
       }}
       className={cn(
-        "group relative flex flex-col w-full text-left rounded-2xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/40 hover:shadow-lg hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative flex flex-col w-full text-left card-quiet-hover cursor-pointer overflow-hidden hover:border-club/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         flash && "ring-2 ring-club/50"
       )}
     >
@@ -329,7 +330,7 @@ function TeamCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1.5">
-              <h3 className="text-lg font-bold truncate" style={{ fontFamily: "var(--font-display)" }}>{team.name}</h3>
+              <h3 className="text-card-title truncate" style={{ fontFamily: "var(--font-display)" }}>{team.name}</h3>
             </div>
             {team.description ? (
               <p className="text-sm text-muted-foreground line-clamp-2">{team.description}</p>
@@ -343,7 +344,10 @@ function TeamCard({
         {/* Member avatar stack — prominent */}
         <div className="flex items-center gap-2.5 min-h-[40px]">
           {team.members.length === 0 ? (
-            <span className="text-sm text-muted-foreground/50">No members yet</span>
+            <div className="flex items-center gap-2">
+              <Users className="h-7 w-7 text-muted-foreground/60" />
+              <span className="text-caption text-muted-foreground">No members yet</span>
+            </div>
           ) : (
             <>
               <div className="flex items-center -space-x-2.5">
@@ -516,7 +520,8 @@ function TeamDetailSheet({
               )}
             </div>
             {team.members.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                <Users className="h-5 w-5" />
                 {isExec ? "Add your first team member." : "No members yet."}
               </div>
             ) : (

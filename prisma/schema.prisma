@@ -28,6 +28,8 @@ model User {
   name          String
   passwordHash  String?
   avatarUrl     String?
+  /** Discord-style decorative frame around the avatar (see DecoratedAvatar). */
+  avatarDecoration String @default("none")
   bio           String?
   emailVerified Boolean  @default(false)
   notifPrefs    String   @default("{}") // JSON string of notification preferences
@@ -35,6 +37,8 @@ model User {
   updatedAt     DateTime @updatedAt
 
   memberships         ClubMember[]
+  joinRequests        JoinRequest[]
+  reviewedJoinRequests JoinRequest[] @relation("JoinRequestReviewer")
   serviceHours        ServiceHour[]
   reviewedServiceHours ServiceHour[] @relation("ServiceHourReviewer")
   announcements       Announcement[]
@@ -86,12 +90,35 @@ model Club {
   name             String
   description      String?
   logoUrl          String?
+  // Cinematic dashboard banner (data URL from upload, or a static path).
+  // Rendered edge-to-edge on the dashboard hero card with gradient blending.
+  bannerUrl        String?
+  // Vertical focal point for the banner's cover crop, 0 (top) … 1 (bottom).
+  // Controls which part of the image stays visible on wide/short crops.
+  // Null = default center (0.5). Adjusted in the exec banner editor.
+  bannerFocalY     Float?
+  // Opt-in PUBLIC DIRECTORY listing. When true, the club appears in the
+  // public landing page's "Explore clubs" directory and is discoverable by
+  // unauthenticated visitors. The public profile by club code stays
+  // available either way (the code itself gates discovery — existing
+  // convention). Executives toggle this from Members → Club settings.
+  isListedPublic   Boolean  @default(false)
+  // How new members join. "code" (default) = the classic club code +
+  // join password flow. "request" = students send a join request and an
+  // executive approves or declines it (JoinRequest rows). Executives toggle
+  // this from Members → Club settings. Public profiles + the join dialog
+  // adapt their copy/flow to the mode.
+  joinMode         String   @default("code") // "code" | "request"
   accentColor      String   @default("#16a34a") // default brandable accent
   clubCode         String   @unique // 6-char human-friendly code
   clubPasswordEnc  String   // AES-256-GCM encrypted join password (reversible for exec display)
   hoursGoal        Float    @default(0) // optional per-club hours goal
   // Exec-set "what the club is working on right now". API-enforced max 280 chars.
   mainGoal         String?
+  // Executive Admin Handbook acknowledgment. Set (once) when the creating
+  // executive confirms the Executive Admin Handbook popup — the popup is
+  // shown exactly ONCE per club lifetime (null = not yet acknowledged).
+  handbookAcceptedAt DateTime?
   createdBy         String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -111,6 +138,33 @@ model Club {
   transactions    ClubTransaction[]
   notes           ClubNote[]
   noteTags        NoteTag[]
+  joinRequests    JoinRequest[]
+}
+
+// ── Join requests (joinMode = "request") ────────────────────────────────────
+// A student asking to join a club that reviews applicants. Creating a
+// request does NOT touch ClubMember — membership is only created when an
+// executive approves (review mutation), which keeps every existing
+// ClubMember query (status "active" semantics) untouched.
+
+model JoinRequest {
+  id              String    @id @default(cuid())
+  clubId          String
+  userId          String
+  // Optional note from the student ("why I want in"), max ~280 chars.
+  message         String?
+  // "pending" | "approved" | "rejected" | "withdrawn"
+  status          String    @default("pending")
+  createdAt       DateTime  @default(now())
+  reviewedAt      DateTime?
+  reviewedByUserId String?
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("JoinRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([clubId, userId]) // one request per user per club
+  @@index([clubId, status])
 }
 
 model ClubMember {
@@ -120,6 +174,11 @@ model ClubMember {
   role      String   @default("member") // "member" | "executive"
   status    String   @default("active") // "active" | "removed"
   joinedAt  DateTime @default(now())
+  // Personal service-hours goal for THIS member in THIS club (set during the
+  // introduction tour or later from the hours view). 0 = no personal goal —
+  // the dashboard then falls back to the club-wide goal. Kept per-membership
+  // so the same user can have different goals in different clubs.
+  personalHoursGoal Float  @default(0)
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

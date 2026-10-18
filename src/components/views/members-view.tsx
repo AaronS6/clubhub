@@ -15,8 +15,10 @@ import {
   MembersEmptyIllustration,
   initials,
   relativeTime,
+  avatarColor,
 } from "@/components/shared/page-header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DecoratedAvatar } from "@/components/shared/decorated-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,6 +55,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
   SheetContent,
@@ -92,6 +95,9 @@ import {
   Plus,
   X as XIcon,
   Trophy,
+  Globe,
+  XCircle,
+  Target,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -103,6 +109,7 @@ interface ClubMemberUser {
   name: string
   email: string
   avatarUrl?: string | null
+  avatarDecoration?: string | null
   bio?: string | null
 }
 interface ClubMember {
@@ -200,7 +207,7 @@ export function MembersView() {
       {/* §37 — Sticky page header on desktop. Wraps PageHeader in a sticky,
           backdrop-blurred bar so it stays visible while scrolling long member
           lists. Hidden on mobile to avoid double-stacking with the mobile nav. */}
-      <div className="hidden sm:block sticky top-0 z-20 bg-background/95 backdrop-blur-sm -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-b border-border/60">
+      <div className="hidden sm:block sticky top-0 z-20 bg-background/45 backdrop-blur-xl -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Members"
           description="Browse, search, and manage everyone in this club."
@@ -240,6 +247,17 @@ export function MembersView() {
 
       {/* Club logo section — exec only */}
       {isExec && <ClubLogoSection clubId={clubId} />}
+
+      {/* Club-wide service-hours goal — exec only ("a goal for everyone to
+          reach", also set during the introduction tour). */}
+      {isExec && <ClubGoalSection clubId={clubId} />}
+
+      {/* Public directory listing — exec only */}
+      {isExec && <PublicListingSection clubId={clubId} />}
+
+      {/* Join-request review queue — exec only. Both join paths (code +
+          password AND approval requests) are always available. */}
+      {isExec && <JoinRequestsSection clubId={clubId} />}
 
       {/* Club code section — exec only */}
       {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
@@ -622,6 +640,363 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
       <p className="text-caption text-muted-foreground mt-3">
         Shown on the dashboard, sidebar, and public club profile. PNG, JPG, or WebP — we&apos;ll resize it to 256×256.
       </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Public directory listing section (exec only) — controls whether the club
+// appears in the public landing page's "Explore clubs" directory.
+// ---------------------------------------------------------------------------
+
+function PublicListingSection({ clubId }: { clubId: string }) {
+  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery<{ isListedPublic: boolean }>({
+    queryKey: ["public-listing", clubId],
+    queryFn: () => api<{ isListedPublic: boolean }>(`/api/clubs/${clubId}/public-listing`),
+    staleTime: 30_000,
+  })
+  const [optimistic, setOptimistic] = useState<boolean | null>(null)
+  const isListed = optimistic ?? data?.isListedPublic ?? false
+
+  async function toggle(next: boolean) {
+    if (optimistic !== null) return // a request is in flight
+    setOptimistic(next)
+    try {
+      await api(`/api/clubs/${clubId}/public-listing`, {
+        method: "PATCH",
+        json: { isListedPublic: next },
+      })
+      toast.success(next ? "Listed in the public directory" : "Removed from the public directory")
+      // Refetch so the switch's source of truth matches the server —
+      // otherwise the stale cache snaps the toggle back to its old state.
+      void qc.invalidateQueries({ queryKey: ["public-listing", clubId] })
+    } catch (err: any) {
+      toast.error(err.message || "Couldn't update listing")
+    } finally {
+      setOptimistic(null)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-section-title flex items-center gap-2">
+            <Globe className="h-4 w-4" /> Public directory
+          </h3>
+          <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
+            List “{clubName}” on ClubHub&apos;s public Explore page so students
+            can discover it before joining. Your code + password still gate
+            membership.
+          </p>
+          <p className="text-caption text-muted-foreground/70 mt-1.5">
+            The shareable public profile ({`?public=`} link) works either way.
+          </p>
+        </div>
+        <div className="shrink-0 pt-1">
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <Switch
+              checked={isListed}
+              onCheckedChange={toggle}
+              aria-label="List club in the public directory"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Club hours goal (exec only) — the club-wide service-hours target every
+// member sees on their dashboard. Set during the introduction tour; this is
+// the anytime editor. Personal goals are per-member (Service Hours view).
+// ---------------------------------------------------------------------------
+
+function ClubGoalSection({ clubId }: { clubId: string }) {
+  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery<{ club: { hoursGoal: number } }>({
+    queryKey: ["club-goal", clubId],
+    queryFn: () => api<{ club: { hoursGoal: number } }>(`/api/clubs/${clubId}`),
+    staleTime: 30_000,
+  })
+  const [value, setValue] = useState("")
+  const [saving, setSaving] = useState(false)
+  const goal = data?.club?.hoursGoal ?? 0
+  const dirty = value !== "" && parseInt(value, 10) !== goal
+
+  async function save() {
+    const next = parseInt(value, 10)
+    if (isNaN(next) || next < 0 || next > 10000) {
+      toast.error("Goal must be between 0 and 10,000 hours")
+      return
+    }
+    setSaving(true)
+    try {
+      await api(`/api/clubs/${clubId}`, { method: "PATCH", json: { hoursGoal: next } })
+      toast.success(next > 0 ? `Club goal set — ${next}h for everyone` : "Club goal cleared")
+      await qc.invalidateQueries({ queryKey: ["club-goal", clubId] })
+      await qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
+      await qc.invalidateQueries({ queryKey: ["hours", clubId] })
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't save the club goal")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <h3 className="text-section-title flex items-center gap-2">
+        <Target className="h-4 w-4" /> Club hours goal
+      </h3>
+      <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
+        {goal > 0 ? (
+          <>
+            Everyone in {clubName} is working toward{" "}
+            <span className="font-semibold text-foreground tabular-nums">{goal}h</span>{" "}
+            right now. Members without a personal goal chart progress against
+            this number.
+          </>
+        ) : (
+          <>
+            A shared target for every member — set one and it appears on each
+            member&apos;s dashboard with a progress bar.
+          </>
+        )}
+      </p>
+      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+          onBlur={() => {
+            // Normalize on blur: empty or partial input falls back to current.
+            const n = parseInt(value, 10)
+            setValue(isNaN(n) ? (goal > 0 ? String(goal) : "") : String(Math.min(Math.max(n, 0), 10000)))
+          }}
+          inputMode="numeric"
+          placeholder={goal > 0 ? String(goal) : "e.g. 100"}
+          aria-label="Club-wide goal in hours"
+          className="h-9 w-28 tabular-nums"
+          disabled={isLoading}
+          onKeyDown={(e) => { if (e.key === "Enter") save() }}
+        />
+        <span className="text-caption-medium text-muted-foreground">hours for everyone</span>
+        <Button size="sm" variant="club" onClick={save} disabled={saving || !dirty}>
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Save
+        </Button>
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {[50, 100, 250, 500].map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setValue(String(p))}
+            className={cn(
+              "rounded-md border px-2 py-1 text-xs font-medium tabular-nums transition-colors",
+              goal === p
+                ? "border-club/40 bg-club-subtle text-club-ink"
+                : "border-border text-muted-foreground hover:border-club/30 hover:text-foreground"
+            )}
+          >
+            {p}h
+          </button>
+        ))}
+        {goal > 0 && (
+          <button
+            type="button"
+            onClick={() => setValue("0")}
+            className="rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Join requests (exec only) — the pending review queue + recent decisions.
+// Both join paths are always on (code + password AND approval requests), so
+// this section renders whenever there is any activity.
+// ---------------------------------------------------------------------------
+
+interface JoinRequestItem {
+  id: string
+  message: string | null
+  status: string
+  createdAt: string
+  reviewedAt: string | null
+  user: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
+}
+
+function JoinRequestsSection({ clubId }: { clubId: string }) {
+  const qc = useQueryClient()
+  const [rejectId, setRejectId] = useState<string | null>(null)
+  const { data, isLoading } = useQuery<{ pending: JoinRequestItem[]; reviewed: JoinRequestItem[] }>({
+    queryKey: ["join-requests", clubId],
+    queryFn: () =>
+      api<{ pending: JoinRequestItem[]; reviewed: JoinRequestItem[] }>(
+        `/api/clubs/${clubId}/join-requests`,
+      ),
+    staleTime: 15_000,
+  })
+
+  const review = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) =>
+      api(`/api/clubs/${clubId}/join-requests/${id}/review`, {
+        method: "POST",
+        json: { action },
+      }),
+    onSuccess: (_d, vars) => {
+      toast.success(
+        vars.action === "approve"
+          ? "Request approved — they're in the club now"
+          : "Request declined",
+      )
+      qc.invalidateQueries({ queryKey: ["join-requests", clubId] })
+      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const pending = data?.pending ?? []
+  const reviewed = data?.reviewed ?? []
+  if (isLoading) return null
+  if (pending.length === 0 && reviewed.length === 0) return null
+
+  return (
+    <div className="card-quiet p-5">
+      <h3 className="text-section-title flex items-center gap-2">
+        <UserPlus className="h-4 w-4" /> Join requests
+        {pending.length > 0 && (
+          <span className="chip-pending rounded-md px-2 py-0.5 text-caption-medium">
+            {pending.length} pending
+          </span>
+        )}
+      </h3>
+
+      {/* Pending queue */}
+      {pending.length > 0 ? (
+        <ul className="mt-4 divide-y divide-border/70">
+          {pending.map((r) => (
+            <li key={r.id} className="py-3.5 first:pt-0 last:pb-0">
+              <div className="flex items-start gap-3">
+                <DecoratedAvatar
+                  decoration={r.user.avatarDecoration}
+                  src={r.user.avatarUrl ?? undefined}
+                  name={r.user.name}
+                  className="h-9 w-9 shrink-0"
+                  avatarClassName={cn("rounded-full", avatarColor(r.user.name))}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                    <p className="text-sm font-medium truncate">{r.user.name}</p>
+                    <p className="text-caption text-muted-foreground shrink-0">
+                      asked {relativeTime(r.createdAt)}
+                    </p>
+                  </div>
+                  {r.message && (
+                    <p className="mt-1 text-caption text-muted-foreground leading-relaxed">
+                      “{r.message}”
+                    </p>
+                  )}
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="club"
+                      disabled={review.isPending}
+                      onClick={() => review.mutate({ id: r.id, action: "approve" })}
+                    >
+                      {review.isPending && review.variables?.id === r.id ? (
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={review.isPending}
+                      onClick={() => setRejectId(r.id)}
+                    >
+                      <XCircle className="mr-1 h-3.5 w-3.5" /> Decline
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <AlertDialog
+                open={rejectId === r.id}
+                onOpenChange={(o) => { if (!o) setRejectId(null) }}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Decline this request?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {r.user.name} won&apos;t be added to the club. They can
+                      send a new request later if they still want in.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setRejectId(null)
+                        review.mutate({ id: r.id, action: "reject" })
+                      }}
+                    >
+                      Decline request
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-body text-muted-foreground">
+          No pending requests right now.
+        </p>
+      )}
+
+      {/* Recently reviewed — quiet context under the queue */}
+      {reviewed.length > 0 && (
+        <div className="mt-4 border-t border-border/70 pt-3">
+          <p className="text-caption font-medium uppercase tracking-wider text-muted-foreground/70">
+            Recently reviewed
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {reviewed.slice(0, 5).map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center justify-between gap-3 text-caption text-muted-foreground"
+              >
+                <span className="truncate">{r.user.name}</span>
+                <span className="inline-flex items-center gap-1 shrink-0">
+                  {r.status === "approved" ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-success" /> approved
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-3 w-3 text-danger" /> declined
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
@@ -1101,14 +1476,18 @@ function MemberCard({
     >
       {/* Header: avatar + identity + actions */}
       <div className="flex items-start gap-3">
-        {/* Avatar wrapper is `relative` so the presence dot can be positioned
-            on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
-            and would clip it). */}
+        {/* Avatar wrapper — DecoratedAvatar renders the user's chosen
+            outer effect BEHIND the photo; the presence dot rides on top as
+            a child of the relative wrapper (never clipped by the avatar's
+            overflow-hidden). */}
         <span className="relative inline-flex shrink-0">
-          <Avatar className={featured ? "h-14 w-14" : "h-12 w-12"}>
-            <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-            <AvatarFallback className={featured ? "text-lg" : "text-base"}>{initials(member.user.name)}</AvatarFallback>
-          </Avatar>
+          <DecoratedAvatar
+            decoration={member.user.avatarDecoration}
+            src={member.user.avatarUrl ?? undefined}
+            name={member.user.name}
+            className={featured ? "h-14 w-14" : "h-12 w-12"}
+            avatarClassName={featured ? "text-lg" : "text-base"}
+          />
           {online.has(member.user.id) && (
             <span
               aria-label="Online"
@@ -1181,36 +1560,6 @@ function MemberCard({
                 >
                   <UserMinus className="mr-2 h-4 w-4" /> Remove from club
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={async () => {
-                    try {
-                      const res = await api<{ resetUrl: string; memberName: string }>(
-                        `/api/clubs/${clubId}/members/${member.user.id}/reset-password`,
-                        { method: "POST" }
-                      )
-                      // Copy to clipboard + show toast with the link
-                      try {
-                        await navigator.clipboard.writeText(res.resetUrl)
-                        toast.success(`Reset link for ${res.memberName} copied to clipboard! Send it to them via chat/text.`)
-                      } catch {
-                        // Clipboard failed — show the link in a toast
-                        toast(`Reset link for ${res.memberName}`, {
-                          description: res.resetUrl,
-                          duration: 30000,
-                          action: {
-                            label: "Copy",
-                            onClick: () => navigator.clipboard.writeText(res.resetUrl),
-                          },
-                        })
-                      }
-                    } catch (e: any) {
-                      toast.error(e.message || "Failed to generate reset link")
-                    }
-                  }}
-                >
-                  <KeyRound className="mr-2 h-4 w-4" /> Reset password
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -1268,23 +1617,21 @@ function MemberDetailSheet({
       >
         <SheetHeader className="px-5 pt-5 pb-3 border-b">
           <div className="flex items-center gap-3">
-            {/* Avatar wrapper is `relative` so the presence dot can be positioned
-                on the wrapper (NOT inside <Avatar>, which has `overflow-hidden`
-                and would clip it). Larger 64×64 with a role accent ring —
-                executives get the club accent color, members get a subtle
-                muted ring. This gives the detail sheet more presence. */}
+            {/* Avatar — DecoratedAvatar shows the member's outer effect;
+                the role accent ring rides on the avatar via avatarClassName
+                and the presence dot sits on the wrapper. Larger 64×64 —
+                executives get the club accent ring, members a muted one. */}
             <span className="relative inline-flex shrink-0">
-              <Avatar
-                className={cn(
-                  "h-16 w-16 ring-2 ring-offset-2 ring-offset-background",
-                  isExec ? "ring-club" : "ring-border"
+              <DecoratedAvatar
+                decoration={member.user.avatarDecoration}
+                src={member.user.avatarUrl ?? undefined}
+                name={member.user.name}
+                className="h-16 w-16"
+                avatarClassName={cn(
+                  "ring-2 ring-offset-2 ring-offset-background text-lg font-semibold",
+                  isExec ? "ring-club" : "ring-border",
                 )}
-              >
-                <AvatarImage src={member.user.avatarUrl ?? undefined} alt={member.user.name} />
-                <AvatarFallback className="text-lg font-semibold">
-                  {initials(member.user.name)}
-                </AvatarFallback>
-              </Avatar>
+              />
               {online.has(member.user.id) && (
                 <span
                   aria-label="Online"

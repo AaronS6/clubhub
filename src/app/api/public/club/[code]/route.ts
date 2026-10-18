@@ -9,6 +9,9 @@ import { db } from "@/lib/db"
  *
  * Returned fields:
  *   - name, description, accentColor, logoUrl, clubCode
+ *   - bannerUrl, bannerFocalY (cinematic banner — same images the club
+ *     uses on its dashboard)
+ *   - isListedPublic (whether the execs opted into the public directory)
  *   - memberCount (active members)
  *   - totalHoursLogged (sum of approved ServiceHour.hours)
  *   - upcomingMeetingCount (future, non-cancelled meetings)
@@ -35,6 +38,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ code: string }
       description: true,
       accentColor: true,
       logoUrl: true,
+      bannerUrl: true,
+      bannerFocalY: true,
+      isListedPublic: true,
+      joinMode: true,
       clubCode: true,
       createdAt: true,
       _count: { select: { members: { where: { status: "active" } } } },
@@ -65,6 +72,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ code: string }
       description: club.description,
       accentColor: club.accentColor,
       logoUrl: club.logoUrl,
+      bannerUrl: club.bannerUrl,
+      bannerFocalY: club.bannerFocalY,
+      isListedPublic: club.isListedPublic,
+      joinMode: club.joinMode === "request" ? "request" : "code",
       clubCode: club.clubCode,
       createdAt: club.createdAt,
       memberCount: club._count.members,

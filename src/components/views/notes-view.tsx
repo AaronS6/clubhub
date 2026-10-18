@@ -20,6 +20,7 @@ import {
   Globe,
   NotebookPen,
   Tag as TagIcon,
+  ChevronDown,
 } from "lucide-react"
 
 import { api } from "@/lib/api/client"
@@ -181,9 +182,10 @@ export function NotesView() {
   const maxNotes = caps?.maxNotesPerClub ?? 200
 
   return (
-    <div className="flex flex-col gap-5 p-4 sm:p-6 pb-28 sm:pb-6">
-      {/* Sticky header on desktop */}
-      <div className="hidden sm:block sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 bg-background/95 backdrop-blur-sm border-b border-border/60">
+    <div className="flex flex-col gap-5 pb-28 sm:pb-6">
+      {/* Sticky header on desktop — negative margins mirror the shell's
+          gutters (px-4 md:px-6) for a true edge-to-edge bleed. */}
+      <div className="hidden sm:block sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-background/45 backdrop-blur-xl border-b border-border/60">
         <PageHeader
           title="Notes"
           description="Share knowledge, meeting recaps, and ideas."
@@ -323,10 +325,11 @@ export function NotesView() {
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredNotes.map((n) => (
+          {filteredNotes.map((n, index) => (
             <NoteCard
               key={n.id}
               note={n}
+              index={index}
               canEdit={n.authorId === data?.myUserId}
               canDelete={n.authorId === data?.myUserId || data?.myRole === "executive"}
               onEdit={() => setEditingNote(n)}
@@ -537,6 +540,7 @@ function FilterPill({
 
 function NoteCard({
   note,
+  index,
   canEdit,
   canDelete,
   onEdit,
@@ -544,6 +548,7 @@ function NoteCard({
   onHeart,
 }: {
   note: Note
+  index: number
   canEdit: boolean
   canDelete: boolean
   onEdit: () => void
@@ -551,12 +556,20 @@ function NoteCard({
   onHeart: () => void
 }) {
   const flash = useRemoteChange("note", note.id)
+  // Expandable notes — clicking a note toggles its full content. Short notes
+  // (≤ 200 chars, no long wrapping) render fully either way and aren't
+  // clickable-to-expand (no affordance shown).
+  const [expanded, setExpanded] = React.useState(false)
+  const isLong = note.content.length > 200 || note.content.split("\n").length > 4
   return (
     <article
       className={cn(
-        "card-quiet-hover p-4 flex flex-col gap-3 break-words overflow-hidden",
+        "stagger-in card-quiet-hover p-4 flex flex-col gap-3 break-words overflow-hidden",
         flash && "ring-2 ring-club/40",
+        isLong && "cursor-pointer",
       )}
+      style={{ "--stagger-i": index } as React.CSSProperties}
+      onClick={isLong ? () => setExpanded((v) => !v) : undefined}
     >
       {/* Header row: privacy badge + action buttons */}
       <div className="flex items-start gap-2">
@@ -578,7 +591,7 @@ function NoteCard({
           {canEdit && (
             <button
               type="button"
-              onClick={onEdit}
+              onClick={(e) => { e.stopPropagation(); onEdit() }}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               aria-label="Edit note"
             >
@@ -588,7 +601,7 @@ function NoteCard({
           {canDelete && (
             <button
               type="button"
-              onClick={onDelete}
+              onClick={(e) => { e.stopPropagation(); onDelete() }}
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
               aria-label="Delete note"
             >
@@ -598,10 +611,32 @@ function NoteCard({
         </div>
       </div>
 
-      {/* Content preview — clamped at 4 lines via line-clamp-4 */}
-      <p className="text-body text-foreground/90 line-clamp-4 whitespace-pre-wrap break-words">
+      {/* Content — collapsed to 4 lines; click the note to expand the full
+          text (accordion-style), click again to collapse. */}
+      <p
+        className={cn(
+          "text-body text-foreground/90 whitespace-pre-wrap break-words",
+          !expanded && "line-clamp-4",
+        )}
+      >
         {note.content}
       </p>
+      {isLong && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+          className="self-start inline-flex items-center gap-1 text-caption-medium text-club-ink hover:text-club transition-colors -mt-1.5"
+          aria-expanded={expanded}
+        >
+          <ChevronDown
+            className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")}
+          />
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
 
       {/* Tags */}
       {note.tags.length > 0 && (
@@ -622,8 +657,8 @@ function NoteCard({
         </div>
       )}
 
-      {/* Footer: author + heart */}
-      <div className="flex items-center justify-between gap-2 mt-auto pt-2 border-t border-border/60">
+        {/* Footer: author + heart */}
+      <div className="flex items-center justify-between gap-2 mt-auto pt-2 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 min-w-0">
           <Avatar className="size-6">
             {note.authorAvatarUrl && <AvatarImage src={note.authorAvatarUrl} alt={note.authorName} />}

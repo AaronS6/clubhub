@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
     db.clubMember.findMany({
       where: { clubId, status: "active" },
       include: {
-        user: { select: { id: true, name: true, email: true, avatarUrl: true, bio: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true, avatarDecoration: true, bio: true } },
       },
       orderBy: [{ role: "desc" }, { joinedAt: "asc" }],
       take: 500,

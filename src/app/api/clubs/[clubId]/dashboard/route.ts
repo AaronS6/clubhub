@@ -21,6 +21,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
 
   const isExec = c.membership.role === "executive"
   const userId = c.user.id
+  // Personal service-hours goal for this member in this club (0 = unset —
+  // the frontend falls back to the club-wide goal). Surfaced so the
+  // dashboard banner/panel can chart progress against the user's OWN goal.
+  const myPersonalGoal = c.membership.personalHoursGoal ?? 0
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const since = new Date(now)
@@ -60,6 +64,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
         description: true,
         accentColor: true,
         logoUrl: true,
+        bannerUrl: true,
+        bannerFocalY: true,
         hoursGoal: true,
         createdAt: true,
       },
@@ -263,6 +269,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
     myStats: {
       approvedHours: myHoursAgg._sum.hours ?? 0,
       pendingHours: myPendingHours._sum.hours ?? 0,
+      personalHoursGoal: myPersonalGoal,
       tasksAssigned: myOpenTasks,
       tasksDone: myTasksDone,
       upcomingMeetings: upcomingMeetingsForMe,

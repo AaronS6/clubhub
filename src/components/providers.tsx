@@ -4,7 +4,7 @@ import { SessionProvider } from "next-auth/react"
 import { ThemeProvider } from "next-themes"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState, ReactNode } from "react"
-import { Toaster as SonnerToaster } from "sonner"
+import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -27,7 +27,9 @@ export function Providers({ children }: { children: ReactNode }) {
         <QueryClientProvider client={client}>
           <TooltipProvider delayDuration={200}>
             {children}
-            <SonnerToaster position="bottom-right" richColors closeButton />
+            {/* Themed + responsive toasts (see ui/sonner.tsx) — neutral
+                popover surfaces, app font, clears the mobile tab bar. */}
+            <Toaster />
           </TooltipProvider>
         </QueryClientProvider>
       </ThemeProvider>

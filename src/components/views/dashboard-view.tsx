@@ -10,7 +10,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
-import { Badge } from "@/components/ui/badge"
 import {
   EmptyState, StatCardSkeleton, initials, relativeTime, avatarColor,
 } from "@/components/shared/page-header"
@@ -22,7 +21,9 @@ import {
   Target, Hourglass, ClipboardList, PartyPopper, X, BarChart3,
   History, UserPlus, UserMinus, ArrowUpCircle, ArrowDownCircle,
   XCircle, UserCog, KeyRound, Crown, MessageSquare, ScrollText,
+  Camera,
 } from "lucide-react"
+import { BannerEditDialog } from "@/components/views/dashboard/banner-edit-dialog"
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts"
@@ -46,6 +47,8 @@ interface DashboardData {
     description: string | null
     accentColor: string
     logoUrl: string | null
+    bannerUrl: string | null
+    bannerFocalY: number | null
     hoursGoal: number
     memberCount: number
     createdAt: string
@@ -54,6 +57,9 @@ interface DashboardData {
   myStats: {
     approvedHours: number
     pendingHours: number
+    // Personal service-hours goal set by this member for this club (0 = unset,
+    // in which case the club-wide goal below is the fallback).
+    personalHoursGoal: number
     tasksAssigned: number
     tasksDone: number
     upcomingMeetings: number
@@ -331,110 +337,30 @@ export function DashboardView() {
     )
   }
 
-  // Hours goal progress (for snapshot)
+  // Hours goal progress (for snapshot). The member's PERSONAL goal takes
+  // priority; if they never set one we fall back to the club-wide goal the
+  // executives set ("a goal for everyone to reach").
+  const personalGoal = data.myStats.personalHoursGoal ?? 0
+  const effectiveGoal = personalGoal > 0 ? personalGoal : data.club.hoursGoal
+  const goalIsPersonal = personalGoal > 0
   const hoursPct =
-    data.club.hoursGoal > 0
-      ? Math.min(100, (data.myStats.approvedHours / data.club.hoursGoal) * 100)
+    effectiveGoal > 0
+      ? Math.min(100, (data.myStats.approvedHours / effectiveGoal) * 100)
       : 0
 
   // ---- Section bodies -----------------------------------------------------
   // Each card's inner JSX is extracted here so the member and exec layouts
   // can arrange them differently (different grid order / col-spans) without
   // duplicating the content.
-  const chartBody = (
-    <>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-club" />
-          <h2 className="text-card-title">Approved hours · last 30 days</h2>
-        </div>
-        <Badge variant="secondary" className="text-xs tabular-nums">
-          {fmtHours(data.myStats.approvedHours)}h lifetime
-        </Badge>
-      </div>
-      {data.hoursTrend.every((d) => d.hours === 0) ? (
-        <EmptyState
-          icon={<BarChart3 className="h-8 w-8" />}
-          title="No hours logged yet"
-          description="Once hours are approved, you'll see a 30-day trend here."
-        />
-      ) : (
-        <div
-          className="h-56 w-full min-w-0"
-          aria-label="Approved hours trend chart"
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={data.hoursTrend}
-              margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="hoursGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="0%"
-                    stopColor="var(--club-accent)"
-                    stopOpacity={0.4}
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="var(--club-accent)"
-                    stopOpacity={0.02}
-                  />
-                </linearGradient>
-              </defs>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="hsl(var(--border))"
-                strokeOpacity={0.5}
-                vertical={false}
-              />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10, fill: "currentColor" }}
-                tickFormatter={(d) => format(parseISO(d), "MMM d")}
-                interval={Math.floor(data.hoursTrend.length / 6)}
-                axisLine={false}
-                tickLine={false}
-                className="text-muted-foreground"
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: "currentColor" }}
-                allowDecimals={false}
-                width={32}
-                axisLine={false}
-                tickLine={false}
-                className="text-muted-foreground"
-              />
-              <Tooltip
-                contentStyle={{
-                  borderRadius: 8,
-                  border: "1px solid hsl(var(--border, 220 13% 91%))",
-                  background: "hsl(var(--popover, 0 0% 100%))",
-                  color: "hsl(var(--popover-foreground, 0 0% 0%))",
-                  fontSize: 12,
-                }}
-                labelFormatter={(d) =>
-                  format(parseISO(String(d)), "MMM d, yyyy")
-                }
-                formatter={(value: number) => [
-                  `${fmtHours(value)}h`,
-                  "Approved hours",
-                ]}
-              />
-              <Area
-                type="monotone"
-                dataKey="hours"
-                stroke="var(--club-accent)"
-                strokeWidth={2}
-                fill="url(#hoursGradient)"
-                dot={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-    </>
-  )
+
+  // Month-to-date approved hours, derived from the same 30-day trend the
+  // chart uses (valid existing records only — no fabricated stats). Shown
+  // as the small "+Xh this month" indicator next to the hero hours number.
+  const currentMonth = new Date().getMonth()
+  const hoursThisMonth = data.hoursTrend.reduce((sum, d) => {
+    const inMonth = new Date(d.date).getMonth() === currentMonth
+    return inMonth ? sum + d.hours : sum
+  }, 0)
 
   const leaderboardBody = (
     <>
@@ -459,7 +385,10 @@ export function DashboardView() {
           description="Approved service hours will populate the leaderboard."
         />
       ) : (
-        <ul className="space-y-1">
+        /* The leaderboard card is full-width now — entries flow in a
+           responsive grid (1 col mobile, 2 sm, 3 xl) instead of one
+           long narrow list. */
+        <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-1">
           {data.leaderboard.map((entry, i) => (
             <li key={entry.userId}>
               <button
@@ -513,7 +442,8 @@ export function DashboardView() {
         </Button>
       </div>
 
-      {/* Approved hours + goal */}
+      {/* Approved hours + goal — the member's personal goal when set,
+          otherwise the club-wide goal. */}
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
           <div className="flex items-center gap-2">
@@ -524,15 +454,15 @@ export function DashboardView() {
             {fmtHours(data.myStats.approvedHours)}h
           </span>
         </div>
-        {data.club.hoursGoal > 0 && (
+        {effectiveGoal > 0 && (
           <>
             <Progress
               value={hoursPct}
               className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
             />
             <p className="text-caption tabular-nums">
-              {fmtHours(data.myStats.approvedHours)} of {data.club.hoursGoal}h
-              goal · {Math.round(hoursPct)}%
+              {fmtHours(data.myStats.approvedHours)} of {fmtHours(effectiveGoal)}h{" "}
+              {goalIsPersonal ? "your goal" : "club goal"} · {Math.round(hoursPct)}%
             </p>
           </>
         )}
@@ -718,27 +648,42 @@ export function DashboardView() {
 
   return (
     <div className="space-y-4 sm:space-y-5 min-w-0">
-      {/* Row 1 — Hero panel (60%) + Progress ring tile (40%) ----------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        <HeroPanel
-          name={data.club.name}
-          logoUrl={data.club.logoUrl}
-          memberCount={data.club.memberCount}
-          createdAt={data.club.createdAt}
-          role={data.myRole}
-          approvedHours={data.myStats.approvedHours}
-          hoursGoal={data.club.hoursGoal}
-          hoursPct={hoursPct}
-          hoursTrend={data.hoursTrend}
-        />
-        <ProgressRingTile
-          approvedHours={data.myStats.approvedHours}
-          hoursGoal={data.club.hoursGoal}
-          hoursPct={hoursPct}
-          hoursTrend={data.hoursTrend}
-          onViewHours={() => setView("hours")}
-        />
-      </div>
+      {/* Row 1 — Cinematic club banner card (full width). The 30-day hours
+          chart lives INSIDE this card now, below the identity — part of the
+          banner, not another nested tile. On mobile the banner is compact
+          (h-36, tight identity) and the hours block is a single tight stack:
+          number + growth chip, goal progress, then a small chart. */}
+      <ClubBannerCard
+        clubId={data.club.id}
+        name={data.club.name}
+        description={data.club.description}
+        logoUrl={data.club.logoUrl}
+        bannerUrl={data.club.bannerUrl}
+        bannerFocalY={data.club.bannerFocalY}
+        memberCount={data.club.memberCount}
+        createdAt={data.club.createdAt}
+        role={data.myRole}
+        approvedHours={data.myStats.approvedHours}
+        hoursGoal={effectiveGoal}
+        goalIsPersonal={goalIsPersonal}
+        hoursPct={hoursPct}
+        hoursThisMonth={hoursThisMonth}
+        hoursTrend={data.hoursTrend}
+        onViewHours={() => setView("hours")}
+      />
+
+      {/* Row 2 — Approved hours panel (sm+ only; on mobile the banner's
+          hours block IS the hours surface — two stacked progress rows for
+          the same number read as clutter). Click → Service Hours view. */}
+      <ApprovedHoursPanel
+        className="hidden sm:flex"
+        approvedHours={data.myStats.approvedHours}
+        pendingHours={data.myStats.pendingHours}
+        hoursGoal={effectiveGoal}
+        goalIsPersonal={goalIsPersonal}
+        hoursPct={hoursPct}
+        onViewHours={() => setView("hours")}
+      />
 
       {/* Row 2 — Tier 1 attention items (or onboarding banner) ---------------- */}
       {showOnboarding ? (
@@ -764,10 +709,11 @@ export function DashboardView() {
       )}
 
       {/* Rows 3+4 — Supporting tiles in asymmetric bento grid.
-          Role-aware: members get snapshot → announcements → meetings → chart →
-          leaderboard (their own work first, club context later). Execs keep the
-          original chart-first layout (they want the pulse of the club at a
-          glance). The `{!isExec ? … : …}` pattern keeps the two layouts as
+          Role-aware: members get snapshot → announcements → meetings →
+          leaderboard (their own work first, club context later). Execs get
+          leaderboard first (the pulse of the club at a glance). The 30-day
+          hours chart lives inside the banner card now — not a nested tile.
+          The `{!isExec ? … : …}` pattern keeps the two layouts as
           explicit siblings rather than conditional class swaps. */}
       {!isExec ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
@@ -792,16 +738,10 @@ export function DashboardView() {
           >
             {meetingsBody}
           </section>
-          {/* Hours trend chart — fourth (wide) */}
+          {/* Leaderboard — fourth (full width; entries flow in a responsive
+              grid since the card is wide now). */}
           <section
-            className={cn(TILE, "lg:col-span-8 order-4 lg:order-4")}
-           
-          >
-            {chartBody}
-          </section>
-          {/* Leaderboard — fifth (narrow, tall) */}
-          <section
-            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5")}
+            className={cn(TILE, "lg:col-span-12 order-4 lg:order-4")}
            
           >
             {leaderboardBody}
@@ -809,17 +749,10 @@ export function DashboardView() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-          {/* Hours trend (Tier 3) — desktop: row 1, cols 1-8 (wide) */}
+          {/* Leaderboard (club pulse) — desktop: row 1 full width; mobile:
+              after snapshot. */}
           <section
-            className={cn(TILE, "lg:col-span-8 order-2 lg:order-1")}
-           
-          >
-            {chartBody}
-          </section>
-
-          {/* Leaderboard (Tier 3) — desktop: row 1, cols 9-12 (narrow, tall) */}
-          <section
-            className={cn(TILE, "lg:col-span-4 order-3 lg:order-2")}
+            className={cn(TILE, "lg:col-span-12 order-2 lg:order-1")}
            
           >
             {leaderboardBody}
@@ -827,7 +760,7 @@ export function DashboardView() {
 
           {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-1 lg:order-3")}
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-2")}
            
           >
             {snapshotBody}
@@ -835,7 +768,7 @@ export function DashboardView() {
 
           {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-4 lg:order-4")}
+            className={cn(TILE, "lg:col-span-4 order-4 lg:order-3")}
            
           >
             {announcementsBody}
@@ -843,7 +776,7 @@ export function DashboardView() {
 
           {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-5 lg:order-5")}
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-4")}
            
           >
             {meetingsBody}
@@ -1089,203 +1022,588 @@ function HoursMilestoneCelebration({
 // Sub-components
 // =========================================================================
 
-function HeroPanel({
+function ClubBannerCard({
+  clubId,
   name,
+  description,
   logoUrl,
+  bannerUrl,
+  bannerFocalY,
   memberCount,
   createdAt,
   role,
   approvedHours,
   hoursGoal,
+  goalIsPersonal,
   hoursPct,
+  hoursThisMonth,
   hoursTrend,
+  onViewHours,
 }: {
+  clubId: string
   name: string
+  description: string | null
   logoUrl: string | null
+  bannerUrl: string | null
+  bannerFocalY: number | null
   memberCount: number
   createdAt: string
   role: "member" | "executive"
   approvedHours: number
   hoursGoal: number
+  goalIsPersonal?: boolean
   hoursPct: number
+  hoursThisMonth: number
   hoursTrend: { date: string; hours: number }[]
+  onViewHours?: () => void
 }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const isExec = role === "executive"
+  // A banner that exists AND loaded — otherwise we show the quiet fallback.
+  const hasBanner = !!bannerUrl && !imgFailed
+  const focalPct = Math.round((bannerFocalY ?? 0.5) * 100)
+
+  // Reset the failure flag when the banner changes (upload, club switch,
+  // realtime update) so a previously-broken image doesn't hide a new valid
+  // one. Official "adjust state when props change" pattern — no effect
+  // needed (avoids cascading renders; see react.dev/learn/you-might-not-need-an-effect).
+  const [prevBannerUrl, setPrevBannerUrl] = useState(bannerUrl)
+  if (prevBannerUrl !== bannerUrl) {
+    setPrevBannerUrl(bannerUrl)
+    setImgFailed(false)
+  }
+
   return (
-    <section
-      className={cn(
-        "relative overflow-hidden rounded-xl border border-border/80 bg-card p-5 sm:p-6 shadow-card transition-[box-shadow,border-color] duration-200 hover:shadow-card-hover",
-        "lg:col-span-7"
-      )}
-    >
-      {/* §38 — Club cover identity. A subtle accent gradient strip pinned
-          to the top of the hero panel so each club has a visual "cover"
-          identity in its accent color. Fades from the full accent on the
-          left to transparent on the right. Sits above the dot-grid texture
-          so it reads cleanly. */}
-      <div
-        aria-hidden
-        className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-club via-club/50 to-transparent"
-      />
-      {/* Barely-visible dot-grid texture overlay (matches the auth-screen
-          pattern but at opacity 0.05 for an even quieter feel). */}
-      <div
-        aria-hidden
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, currentColor 1px, transparent 1px)",
-          backgroundSize: "20px 20px",
-          color: "var(--foreground)",
-          opacity: 0.04,
-        }}
-      />
-      {/* Accent edge — subtle vertical bar pinned to the left edge, curved top/bottom. */}
-      <div
-        aria-hidden
-        className="absolute left-0 top-0 h-full w-1.5 bg-club rounded-l-2xl"
-      />
-
-      <div className="relative flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          {/* Larger logo / initials tile (was h-10 w-10 rounded-lg, now
-              h-12 w-12 rounded-xl for more visual presence in the bento
-              hero). */}
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-club text-club-foreground text-sm font-bold shrink-0 overflow-hidden shadow-card-hover">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={`${name} logo`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              initials(name)
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* min-w-0 lets truncate win inside a flex-wrap container so
-                  very long club names ellipsize cleanly on narrow viewports
-                  (e.g. 375px) instead of pushing the role badge off-screen. */}
-              <h1 className="text-page-title truncate min-w-0">{name}</h1>
-              <RoleBadgePill role={role} />
-            </div>
-            <p className="text-caption mt-1">
-              {memberCount} {memberCount === 1 ? "member" : "members"} · joined{" "}
-              {format(new Date(createdAt), "MMM yyyy")}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Personal progress element — inline hours summary with either a thin
-          Progress bar (when a goal is set) or a tiny sparkline (no goal).
-          The hero hours number uses the display face + tightened letter-
-          spacing so it reads as the single "memorable" stat on the page. */}
-      <div className="relative mt-5 pt-4 border-t border-border/60">
-        <div className="flex items-baseline justify-between mb-2 gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Clock className="h-4 w-4 text-club shrink-0" />
-            <span className="text-body-medium truncate">Your hours</span>
-          </div>
-          <div className="flex items-baseline gap-1.5 shrink-0">
-            <span
-              className="text-2xl sm:text-3xl font-bold tabular-nums"
-              style={{
-                fontFamily: "var(--font-display)",
-                letterSpacing: "-0.03em",
-              }}
-            >
-              {fmtHours(approvedHours)}h
-            </span>
-            {hoursGoal > 0 && (
-              <span className="text-caption">of {hoursGoal}h goal</span>
-            )}
-          </div>
-        </div>
-        {hoursGoal > 0 ? (
-          <Progress
-            value={hoursPct}
-            className="h-1.5 [&_[data-slot=progress-indicator]]:bg-club"
+    <section className="relative overflow-hidden rounded-xl border border-border/80 bg-card shadow-card transition-[box-shadow,border-color] duration-200 hover:shadow-card-hover">
+      {/* ── Cinematic banner ───────────────────────────────────────────────
+          Edge-to-edge cover image with layered gradients. On mobile the
+          banner is COMPACT (h-36 vs h-44) with a tight identity block —
+          the dashboard's job on a phone is information, not cinema. */}
+      <div className="relative h-36 sm:h-52 lg:h-56">
+        {bannerUrl && !imgFailed ? (
+          <img
+            src={bannerUrl}
+            alt={`${name} banner`}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{ objectPosition: `center ${focalPct}%` }}
+            onError={() => setImgFailed(true)}
           />
         ) : (
-          <div className="h-9 max-w-[240px]">
-            <Sparkline data={hoursTrend} />
-          </div>
+          /* Fallback — no banner (or failed to load): a quiet accent wash +
+             the dot-grid texture, preserving the classic ClubHub hero feel. */
+          <>
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-br from-club-muted/70 via-transparent to-club-subtle"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle, currentColor 1px, transparent 1px)",
+                backgroundSize: "20px 20px",
+                color: "var(--foreground)",
+                opacity: 0.04,
+              }}
+            />
+          </>
         )}
+
+        {/* §38 cover identity strip — every club stays branded in its accent. */}
+        <div
+          aria-hidden
+          className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-club via-club/50 to-transparent"
+        />
+
+        {/* Layer 1 — dark scrim across the image for text contrast.
+            LIGHT mode: the photo is deliberately dimmed to a dark cinema
+            look so the identity text can always stay WHITE (per design
+            decision — no more ink-on-photo mode). DARK mode: a near-invisible
+            edge tint only — the photo keeps its NORMAL brightness (white
+            text rides its drop-shadows + the Layer-2 bottom anchor). */}
+        {hasBanner && (
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/35 to-black/65 dark:from-black/10 dark:via-black/0 dark:to-black/10"
+          />
+        )}
+        {/* Layer 2 — bottom fade under the identity text.
+            LIGHT mode: a deep black fade anchors the text zone (replaces the
+            old card-melt — white text can't ride a near-white fade).
+            DARK mode: a bottom-anchored shadow (not a full card-melt) so the
+            bright photo reads at normal brightness while the text zone stays
+            anchored — the fade dies out by mid-banner. Bumped from /70→/85 so
+            the pure-white stats (members · opened) stay crisp over bright
+            photography without dimming the rest of the photo. */}
+        <div
+          aria-hidden
+          className={cn(
+            "absolute inset-x-0 bottom-0 h-[62%] bg-gradient-to-t",
+            hasBanner
+              ? "from-black/80 via-black/40 to-transparent dark:from-black/85 dark:via-black/40"
+              : "from-card via-card/45 to-transparent",
+          )}
+        />
+
+        {/* Edit banner — translucent dark pill, executives only. Members
+            never see this control (permissions also enforced server-side).
+            Slightly smaller on mobile so it doesn't crowd the identity. */}
+        {isExec && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="absolute right-3 top-3 sm:right-4 sm:top-4 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/35 px-2.5 h-7 sm:h-8 sm:px-3 text-[11px] sm:text-xs font-medium text-white backdrop-blur-sm hover:bg-black/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          >
+            <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            Edit banner
+          </button>
+        )}
+
+        {/* Club identity — lower part of the banner, riding the fade.
+            Mobile: p-4, 40px logo, tighter name + single-line meta and
+            description (space matters more than prose on a phone). */}
+        <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6">
+          <div className="flex items-end gap-3 sm:gap-4 flex-wrap min-w-0">
+            {/* Logo tile — hairline ring so it reads cleanly over photography. */}
+            <div
+              className={cn(
+                "flex h-10 w-10 sm:h-14 sm:w-14 items-center justify-center rounded-xl bg-club text-club-foreground text-xs sm:text-sm font-bold shrink-0 overflow-hidden shadow-card-hover",
+                hasBanner && "ring-1 ring-white/30"
+              )}
+            >
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={`${name} logo`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials(name)
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                {/* min-w-0 lets truncate win inside a flex-wrap container so
+                    very long club names ellipsize cleanly on narrow viewports.
+                    Geist Sans (body face) per exec feedback — the display
+                    face felt wrong for club names. */}
+                <h1
+                  className={cn(
+                    "font-sans font-bold tracking-[-0.025em] text-[1.25rem] sm:text-[1.75rem] leading-tight truncate min-w-0",
+                    hasBanner && "text-white"
+                  )}
+                >
+                  {name}
+                </h1>
+                {hasBanner ? (
+                  <BannerRolePill role={role} />
+                ) : (
+                  <RoleBadgePill role={role} />
+                )}
+              </div>
+              {/* Meta strip — members count + club-opened date. Over a photo
+                  these go FULL white + medium weight. NOTE: `.text-caption`
+                  (a components-layer class) sets its own muted COLOR and
+                  font-weight 400, which override inherited styles — so the
+                  white + medium utilities must be applied ON THE SPANS
+                  (utilities layer beats components layer). Contrast is carried
+                  by the light-mode scrim + dark-mode bottom anchor fade, no
+                  text shadows. */}
+              <div
+                className={cn(
+                  "flex items-center gap-2 sm:gap-2.5 mt-1 flex-wrap min-w-0",
+                  hasBanner
+                    ? "text-white"
+                    : "text-muted-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-caption",
+                    hasBanner && "text-white font-medium",
+                  )}
+                >
+                  <Users className="h-3.5 w-3.5 shrink-0" />
+                  {memberCount}
+                </span>
+                <span
+                  aria-hidden
+                  className={cn("text-caption", hasBanner && "text-white opacity-90")}
+                >
+                  ·
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-caption",
+                    hasBanner && "text-white font-medium",
+                  )}
+                >
+                  <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                  {format(new Date(createdAt), "MMM yyyy")}
+                </span>
+              </div>
+              {description && (
+                <p
+                  className={cn(
+                    "mt-1.5 max-w-2xl text-caption leading-4 line-clamp-1 sm:line-clamp-2",
+                    hasBanner
+                      ? "text-white/95"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {description}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* ── Hours analytics ──────────────────────────────────────────────
+          MOBILE: one tight stack — "Your hours" label, number + GROWTH
+          chip side by side, goal progress, then a compact full-width trend
+          chart. The whole number+goal block is tappable → Service Hours.
+          DESKTOP: unchanged split — memorable number (left) + trend (right). */}
+      <div className="relative px-4 pb-4 sm:px-6 sm:pb-6">
+        <div className="hairline-soft mb-3 sm:mb-4" />
+
+        {/* ── Mobile hours block ── */}
+        <div className="sm:hidden">
+          {onViewHours ? (
+            <button
+              type="button"
+              onClick={onViewHours}
+              className="w-full text-left rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 -mx-1 px-1"
+              aria-label="Your service hours — open Service Hours view"
+            >
+              <MobileHoursSummary
+                approvedHours={approvedHours}
+                hoursGoal={hoursGoal}
+                goalIsPersonal={goalIsPersonal}
+                hoursPct={hoursPct}
+                hoursThisMonth={hoursThisMonth}
+              />
+            </button>
+          ) : (
+            <MobileHoursSummary
+              approvedHours={approvedHours}
+              hoursGoal={hoursGoal}
+              goalIsPersonal={goalIsPersonal}
+              hoursPct={hoursPct}
+              hoursThisMonth={hoursThisMonth}
+            />
+          )}
+
+          {/* Compact 30-day trend — smaller than desktop (h-16) but still
+              real: the "graph thing" belongs on mobile too. */}
+          <div className="mt-2 h-16 min-w-0">
+            {hoursTrend.every((d) => d.hours === 0) ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-caption inline-flex items-center gap-1.5">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  30-day trend appears here after your first approved hours.
+                </p>
+              </div>
+            ) : (
+              <BannerTrendChart data={hoursTrend} compact />
+            )}
+          </div>
+        </div>
+
+        {/* ── Desktop hours block ── */}
+        <div className="hidden sm:flex sm:items-end gap-4 sm:gap-8">
+          {/* Left — the memorable number. */}
+          <div className="shrink-0 sm:w-44 lg:w-48">
+            <p className="text-caption-medium flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-club shrink-0" />
+              Your hours
+            </p>
+            <div className="mt-1.5 flex items-baseline gap-2 min-w-0">
+              <span className="text-numeral">{fmtHours(approvedHours)}h</span>
+              {hoursGoal > 0 && (
+                <span className="text-caption shrink-0">of {fmtHours(hoursGoal)}h</span>
+              )}
+            </div>
+            {hoursThisMonth > 0 && (
+              <p className="mt-1.5 text-caption-medium text-club-ink inline-flex items-center gap-1">
+                <TrendingUp className="h-3 w-3 shrink-0" />
+                +{fmtHours(hoursThisMonth)}h this month
+              </p>
+            )}
+            {hoursGoal > 0 && (
+              <Progress
+                value={hoursPct}
+                className="h-1 mt-2.5 max-w-[160px] [&_[data-slot=progress-indicator]]:bg-club"
+              />
+            )}
+          </div>
+          {/* Right — the 30-day trend, real data, existing chart library. */}
+          <div className="flex-1 min-w-0 h-28 lg:h-32">
+            {hoursTrend.every((d) => d.hours === 0) ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-caption inline-flex items-center gap-1.5">
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  No hours logged yet — the 30-day trend appears here.
+                </p>
+              </div>
+            ) : (
+              <BannerTrendChart data={hoursTrend} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Exec-only banner editor (upload · preview · focal point · remove). */}
+      <BannerEditDialog
+        clubId={clubId}
+        clubName={name}
+        currentBannerUrl={bannerUrl}
+        currentFocalY={bannerFocalY}
+        open={editing}
+        onOpenChange={setEditing}
+      />
     </section>
   )
 }
 
-function ProgressRingTile({
+/** Mobile-only hours summary inside the banner card: the memorable number
+ *  with the GROWTH chip beside it (a soft club-tinted pill — the growth
+ *  stat deserves real visibility on a phone, not a 12px caption), goal
+ *  progress, and a chevron hinting the whole block is tappable. */
+function MobileHoursSummary({
   approvedHours,
   hoursGoal,
+  goalIsPersonal,
   hoursPct,
-  hoursTrend,
-  onViewHours,
+  hoursThisMonth,
 }: {
   approvedHours: number
   hoursGoal: number
+  goalIsPersonal?: boolean
   hoursPct: number
-  hoursTrend: { date: string; hours: number }[]
+  hoursThisMonth: number
+}) {
+  return (
+    <div>
+      <p className="text-caption-medium flex items-center gap-1.5">
+        <Clock className="h-3.5 w-3.5 text-club shrink-0" />
+        Your hours
+        <ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden />
+      </p>
+      <div className="mt-1 flex items-center gap-2 min-w-0">
+        <span className="text-numeral">{fmtHours(approvedHours)}h</span>
+        {hoursThisMonth > 0 && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-club-muted px-2 py-0.5 text-[11px] font-semibold text-club tabular-nums"
+          >
+            <TrendingUp className="h-3 w-3 shrink-0" aria-hidden />
+            +{fmtHours(hoursThisMonth)}h this month
+          </span>
+        )}
+      </div>
+      {hoursGoal > 0 && (
+        <div className="mt-2">
+          <Progress
+            value={hoursPct}
+            className="h-1 [&_[data-slot=progress-indicator]]:bg-club"
+          />
+          <p className="mt-1 text-caption tabular-nums">
+            {Math.round(hoursPct)}% of {fmtHours(hoursGoal)}h{" "}
+            {goalIsPersonal ? "your goal" : "club goal"}
+            {hoursPct >= 100 ? " · reached 🎉" : ""}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Compact role pill for use ON the banner image. The banner is dimmed dark
+ *  in BOTH themes (light mode = strong scrim, dark mode = dark photo), so a
+ *  single translucent glass + white-text pairing works everywhere. */
+function BannerRolePill({ role }: { role: "member" | "executive" }) {
+  // The banner photo is dimmed dark in BOTH themes (light mode scrim, dark
+  // mode photo), so these pills are always the translucent glass + white
+  // text pairing — no theme fork needed.
+  if (role === "executive") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-club/45 bg-club/25 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm shrink-0">
+        <ShieldCheck className="h-3 w-3" /> Executive
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2 py-0.5 text-xs font-medium text-white backdrop-blur-sm shrink-0">
+      <Users className="h-3 w-3" /> Member
+    </span>
+  )
+}
+
+/** The 30-day approved-hours trend as a clean banner chart: thin accent
+ *  line, soft gradient fill, subtle vertical gridlines, muted date labels
+ *  and an endpoint marker. Same recharts library + data as before — now
+ *  rendered as part of the banner card instead of a nested tile.
+ *  `compact` trims the chart for the mobile banner: fewer axis labels,
+ *  smaller margins. */
+function BannerTrendChart({
+  data,
+  compact,
+}: {
+  data: { date: string; hours: number }[]
+  compact?: boolean
+}) {
+  const interval = compact
+    ? Math.max(0, Math.floor(data.length / 3))
+    : Math.max(0, Math.floor(data.length / 5))
+  const lastIndex = data.length - 1
+  return (
+    <div
+      className="h-full w-full min-w-0"
+      aria-label="Approved hours trend, last 30 days"
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart
+          data={data}
+          margin={compact ? { top: 4, right: 10, left: 0, bottom: 0 } : { top: 8, right: 14, left: 0, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id="bannerHoursFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--club-accent)" stopOpacity={0.22} />
+              <stop offset="100%" stopColor="var(--club-accent)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            vertical
+            horizontal={false}
+            stroke="hsl(var(--border))"
+            strokeOpacity={0.6}
+          />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 10, fill: "currentColor" }}
+            tickFormatter={(d) => format(parseISO(d), "MMM d")}
+            interval={interval}
+            axisLine={false}
+            tickLine={false}
+            dy={4}
+            className="text-muted-foreground"
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: 8,
+              border: "1px solid hsl(var(--border, 220 13% 91%))",
+              background: "hsl(var(--popover, 0 0% 100%))",
+              color: "hsl(var(--popover-foreground, 0 0% 0%))",
+              fontSize: 12,
+            }}
+            labelFormatter={(d) => format(parseISO(String(d)), "MMM d, yyyy")}
+            formatter={(value: number) => [`${fmtHours(value)}h`, "Approved hours"]}
+          />
+          <Area
+            type="monotone"
+            dataKey="hours"
+            stroke="var(--club-accent)"
+            strokeWidth={2}
+            fill="url(#bannerHoursFill)"
+            activeDot={{ r: 3.5 }}
+            dot={
+              // Endpoint marker on the last data point only. Typed loosely —
+              // recharts' AreaDot signature wants a ReactElement (not null),
+              // but returning null for non-endpoint dots is the documented
+              // pattern; the cast keeps tsc happy without changing behavior.
+              ((props: { cx?: number; cy?: number; index?: number }) =>
+                props.index === lastIndex ? (
+                  <circle
+                    key={`banner-endpoint-${props.index}`}
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={3}
+                    fill="var(--club-accent)"
+                    stroke="var(--card)"
+                    strokeWidth={2}
+                  />
+                ) : null) as any
+            }
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function ApprovedHoursPanel({
+  className,
+  approvedHours,
+  pendingHours,
+  hoursGoal,
+  goalIsPersonal,
+  hoursPct,
+  onViewHours,
+}: {
+  className?: string
+  approvedHours: number
+  pendingHours: number
+  hoursGoal: number
+  goalIsPersonal?: boolean
+  hoursPct: number
   onViewHours?: () => void
 }) {
-  // Two states: goal set → SVG progress ring; no goal → big number + sparkline.
+  // Refined "Approved hours" row — sits directly underneath the banner card
+  // (sm+ only; on mobile the banner's hours block covers this job so we
+  // don't stack two progress bars for the same number).
+  // Subtle dark-teal surface, hairline border, restrained icon container,
+  // clear title + muted supporting description, chevron on the right.
+  // Click behavior and destination are unchanged (→ Service Hours view).
   const Comp = onViewHours ? "button" : "div"
   return (
     <Comp
       type={onViewHours ? "button" : undefined}
       onClick={onViewHours}
       className={cn(
-        "border border-club/20 bg-club-subtle rounded-xl p-6 text-left flex flex-col shadow-card transition-[box-shadow,border-color,transform] duration-200 lg:col-span-5",
-        onViewHours && "hover:shadow-card-hover hover:border-club/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+        "w-full rounded-xl border border-club/20 bg-club-subtle p-4 text-left flex items-center gap-3.5 shadow-card transition-[box-shadow,border-color,background-color] duration-200",
+        onViewHours &&
+          "hover:shadow-card-hover hover:border-club/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        className
       )}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2 min-w-0">
-          {hoursGoal > 0 ? (
-            <Target className="h-4 w-4 text-club shrink-0" />
-          ) : (
-            <TrendingUp className="h-4 w-4 text-club shrink-0" />
-          )}
-          <h2 className="text-card-title truncate">
-            {hoursGoal > 0 ? "Hours toward goal" : "Approved hours"}
-          </h2>
-        </div>
-        {onViewHours && (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      {/* Small, restrained icon container */}
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-club-muted text-club">
+        <Clock className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-card-title truncate">Approved hours</p>
+        <p className="text-caption mt-0.5 truncate">
+          {fmtHours(approvedHours)}h approved
+          {hoursGoal > 0
+            ? ` · ${Math.round(hoursPct)}% of ${fmtHours(hoursGoal)}h ${
+                goalIsPersonal ? "your goal" : "club goal"
+              }`
+            : pendingHours > 0
+              ? ` · ${fmtHours(pendingHours)}h awaiting review`
+              : " · lifetime"}
+        </p>
+        {hoursGoal > 0 && (
+          <Progress
+            value={hoursPct}
+            className="h-1 mt-2 max-w-[260px] [&_[data-slot=progress-indicator]]:bg-club"
+          />
         )}
       </div>
-
-      {hoursGoal > 0 ? (
-        <div className="flex items-center gap-5 flex-1">
-          {/* SVG progress ring — perfect circle with rounded caps + track. */}
-          <ProgressRing
-            percent={hoursPct}
-            label={`${fmtHours(approvedHours)}h`}
-            sublabel={`of ${hoursGoal}h`}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="text-2xl font-bold tabular-nums">
-              {Math.round(hoursPct)}%
-            </div>
-            <p className="text-caption mt-1">
-              {hoursPct >= 100
-                ? "Goal achieved! 🎉"
-                : `${fmtHours(Math.max(0, hoursGoal - approvedHours))}h to go`}
-            </p>
-          </div>
+      {/* Compact goal completion readout */}
+      {hoursGoal > 0 && (
+        <div className="shrink-0 text-right hidden sm:block">
+          <p className="text-body font-bold tabular-nums leading-5">
+            {Math.round(hoursPct)}%
+          </p>
+          <p className="text-caption">
+            {hoursPct >= 100 ? "done 🎉" : "of goal"}
+          </p>
         </div>
-      ) : (
-        <div className="flex-1 flex flex-col justify-center">
-          <div className="text-numeral">
-            {fmtHours(approvedHours)}h
-          </div>
-          <p className="text-caption mt-1 mb-3">Approved · last 30 days</p>
-          <div className="h-10 max-w-[280px]">
-            <Sparkline data={hoursTrend} />
-          </div>
-        </div>
+      )}
+      {onViewHours && (
+        <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
       )}
     </Comp>
   )
@@ -1610,213 +1928,26 @@ function formatTurnaround(hours: number | null) {
   return `${(hours / 24).toFixed(1)}d`
 }
 
-// Bucket a 30-day hours trend down to 7 evenly-spaced points (sum per bucket)
-// so the inline SVG sparkline has a manageable number of vertices.
-function bucketToSeven(trend: { date: string; hours: number }[]): number[] {
-  const zeros = [0, 0, 0, 0, 0, 0, 0]
-  if (trend.length === 0) return zeros
-  if (trend.length <= 7) {
-    return [...trend.map((d) => d.hours), ...Array(7 - trend.length).fill(0)]
-  }
-  const buckets: number[] = []
-  const bucketSize = trend.length / 7
-  for (let i = 0; i < 7; i++) {
-    const start = Math.floor(i * bucketSize)
-    const end = Math.max(Math.floor((i + 1) * bucketSize), start + 1)
-    const slice = trend.slice(start, end)
-    buckets.push(slice.reduce((s, d) => s + d.hours, 0))
-  }
-  return buckets
-}
-
-// Tiny inline-SVG sparkline (no recharts). 7 data points, smooth bezier
-// curve, gradient area fill, and a crisp end dot rendered as an HTML
-// element (so it never gets distorted into an ellipse by non-uniform
-// SVG scaling). Fills its container width via a responsive viewBox.
-function Sparkline({
-  data,
-  className,
-}: {
-  data: { date: string; hours: number }[]
-  className?: string
-}) {
-  const points = bucketToSeven(data)
-  const max = Math.max(...points, 1)
-  const w = 100
-  const h = 40
-  const padX = 2
-  const padY = 4
-  const usableW = w - padX * 2
-  const usableH = h - padY * 2
-  const step = points.length > 1 ? usableW / (points.length - 1) : usableW
-  const yFor = (v: number) => padY + usableH - (v / max) * usableH
-
-  // Build smooth bezier path through the points (Catmull-Rom → cubic).
-  const coords = points.map((p, i) => ({
-    x: padX + i * step,
-    y: yFor(p),
-  }))
-  let lineD = `M ${coords[0].x.toFixed(2)} ${coords[0].y.toFixed(2)}`
-  for (let i = 0; i < coords.length - 1; i++) {
-    const p0 = coords[i === 0 ? 0 : i - 1]
-    const p1 = coords[i]
-    const p2 = coords[i + 1]
-    const p3 = coords[i + 2 < coords.length ? i + 2 : coords.length - 1]
-    const c1x = p1.x + (p2.x - p0.x) / 6
-    const c1y = p1.y + (p2.y - p0.y) / 6
-    const c2x = p2.x - (p3.x - p1.x) / 6
-    const c2y = p2.y - (p3.y - p1.y) / 6
-    lineD += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
-  }
-  const baselineY = padY + usableH
-  const areaD = `${lineD} L ${coords[coords.length - 1].x.toFixed(2)} ${baselineY} L ${coords[0].x.toFixed(2)} ${baselineY} Z`
-
-  const last = coords[coords.length - 1]
-  const dotLeftPct = (last.x / w) * 100
-  const dotTopPct = (last.y / h) * 100
-
-  return (
-    <div className={cn("relative h-full w-full", className)}>
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${w} ${h}`}
-        preserveAspectRatio="none"
-        className="overflow-visible block"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id="spark-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--club-accent)" stopOpacity={0.28} />
-            <stop offset="100%" stopColor="var(--club-accent)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill="url(#spark-area)" />
-        <path
-          d={lineD}
-          stroke="var(--club-accent)"
-          strokeWidth={2}
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-      {/* End dot rendered in HTML so it stays a perfect circle regardless
-          of the SVG’s non-uniform scaling. */}
-      <span
-        className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-club ring-2 ring-background"
-        style={{
-          left: `${dotLeftPct}%`,
-          top: `${dotTopPct}%`,
-        }}
-      />
-    </div>
-  )
-}
-
-// SVG progress ring — a perfect circle every time (no conic-gradient
-// distortion). Track + accent arc with rounded caps, value centered.
-function ProgressRing({
-  percent,
-  size = 80,
-  stroke = 7,
-  label,
-  sublabel,
-}: {
-  percent: number
-  size?: number
-  stroke?: number
-  label?: string
-  sublabel?: string
-}) {
-  const r = (size - stroke) / 2
-  const c = 2 * Math.PI * r
-  const clamped = Math.max(0, Math.min(100, percent))
-  const offset = c * (1 - clamped / 100)
-  const gid = "ring-grad"
-  return (
-    <div
-      className="relative shrink-0"
-      style={{ width: size, height: size }}
-      role="img"
-      aria-label={`${Math.round(clamped)}% complete`}
-    >
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        className="block -rotate-90"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="var(--club-accent)" />
-            <stop offset="100%" stopColor="var(--club-accent-2, var(--club-accent))" />
-          </linearGradient>
-        </defs>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="var(--muted)"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={`url(#${gid})`}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-          style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1)" }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-base font-bold tabular-nums leading-none">
-            {label ?? `${Math.round(clamped)}%`}
-          </div>
-          {sublabel && (
-            <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-              {sublabel}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // =========================================================================
-// Loading skeleton — matches new bento-grid layout
+// Loading skeleton — matches new banner-card layout
 // =========================================================================
 function DashboardSkeleton() {
   const tile =
     "border border-border bg-card rounded-xl animate-pulse"
   return (
     <div className="space-y-4 sm:space-y-5">
-      {/* Row 1 — Hero panel + Progress ring tile */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        <div className={cn(tile, "lg:col-span-7 h-32")} />
-        <div className={cn(tile, "lg:col-span-5 h-32")} />
-      </div>
+      {/* Row 1 — banner card (image + identity + analytics) */}
+      <div className={cn(tile, "h-72 sm:h-80")} />
+      {/* Row 2 — approved hours panel */}
+      <div className={cn(tile, "h-[72px]")} />
       {/* Tier 1 strip — 4 tighter tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <StatCardSkeleton key={i} />
         ))}
       </div>
-      {/* Chart + Leaderboard row */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        <div className={cn(tile, "p-5 lg:col-span-8 h-64")} />
-        <div className={cn(tile, "p-5 lg:col-span-4 h-64")} />
-      </div>
-      {/* Snapshot + Announcements + Meetings row */}
+      {/* Leaderboard row + Snapshot row */}
+      <div className={cn(tile, "p-5 h-40")} />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         <div className={cn(tile, "p-5 lg:col-span-4 h-56")} />
         <div className={cn(tile, "p-5 lg:col-span-4 h-56")} />

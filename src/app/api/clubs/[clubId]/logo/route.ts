@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import sharp from "sharp"
 import { db } from "@/lib/db"
 import { getClubContext, error } from "@/lib/server-auth"
+import { saveImage, deleteImage, publicUrl } from "@/lib/image-store"
 
 /** 5MB upload cap for club logos. */
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
@@ -11,8 +12,10 @@ const LOGO_QUALITY = 80
 /**
  * POST /api/clubs/[clubId]/logo
  * Accepts a multipart file upload (field name "file"), processes it with
- * sharp (resize 256×256, JPEG q80), and stores the result as a base64 data
- * URL in `Club.logoUrl`. Executive-only via getClubContext. Returns { logoUrl }.
+ * sharp (resize 256×256, JPEG q80), and stores the result as a JPEG file in
+ * `storage/club-images/{clubId}-logo.jpg`. The DB keeps only a short URL
+ * (`/api/club-images/{clubId}-logo?v=…`). Executive-only via getClubContext.
+ * Returns { logoUrl }.
  *
  * 5MB cap on the raw upload.
  */
@@ -49,14 +52,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       .jpeg({ quality: LOGO_QUALITY, mozjpeg: true })
       .toBuffer()
 
-    const dataUrl = `data:image/jpeg;base64,${processed.toString("base64")}`
+    // Write the processed JPEG to disk and keep a short versioned URL in
+    // the DB (v = Date.now() so re-uploads bust the immutable HTTP cache).
+    await saveImage("club-image", `${clubId}-logo`, processed)
+    const url = publicUrl("club-image", `${clubId}-logo`, Date.now())
 
     await db.club.update({
       where: { id: clubId },
-      data: { logoUrl: dataUrl },
+      data: { logoUrl: url },
     })
 
-    return NextResponse.json({ logoUrl: dataUrl })
+    return NextResponse.json({ logoUrl: url })
   } catch (e) {
     console.error("[logo] POST failed:", e)
     return NextResponse.json(
@@ -68,7 +74,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
 
 /**
  * DELETE /api/clubs/[clubId]/logo
- * Clears the club's logoUrl (sets to null). Executive-only.
+ * Clears the club's logoUrl (sets to null) and removes the stored file.
+ * Executive-only.
  */
 export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: string }> }) {
   try {
@@ -77,6 +84,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: str
     if (!c) return error("Not a member of this club", 403)
     if (c.membership.role !== "executive") return error("Executives only", 403)
 
+    await deleteImage("club-image", `${clubId}-logo`)
     await db.club.update({
       where: { id: clubId },
       data: { logoUrl: null },
