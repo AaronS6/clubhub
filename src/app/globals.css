@@ -850,7 +850,9 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
   to   { transform: translateX(calc(-50% - 8px)); }
 }
 .landing-marquee {
-  animation: landing-marquee 48s linear infinite;
+  /* 88s for an 18-photo set ≈ the same calm pace the original 9-photo
+     strip had at 48s (the strip is now twice as wide). */
+  animation: landing-marquee 88s linear infinite;
   will-change: transform;
 }
 .landing-marquee:hover,

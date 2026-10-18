@@ -11,10 +11,17 @@ import { rateLimit } from "@/lib/rate-limit"
  * session JWTs with a KNOWN key — anyone could forge an admin session. A hard
  * startup error is far better than silently-forgeable sessions. (Dev keeps a
  * local .env value; the dev fallback only ever exists on a dev machine.)
+ *
+ * One exception: `next build` sets NEXT_PHASE=phase-production-build while it
+ * imports every route module to collect page data. No requests are served and
+ * no sessions are minted during the build, so a missing secret there must not
+ * abort the Docker image build. Runtime (NODE_ENV=production, no NEXT_PHASE)
+ * still fails closed exactly as before.
  */
 function requireSessionSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET
-  if (!secret && process.env.NODE_ENV === "production") {
+  const isNextBuild = process.env.NEXT_PHASE === "phase-production-build"
+  if (!secret && process.env.NODE_ENV === "production" && !isNextBuild) {
     throw new Error(
       "[auth] NEXTAUTH_SECRET is not set. Generate one with `openssl rand -hex 32` and set it in the environment — refusing to start with forgeable sessions.",
     )

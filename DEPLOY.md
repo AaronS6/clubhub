@@ -109,6 +109,12 @@ Copy the output (something like `K7mN2pQ7rT4vWxYz9aB3xK9mN2pQ7rT4v...=`).
 
 **Save this value.**
 
+> **Note on build vs. runtime:** the Docker image builds fine WITHOUT
+> `NEXTAUTH_SECRET` (the build phase sets `NEXT_PHASE`, and the auth config
+> only refuses to start a *serving* server without the secret). At RUNTIME
+> the server still fails closed — it will not start with forgeable sessions
+> — so the env var must be set on Render before the service boots.
+
 ---
 
 ## STEP 4: Deploy the Web Service on Render (5 min)

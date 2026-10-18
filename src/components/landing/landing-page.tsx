@@ -172,17 +172,30 @@ const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
 
 /** Marquee moments — REAL documentary photos + the real seeded club banners.
  *  The Robotics Club banner + the learning-commons shot are genuine Burnaby
- *  North Secondary School photos (the school the demo club calls home). */
+ *  North Secondary School photos (the school the demo club calls home).
+ *  The rest are real school-club team photos — track & field, FRC robotics,
+ *  jazz band, basketball, science, leadership, service drives, grad — the
+ *  kind of shots club accounts (think ontrackyvr_ and friends) post after
+ *  a meet, a build season, or a food drive. People first, always. */
 const MOMENTS: { src: string; alt: string }[] = [
-  { src: "/landing/real-friends.jpg", alt: "Students riding the school bus together after a competition" },
+  { src: "/landing/real-track-team.jpg", alt: "A track and field team posing together after practice" },
   { src: "/banners/robotics-banner.jpg", alt: "Robotics Club meeting space — the social stairs at Burnaby North Secondary" },
+  { src: "/landing/real-frc-team.jpg", alt: "A robotics team posing with their competition robot" },
   { src: "/landing/real-bn-commons.jpg", alt: "Burnaby North Secondary's bright learning commons" },
-  { src: "/landing/real-photography.jpg", alt: "A student photographer capturing spring blossoms" },
-  { src: "/landing/real-debate.jpg", alt: "Students celebrating at a tournament" },
+  { src: "/landing/real-jazz-band.jpg", alt: "The jazz band mid-song on stage" },
   { src: "/banners/photography-banner.jpg", alt: "Photography Club out on a shoot" },
-  { src: "/landing/real-volunteer.jpg", alt: "Volunteers tending a community garden" },
+  { src: "/landing/real-basketball.jpg", alt: "A basketball team huddled together on court" },
+  { src: "/landing/real-science.jpg", alt: "Science club students running an experiment" },
   { src: "/landing/real-robotics.jpg", alt: "A robotics team with their competition robot" },
+  { src: "/landing/real-leaders.jpg", alt: "Student leaders talking with a mentor in the commons" },
+  { src: "/landing/real-debate.jpg", alt: "Students celebrating at a tournament" },
   { src: "/banners/debate-banner.jpg", alt: "Debate Society at the podium" },
+  { src: "/landing/real-service.jpg", alt: "Students with the boxes from their food drive" },
+  { src: "/landing/real-friends.jpg", alt: "Students riding the school bus together after a competition" },
+  { src: "/landing/real-robotics-comp.jpg", alt: "Students driving their robot on the competition field" },
+  { src: "/landing/real-photography.jpg", alt: "A student photographer capturing spring blossoms" },
+  { src: "/landing/real-volunteer.jpg", alt: "Volunteers tending a community garden" },
+  { src: "/landing/real-grad.jpg", alt: "Graduates tossing their caps" },
 ]
 
 // ── Page ─────────────────────────────────────────────────────────────────────
