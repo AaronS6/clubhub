@@ -118,6 +118,11 @@ interface JoinedClubInfo {
  *  land in the JUST-JOINED club (a full page load would otherwise restore the
  *  previously-open club from the persisted store). */
 const SELECT_CLUB_KEY = "clubhub-select-club"
+/** Marker written by the public profile's JOIN flow only — tells this shell
+ *  to open the introduction tour after switching into the new club. An
+ *  existing member using "Open club workspace" writes SELECT_CLUB_KEY without
+ *  this marker, so they get a silent club switch (no tour replay). */
+const JUST_JOINED_KEY = "clubhub-just-joined"
 
 /**
  * Sidebar navigation, organized into tiers.
@@ -430,16 +435,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ── Land in the just-joined club after a FULL page navigation ────────────
-  // The public club profile joins in-page, then does window.location.assign
-  // ("/") so the shell bootstraps fresh. Before navigating it stashes the
-  // joined club id under SELECT_CLUB_KEY — consumed here (once per load) to
-  // switch into that club and open the introduction guide for it.
+  // The public club profile joins (or "Open club workspace") in-page, then
+  // does window.location.assign("/") so the shell bootstraps fresh. Before
+  // navigating it stashes the target club id under SELECT_CLUB_KEY — consumed
+  // here (once per load) to switch into that club. A fresh JOIN additionally
+  // writes JUST_JOINED_KEY, which opens the introduction guide for it.
   const afterLoadTourFiredRef = useRef(false)
   useEffect(() => {
     if (!bootstrapped) return
     let id: string | null = null
+    let justJoined = false
     try {
       id = sessionStorage.getItem(SELECT_CLUB_KEY)
+      justJoined = !!sessionStorage.getItem(JUST_JOINED_KEY)
+      sessionStorage.removeItem(JUST_JOINED_KEY)
     } catch {
       id = null
     }
@@ -458,8 +467,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     })
     // Joined a NEW club on the public profile → open the introduction guide
     // for it. Fire-once per page load (no cleanup — later effect re-runs from
-    // refetches must not cancel the pending tour dispatch).
-    if (!afterLoadTourFiredRef.current) {
+    // refetches must not cancel the pending tour dispatch). "Open club
+    // workspace" (existing member) skips this — they've seen it already.
+    if (justJoined && !afterLoadTourFiredRef.current) {
       afterLoadTourFiredRef.current = true
       setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 900)
     }

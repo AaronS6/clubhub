@@ -98,6 +98,7 @@ import {
   Globe,
   XCircle,
   Target,
+  NotebookPen,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -247,6 +248,9 @@ export function MembersView() {
 
       {/* Club logo section — exec only */}
       {isExec && <ClubLogoSection clubId={clubId} />}
+
+      {/* Club description — exec only (public profile + Explore copy). */}
+      {isExec && <ClubDescriptionSection clubId={clubId} />}
 
       {/* Club-wide service-hours goal — exec only ("a goal for everyone to
           reach", also set during the introduction tour). */}
@@ -645,6 +649,98 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Club description (exec only) — the "what is this club about" blurb shown
+// on the public club profile (?public= link) and the Explore directory.
+// Set once in the create-club dialog; this is the anytime editor. Empty =
+// removed everywhere. Backed by PATCH /api/clubs/[clubId] (exec-gated,
+// max 1000 chars — both enforced here too).
+// ---------------------------------------------------------------------------
+
+function ClubDescriptionSection({ clubId }: { clubId: string }) {
+  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery<{ club: { description: string | null } }>({
+    queryKey: ["club-description", clubId],
+    queryFn: () => api<{ club: { description: string | null } }>(`/api/clubs/${clubId}`),
+    staleTime: 30_000,
+  })
+  // null = not edited yet → mirror the server value (so the box re-syncs
+  // after a save + refetch). Any string = an edit in progress.
+  const [value, setValue] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const current = data?.club?.description ?? ""
+  const shown = value ?? current
+  const dirty = value !== null && value !== current
+
+  async function save() {
+    setSaving(true)
+    try {
+      const next = shown.trim()
+      await api(`/api/clubs/${clubId}`, { method: "PATCH", json: { description: next } })
+      toast.success(next ? "Club description updated" : "Description removed")
+      setValue(null)
+      // Refetch every surface that renders the description — the editor
+      // itself, the ?public= profile, and the Explore directory (prefix
+      // keys cover any code-suffixed variants).
+      await qc.invalidateQueries({ queryKey: ["club-description", clubId] })
+      await qc.invalidateQueries({ queryKey: ["public-club"] })
+      await qc.invalidateQueries({ queryKey: ["public-clubs"] })
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't save the description")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <h3 className="text-section-title flex items-center gap-2">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <NotebookPen className="h-4 w-4" />}
+        Club description
+      </h3>
+      <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
+        What {clubName} is about — shown on your public profile and in the
+        Explore directory. Leave it empty to remove it.
+      </p>
+      <div className="mt-3">
+        <Textarea
+          value={shown}
+          onChange={(e) => setValue(e.target.value.slice(0, 1000))}
+          disabled={isLoading || saving}
+          rows={4}
+          maxLength={1000}
+          placeholder="e.g. We build and compete with robots every season — no experience required."
+          aria-label="Club description"
+          className="resize-y bg-background"
+        />
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <span
+            className="text-caption text-muted-foreground/70 tabular-nums"
+            aria-live="polite"
+          >
+            {shown.length}/1000
+          </span>
+          <Button
+            type="button"
+            variant="club"
+            size="sm"
+            onClick={save}
+            disabled={!dirty || saving || isLoading}
+          >
+            {saving ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            )}
+            Save description
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Public directory listing section (exec only) — controls whether the club
 // appears in the public landing page's "Explore clubs" directory.
 // ---------------------------------------------------------------------------
@@ -1022,19 +1118,27 @@ function ClubCodeSection({
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [changeOpen, setChangeOpen] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+
+  // Shared post-change sync for BOTH code paths (custom + regenerate):
+  // update the active club, the clubs list, and refetch member data.
+  function applyNewCode(code: string) {
+    patchCurrentClub({ clubCode: code })
+    setClubs(
+      clubs.map((c) =>
+        c.clubId === clubId ? { ...c, clubCode: code } : c
+      )
+    )
+    qc.invalidateQueries({ queryKey: ["members", clubId] })
+    // Any cached public-club payload for the OLD code is now stale too.
+    qc.removeQueries({ queryKey: ["public-club"] })
+  }
 
   const regen = useMutation({
     mutationFn: () => api<{ clubCode: string }>(`/api/clubs/${clubId}/regenerate`, { method: "POST" }),
     onSuccess: (data) => {
       toast.success("Club code regenerated")
-      patchCurrentClub({ clubCode: data.clubCode })
-      // keep the clubs list in sync too
-      setClubs(
-        clubs.map((c) =>
-          c.clubId === clubId ? { ...c, clubCode: data.clubCode } : c
-        )
-      )
-      qc.invalidateQueries({ queryKey: ["members", clubId] })
+      applyNewCode(data.clubCode)
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1140,6 +1244,13 @@ function ClubCodeSection({
               <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", regen.isPending && "animate-spin")} />
               {regen.isPending ? "Regenerating…" : "Regenerate code"}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCustomOpen(true)}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Customize code
+            </Button>
           </div>
         </div>
 
@@ -1208,7 +1319,138 @@ function ClubCodeSection({
           setPasswordVisible(true)
         }}
       />
+
+      <CustomCodeDialog
+        clubId={clubId}
+        currentCode={clubCode ?? ""}
+        open={customOpen}
+        onOpenChange={setCustomOpen}
+        onChanged={applyNewCode}
+      />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Custom club code dialog — the exec types the code they want (4–10 letters
+// + numbers). Uppercased live; invalid characters are stripped as they type.
+// The server double-validates and 409s taken codes with a friendly message,
+// which we surface inline under the input (no toast-only dead end).
+// ---------------------------------------------------------------------------
+
+function CustomCodeDialog({
+  clubId,
+  currentCode,
+  open,
+  onOpenChange,
+  onChanged,
+}: {
+  clubId: string
+  currentCode: string
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onChanged: (code: string) => void
+}) {
+  const [value, setValue] = useState("")
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // Normalize on every keystroke: uppercase + strip anything that isn't a
+  // letter or digit, so the input can never hold an invalid character.
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const validLength = normalized.length >= 4 && normalized.length <= 10
+  const unchanged = normalized === currentCode || normalized.length === 0
+  const canSave = validLength && !unchanged && !saving
+
+  useEffect(() => {
+    if (open) {
+      setValue("")
+      setServerError(null)
+    }
+  }, [open])
+
+  async function save() {
+    if (!canSave) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      const res = await api<{ clubCode: string }>(`/api/clubs/${clubId}/regenerate`, {
+        method: "POST",
+        json: { clubCode: normalized },
+      })
+      toast.success(`Club code set to ${res.clubCode}`)
+      onChanged(res.clubCode)
+      onOpenChange(false)
+    } catch (e: any) {
+      // Inline for field-level problems (taken / same / format) — a toast
+      // alone would lose the message the moment it fades.
+      setServerError(e?.message || "Couldn't set that code")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-md")}>
+        <div className="px-5 pt-5 pb-6 sm:px-0 sm:pt-0 sm:pb-0 flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Customize club code</DialogTitle>
+            <DialogDescription>
+              Pick a memorable code for members to join with — like a word or
+              abbreviation (e.g. ROBOTIX). Current members are unaffected; only
+              new joiners need the new code.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="custom-club-code">New club code</Label>
+            <div className="relative">
+              <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                id="custom-club-code"
+                value={normalized}
+                onChange={(e) => setValue(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSave) {
+                    e.preventDefault()
+                    void save()
+                  }
+                }}
+                placeholder="e.g. ROBOTIX"
+                maxLength={10}
+                autoComplete="off"
+                spellCheck={false}
+                className="pl-9 font-mono text-lg tracking-[0.2em] uppercase"
+                aria-invalid={!!serverError}
+              />
+            </div>
+            <p className="text-caption text-muted-foreground" aria-live="polite">
+              {normalized.length}/10 · 4–10 letters and numbers, no spaces or symbols.
+            </p>
+            {serverError && (
+              <p className="text-caption text-danger-foreground" role="alert">
+                {serverError}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button variant="club" onClick={save} disabled={!canSave}>
+              {saving ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              )}
+              Save code
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

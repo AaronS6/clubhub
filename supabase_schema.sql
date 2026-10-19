@@ -559,32 +559,9 @@ ALTER TABLE "MessageReaction" ADD CONSTRAINT "MessageReaction_userId_fkey" FOREI
 
 
 -- ───────────────────────────────────────────────────────────────────────────
--- MIGRATION for EXISTING Supabase deployments (run in the SQL Editor if your
--- schema predates the banner + public-directory / join-request features):
---
---   ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "bannerUrl" TEXT;
---   ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "bannerFocalY" DOUBLE PRECISION;
---   ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "isListedPublic" BOOLEAN NOT NULL DEFAULT false;
---   ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "joinMode" TEXT NOT NULL DEFAULT 'code';
---   ALTER TABLE "Club" ADD COLUMN IF NOT EXISTS "mainGoal" TEXT;
---   ALTER TABLE "ClubMember" ADD COLUMN IF NOT EXISTS "personalHoursGoal" DOUBLE PRECISION NOT NULL DEFAULT 0;
---
---   CREATE TABLE "JoinRequest" (
---       "id" TEXT NOT NULL,
---       "clubId" TEXT NOT NULL,
---       "userId" TEXT NOT NULL,
---       "message" TEXT,
---       "status" TEXT NOT NULL DEFAULT 'pending',
---       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
---       "reviewedAt" TIMESTAMP(3),
---       "reviewedByUserId" TEXT,
---       CONSTRAINT "JoinRequest_pkey" PRIMARY KEY ("id")
---   );
---   CREATE UNIQUE INDEX "JoinRequest_clubId_userId_key" ON "JoinRequest"("clubId", "userId");
---   CREATE INDEX "JoinRequest_clubId_status_idx" ON "JoinRequest"("clubId", "status");
---   ALTER TABLE "JoinRequest" ADD CONSTRAINT "JoinRequest_clubId_fkey" FOREIGN KEY ("clubId") REFERENCES "Club"("id") ON DELETE CASCADE ON UPDATE CASCADE;
---   ALTER TABLE "JoinRequest" ADD CONSTRAINT "JoinRequest_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
---   ALTER TABLE "JoinRequest" ADD CONSTRAINT "JoinRequest_reviewedByUserId_fkey" FOREIGN KEY ("reviewedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
---
--- (A fresh deployment can just re-run this whole file after dropping tables.)
+-- MIGRATIONS for EXISTING Supabase deployments: DO NOT copy the block below
+-- piecemeal. Instead run `supabase_sync.sql` (repo root) in the SQL Editor —
+-- it is the master, fully-idempotent sync that adds every missing column,
+-- feature table, index, foreign key, and RLS rule in one shot. Safe to
+-- re-run after every deploy.
 -- ───────────────────────────────────────────────────────────────────────────

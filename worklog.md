@@ -604,3 +604,118 @@ Stage Summary:
 - The image is dramatically slimmer: runner ships the standalone trace + explicit Prisma/sharp runtime dirs instead of the full ~1.2GB node_modules, and 4 unused heavy dependency trees (~230MB incl. @codesandbox + @swc) are gone from both the build and the lockfile.
 - The landing "Club life" marquee now leads with real people: 18 photos total — track team, FRC robotics posing + on-field, jazz band, basketball huddle, science lab, student leaders, food drive, grad caps — alongside the existing Burnaby North shots, all compressed to ≤152KB each with the marquee re-timed to keep its calm pace.
 - Files changed: src/lib/authOptions.ts, Dockerfile, .dockerignore, package.json (+ bun.lock), src/components/landing/landing-page.tsx, src/app/globals.css, DEPLOY.md; assets added: public/landing/real-{track-team,frc-team,robotics-comp,jazz-band,basketball,leaders,service,science,grad}.jpg.
+
+---
+Task ID: 21
+Agent: Z.ai Code (main orchestrator)
+Task: Production 500s — `P2022: The column User.avatarDecoration does not exist in the current database` flooding the auth session callback and multiple API routes ("Request failed (500)").
+
+Work Log:
+- DIAGNOSIS: production schema drift. Prod tables are managed by hand-written SQL (the Supabase pooler can't run `prisma db push`), and `User.avatarDecoration` (outer-effects feature) was never added to any SQL script. Because Prisma returns ALL scalar columns on un-select-ed queries, ONE missing column breaks EVERY query on that table — hence session callback + half the API failing at once. Audited every model vs all four SQL scripts (supabase_schema/badges/notes/rls_fix): also missing everywhere were `Club.handbookAcceptedAt` and the ENTIRE `ClubTransaction` (financials) table; `Team.mainIdea` + badges/notes tables were split across optional scripts the deployment may never have run.
+- FIX (supabase_sync.sql — NEW, repo root): one master, fully-idempotent sync script for the Supabase SQL Editor. Section 1 CREATE TABLE IF NOT EXISTS for the 8 feature tables (JoinRequest, ClubTransaction, Badge, MemberBadge, ClubNote, NoteTag, NoteTagAssignment, NoteHeart). Section 2 column healers — ALTER TABLE ADD COLUMN IF NOT EXISTS for EVERY column of EVERY table (227 statements, Prisma defaults included so NOT NULL is safe on populated tables). Section 3 CREATE [UNIQUE] INDEX IF NOT EXISTS ×47. Section 4 guarded DO-$$ FK blocks (pg_constraint existence checks). Section 5 RLS ENABLE+FORCE on all public tables (same pattern as supabase_rls_fix.sql; service_role bypasses — app unaffected). Section 6 verification SELECTs. NEVER drops anything (unlike supabase_badges.sql which DROPs first — documented warning not to re-run it on live data).
+- DOCS: DEPLOY.md STEP 5 rewritten — the old text claimed the Dockerfile auto-runs `prisma db push` on startup, which was false and dangerous advice; it now documents running supabase_sync.sql once per deploy (2 min), explains the P2022 failure mode if skipped, and marks the four historical scripts as superseded (badges script especially — destructive re-run). Troubleshooting table got two new rows (P2022 500s + session-callback errors → run the sync). Summary table step 5 updated (auto-initializes → run sync, 2 min). supabase_schema.sql's stale bottom migration comment now points at supabase_sync.sql instead of a partial copy-paste block.
+- VERIFICATION: no app code changed (dev server untouched, still 200). Structural lint of the SQL: 329 statements, 227 ALTERs / 8 CREATE TABLEs / 47 indexes / 2 balanced DO-$$ blocks, zero unbalanced quotes, paren delta 0, every reference ordered after its CREATE. Postgres isn't available in this sandbox, so runtime validation is the SQL Editor run itself — every statement pattern is lifted from the four scripts that already ran against prod.
+- OPERATION FOR THE USER (immediate, no redeploy needed): Supabase dashboard → SQL Editor → paste supabase_sync.sql → Run. The 500s stop instantly (Prisma queries succeed once the columns exist). Minimal one-liner if they only want today's error gone: ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "avatarDecoration" TEXT NOT NULL DEFAULT 'none'; — but the full sync also heals handbookAcceptedAt, ClubTransaction, and any badges/notes drift in the same run.
+
+Stage Summary:
+- Root cause fixed at the source: a single idempotent supabase_sync.sql now exists as the canonical "run after every deploy" step; it heals ALL schema drift (columns, tables, indexes, FKs, RLS) in one SQL-Editor run, killing the avatarDecoration P2022 storm and pre-empting the next three drift bugs (handbookAcceptedAt, financials table, badges/notes).
+- DEPLOY.md now tells the truth about database setup (no auto-init; run the sync), with troubleshooting rows for both observed error signatures.
+- Files changed: supabase_sync.sql (new), DEPLOY.md, supabase_schema.sql (comment only). No app code touched.
+
+---
+Task ID: 21 (addendum)
+Agent: Z.ai Code (main orchestrator)
+Task: User asked for the master sync SQL typed out inline so it can be copy-pasted directly into the Supabase SQL Editor.
+
+Work Log:
+- Regenerated ground-truth Postgres DDL via `bunx prisma migrate diff --from-empty --to-schema-datamodel` with the provider sed-flipped to postgresql (same trick as the Dockerfile build stage).
+- Programmatic cross-check of supabase_sync.sql against that fresh diff: 227/227 columns covered by ADD COLUMN IF NOT EXISTS; all 31 tables accounted for (8 CREATE TABLE IF NOT EXISTS for feature tables + 23 base tables from supabase_schema.sql); all 46 schema indexes present (47 statements in file); 18 guarded FK DO-blocks for the feature tables; 2 balanced DO-$$ blocks (FK + RLS); single-quote parity OK.
+- Confirmed DEPLOY.md documents the pooler DATABASE_URL (port 6543, postgres role) and that Section 5 ENABLE+FORCE RLS matches the already-run supabase_rls_fix.sql production pattern.
+- Typed the complete 613-line script inline in chat for direct copy-paste.
+
+Stage Summary:
+- supabase_sync.sql re-verified complete against the CURRENT prisma/schema.prisma — zero gaps.
+- User operation: Supabase Dashboard → SQL Editor → New query → paste the full script → Run. The P2022/avatarDecoration 500s stop immediately (no redeploy needed). Re-runnable any time.
+
+---
+Task ID: 21 (addendum 2)
+Agent: Z.ai Code (main orchestrator)
+Task: Supabase SQL Editor run errored at the end — ERROR 42703: column "forcerowsecurity" does not exist (the Section 6 RLS verification SELECT).
+
+Work Log:
+- Root cause: pg_tables exposes only `rowsecurity`, NOT `forcerowsecurity` — the force flag lives in pg_class (relrowsecurity / relforcerowsecurity). The failing statement was the LAST verification SELECT; all DDL (sections 1–5) executes before it and never references that column.
+- Fixed supabase_sync.sql Section 6: RLS check now selects from pg_class joined to pg_namespace on schemaname 'public', relkind 'r', exposing relname/relrowsecurity/relforcerowsecurity. DEPLOY.md grepped — no references to the broken query, no changes needed there.
+- The SQL Editor may have executed the batch statement-by-statement (DDL persisted) or as one implicit transaction (error → full rollback). Gave the user a standalone 3-query status check (avatarDecoration column exists; table_count = 31; RLS flags) plus a decision rule: landed → done; rolled back → delete the final broken SELECT from their existing paste and re-run (fully idempotent).
+- No app code touched; dev server untouched.
+
+Stage Summary:
+- supabase_sync.sql verification query corrected (pg_class-based, works on all PG ≥ 9.5 incl. Supabase 15/17).
+- User path: run status check → interpret → conditionally re-run script minus the broken tail.
+
+---
+Task ID: 22
+Agent: Z.ai Code (main orchestrator)
+Task: (a) Interpret user's pasted RLS verification results; (b) user asked "where can I add a description to my club" — audit found NO post-creation description editor existed (only the Create Club dialog had one), so the feature was built.
+
+Work Log:
+- Interpreted the pasted pg_class RLS output: 30 tables (JoinRequest missing), rowsecurity=false on all base tables → the big sync batch fully rolled back when the final broken SELECT errored (Supabase SQL Editor runs a paste as one implicit transaction). avatarDecoration is therefore still missing in prod → user must re-run the script minus the broken tail (instructions re-sent in chat).
+- Audited description editability: GET/PATCH /api/clubs/[clubId] supports description (exec-gated, ≤1000 chars) and public-club-profile.tsx + landing directory render it, but the ONLY writer was create-club-dialog.tsx (creation time). Members view exec sections covered logo/goal/public-listing/join-requests/club-code — no description editor. Feature gap confirmed.
+- BUILT ClubDescriptionSection in members-view.tsx (exec-only, rendered directly under ClubLogoSection): TanStack query ["club-description", clubId] on the existing GET; Textarea rows=4 maxLength=1000 with live x/1000 counter (aria-live); dirty-tracking via null-until-edited state so the box re-syncs after save+refetch; Save → PATCH { description } (empty string = removed everywhere); on success invalidates ["club-description", clubId] + ["public-club"] + ["public-clubs"] (prefix match covers the ?public= profile and Explore directory); loading/saving states disable the textarea; NotebookPen icon added to lucide imports.
+- VERIFICATION (tsc 0 errors, lint clean, dev server 200): agent-browser E2E as alex@clubhub.example — skipped intro tour, opened Members: section renders prefilled with the club's existing description, Save correctly disabled while clean; edited text → Save enabled → clicked → toast "Club description updated"; full page reload → new text persisted, Save disabled again; GET /api/public/club/ROBOTIX returns the updated description (public surface refetch works); zero console/page errors. Demo club ROBOTIX description now ends with "Meets Tuesdays after school in room 214." (harmless demo-data enrichment from the test).
+- Screenshot: upload/club-description-section.png.
+
+Stage Summary:
+- New exec capability: Members → "Club description" card (under the logo card) — the anytime editor for the public-profile/Explore blurb; empty = removed. No API/schema changes needed (endpoint already existed).
+- Prod still needs the Supabase sync re-run (previous batch rolled back); reminder sent to user with exact steps.
+- Files changed: src/components/views/members-view.tsx only.
+
+---
+Task ID: 23
+Agent: Z.ai Code (main orchestrator)
+Task: Four user requests — (1) custom club codes instead of only regenerating; (2) X/exit on a public club profile should return to the LANDING page when logged in, not the previous workspace; (3) "Open club workspace" on a public profile must switch INTO that club, not the previously-active one; (4) "resend api doesn't work" — diagnose.
+
+Work Log:
+- (1) CUSTOM CODE — API: POST /api/clubs/[clubId]/regenerate now accepts optional { clubCode }; normalized (uppercase, non-alnum stripped), validated 4–10 A–Z0–9 (same window the join route accepts), friendly 409s for taken/same-as-current, distinct activity log verb (change_code vs regenerate_code), random-regeneration path untouched. UI: ClubCodeSection gains "Customize code" button + CustomCodeDialog (matches ChangePasswordDialog patterns: DIALOG_CLASS, mobile padding, live x/10 counter, aria-live, inline server errors for taken/same, Enter-to-save, normalized-on-keystroke). Shared applyNewCode() now also removeQueries ["public-club"] so stale public payloads keyed by the OLD code don't linger. Removed unused hashPassword import.
+- (2) EXIT → LANDING — public-club-profile TopBar X button: router.push("/") → router.push("/?landing=1") (for signed-in users "/" renders the workspace — that was the bug; signed-out users already get the landing page at "/" so the param is a no-op for them). Also fixed the same trap in "Discover more clubs" (/#clubs → /?landing=1#clubs) and the not-found page's "Back to ClubHub" (→ /?landing=1). "Back to app" link remains the app exit; landing shows "Open the app" for signed-in visitors so nobody is stranded.
+- (3) OPEN WORKSPACE — was a plain <Link href="/"> which re-entered the app with the PERSISTED active club (e.g. Robotics when viewing Business Club). Now: me-membership-check query extended with clubId; openWorkspace() stashes myMembership.clubId under SELECT_CLUB_KEY and does a full window.location.assign("/") so the shell re-bootstraps and switches into THE VIEWED club (same mechanism as the join flow). New JUST_JOINED_KEY marker: only the JOIN flow writes it; app-shell now opens the introduction tour ONLY when that marker exists (existing members switching clubs get a silent switch — no tour replay). Also removed the asChild/Link indirection (Button onClick).
+- (4) RESEND — no code bug: src/lib/email.ts is a graceful no-op without RESEND_API_KEY (by design), and forgot-password never leaks reset URLs in production. The user's answer: YES — add RESEND_API_KEY (+ optional EMAIL_FROM) as env vars on Render, then redeploy. Gotcha documented: onboarding@resend.dev sandbox sender only delivers to the Resend account owner's own email — real members need a verified domain. DEPLOY.md: env table extended with the two optional vars (notes column added), and a "Forgot? email never arrives" troubleshooting row.
+- VERIFICATION: tsc 0 errors, lint clean. agent-browser E2E as alex@clubhub.example: (a) ?public=DEBATE → X → landed on /?landing=1 with landing content (was workspace before); (b) ?public=PHOTOS1 with Robotics active → "Open club workspace" → full nav → sidebar "PC Photography Club Executive", dashboard heading Photography Club, NO intro tour; (c) Customize dialog: "DEBATE" → inline "\"DEBATE\" is taken by another club"; "PHOTO25" saved → toast, UI code display updated, DB updated, /api/public/club/PHOTO25 resolves; restored PHOTOS1; in-page fetch edge cases: same-code 409 ("That's already your club code"), "AB" → 4–10 message, lowercase "robotix" → normalized → same-as-current detected. Zero console/page errors; dev.log clean. Screenshots: upload/public-profile-nav.png.
+
+Stage Summary:
+- Execs can now pick a memorable club code (4–10 letters/numbers) in Members → Club code & password → Customize code; taken/invalid codes get friendly inline errors; members unaffected, only new joiners need the new code.
+- Public profile navigation fixed: X always returns to the public landing page; "Open club workspace" now switches into the viewed club (no tour replay for existing members).
+- Resend: nothing broken — needs RESEND_API_KEY + EMAIL_FROM env vars in Render (documented in DEPLOY.md env table + troubleshooting; sandbox-sender limitation noted).
+- Files changed: src/app/api/clubs/[clubId]/regenerate/route.ts, src/components/views/members-view.tsx, src/components/public-club-profile.tsx, src/components/app-shell.tsx, DEPLOY.md.
+---
+Task ID: 23 (addendum)
+Agent: Z.ai Code (main orchestrator)
+Task: User follow-up on the Resend item — "how to verify my domain for resend". Provide accurate, current domain-verification steps and persist them in DEPLOY.md.
+
+Work Log:
+- Confirmed the app integration is unchanged and correct: src/lib/email.ts reads RESEND_API_KEY (+ optional EMAIL_FROM, default "ClubHub <onboarding@resend.dev>"); without the key email is a graceful no-op with an "[email]" log line.
+- Researched Resend's CURRENT official docs (web-search + curl of resend.com/docs/dashboard/domains/introduction, /docs/add-a-domain, /docs/dashboard/domains/manage-domains) to get today's flow right: subdomain recommended (reputation isolation), region picker, Records tab (DKIM + SPF as TXT/MX or CNAME for newer domains + Return-Path), exact-copy requirement, ~15min-72h verification window, "Restart verification" after 72h, DMARC after verified, claim-domain for domains already on another team, statuses (not_started/pending/verified/partially_*/failed).
+- Expanded DEPLOY.md's Resend section step 2 into a full domain-verification walkthrough (prereq: own domain — *.onrender.com CANNOT be verified; add-domain w/ subdomain + region; copy records exactly; provider gotchas: host auto-append/doubling, @ for root, Cloudflare grey-cloud CNAMEs; verify timing + restart; DMARC afterwards) + tightened EMAIL_FROM note (must be on the verified domain) + added a "[email] log signature" decoder block (no-key vs 403-rejected vs sent-ok).
+- No code changes — configuration/documentation only. Dev server untouched.
+
+Stage Summary:
+- DEPLOY.md now contains a copy-paste-able, docs-accurate Resend domain verification runbook; user gets the same steps in chat.
+- Still outstanding on user side: re-run supabase_sync.sql minus the broken tail SELECT (prod P2022 fix), and set RESEND_API_KEY/EMAIL_FROM on Render + redeploy once the domain is verified.
+---
+Task ID: 24
+Agent: Z.ai Code (main orchestrator)
+Task: User asked "how to make my site searchable on the web" — audit the app's SEO surface, build everything missing in code, and deliver the search-engine runbook.
+
+Work Log:
+- AUDIT: public/robots.txt existed (allows all crawlers, no Sitemap directive, static so it can't emit the absolute URL the spec requires); root metadata had title/description/icons/manifest but NO sitemap, NO OpenGraph/Twitter cards, NO metadataBase, NO search-console verification support; public club profiles shared the generic app title; no document.title usage anywhere.
+- BUILT src/lib/site.ts — getSiteUrl() resolving NEXT_PUBLIC_SITE_URL || NEXTAUTH_URL || http://localhost:3000, normalized (trailing slash/default ports stripped), never throws.
+- BUILT src/app/sitemap.ts — dynamic /sitemap.xml (revalidate=3600): homepage (priority 1) + /?public=<code> for every Club.isListedPublic=true club (≤100, lastmod from Club.updatedAt) — same visibility rule as /api/public/clubs so unlisted clubs never leak into search. try/catch degrades to homepage-only if the DB is unreachable so builds/renders never fail.
+- BUILT src/app/robots.ts replacing public/robots.txt (deleted to avoid the static file shadowing the dynamic route): allow all, Disallow /api/ (crawl budget; harmless to the app), Sitemap: <absolute>/sitemap.xml.
+- UPGRADED layout.tsx metadata: metadataBase (absolute OG image URLs), robots {index,follow}, full OpenGraph + Twitter summary cards (image /club-logo.png 512), and env-driven verification — GSC_VERIFICATION_TOKEN → google-site-verification meta, BING_VERIFICATION_TOKEN → msvalidate.01 (verification is a pure config step: add env var + redeploy).
+- public-club-profile.tsx: useEffect sets document.title = "<Club name> — ClubHub" while mounted (restored on unmount) — Googlebot renders JS so indexed titles reflect the club name; also better browser tabs/history.
+- .env: documented GSC_VERIFICATION_TOKEN / BING_VERIFICATION_TOKEN / NEXT_PUBLIC_SITE_URL (empty defaults). DEPLOY.md: new "Get Found on Search Engines (SEO)" section (GSC HTML-tag method → env var → verify → submit sitemap.xml → Request indexing; Bing import; UptimeRobot keep-awake; real links; custom-domain note with NEXT_PUBLIC_SITE_URL), env quick-reference rows, "Site doesn't show up on Google" troubleshooting row.
+- VERIFICATION: tsc 0 errors, lint clean. Dev server had died (OOM) — restarted via detach.py. curl /robots.txt → correct policy + Sitemap; /sitemap.xml → 4 URLs (homepage + PHOTOS1/ROBOTIX/DEBATE — matches isListedPublic clubs, unlisted clubs excluded). Homepage head shows full OG/Twitter set with absolute URLs; no verification tag when unset; temp token test → tag emitted (<meta name="google-site-verification" content="test-token-12345"/>), reverted cleanly. agent-browser: /?public=ROBOTIX title = "Robotics Club — ClubHub", restores to generic on landing, zero page errors. Screenshots: upload/seo-landing.png, upload/seo-debate-profile.png. dev.log clean.
+
+Stage Summary:
+- The app is now fully SEO-equipped: crawlable robots.txt w/ sitemap pointer, DB-driven sitemap.xml (public clubs only), OG/Twitter preview cards, per-club profile titles, env-var site verification (Google + Bing).
+- User's remaining steps (in DEPLOY.md): verify with Google Search Console via GSC_VERIFICATION_TOKEN env var, submit sitemap, request indexing, keep site awake (UptimeRobot), get real links. Custom domain later via NEXT_PUBLIC_SITE_URL.
+- Files changed: src/lib/site.ts (new), src/app/sitemap.ts (new), src/app/robots.ts (new), public/robots.txt (deleted), src/app/layout.tsx, src/components/public-club-profile.tsx, .env, DEPLOY.md.

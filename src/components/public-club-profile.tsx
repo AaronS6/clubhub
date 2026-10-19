@@ -96,6 +96,12 @@ export const JOIN_INTENT_KEY = "clubhub-join-intent"
  *  app-shell after the full-page navigation into the app). */
 const SELECT_CLUB_KEY = "clubhub-select-club"
 
+/** sessionStorage marker distinguishing a FRESH JOIN (→ app-shell opens the
+ *  introduction tour for the new club) from an EXISTING member merely opening
+ *  a workspace via "Open club workspace" (→ switch clubs, no tour). Both
+ *  flows write SELECT_CLUB_KEY; only the join flow also writes this marker. */
+const JUST_JOINED_KEY = "clubhub-just-joined"
+
 /** Shared editorial motion curve (same as the auth screen) — quiet, short. */
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -108,6 +114,21 @@ export function PublicClubProfile({ code }: { code: string }) {
     retry: 0,
     staleTime: 60_000,
   })
+
+  // SEO + tab clarity: while a club's public profile is mounted, the document
+  // title becomes "<Club name> — ClubHub" instead of the generic app title.
+  // Googlebot executes JS, so indexed search-result titles reflect the club
+  // name; humans get a useful browser-tab/history label too. Restored on
+  // unmount (back to landing/app) so no state leaks between surfaces.
+  useEffect(() => {
+    const clubName = data?.club?.name
+    if (!clubName) return
+    const previous = document.title
+    document.title = `${clubName} — ClubHub`
+    return () => {
+      document.title = previous
+    }
+  }, [data?.club?.name])
 
   // The club's accent color is unknown until the fetch resolves; default to
   // ClubHub teal so the loading state isn't unstyled.
@@ -180,7 +201,7 @@ export function PublicClubProfile({ code }: { code: string }) {
             </p>
           </div>
           <Link
-            href="/#clubs"
+            href="/?landing=1#clubs"
             className="inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase text-[#f0ebe0]/60 hover:text-[#f0ebe0] transition-colors shrink-0"
           >
             <Compass className="h-3.5 w-3.5" />
@@ -223,12 +244,15 @@ function TopBar({ isAuthenticated }: { isAuthenticated: boolean }) {
               Sign in
             </Link>
           )}
-          {/* Close — leaves the expanded club view and returns to where the
-              visitor came from (the landing page for signed-out visitors,
-              the app for signed-in ones). */}
+          {/* Close — leaves the expanded club view and returns to the PUBLIC
+              LANDING page (not the signed-in app — "Back to app" above is the
+              app exit). Signed-out visitors get the landing page at "/" anyway,
+              so ?landing=1 is a no-op for them; signed-in ones need the explicit
+              param or "/" would drop them into their workspace instead of back
+              where they came from (the Explore directory they were browsing). */}
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/?landing=1")}
             aria-label="Close club view"
             title="Close club view"
             className="grid h-10 w-10 place-items-center rounded-full border border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.04] text-[#f0ebe0]/70 transition-all hover:bg-[#f0ebe0]/10 hover:text-[#f0ebe0] hover:border-[#f0ebe0]/40 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f0ebe0]/40"
@@ -261,13 +285,29 @@ function ProfileBody({
   // Signed-in visitors: check whether they already belong to this club so we
   // can show "Open workspace" instead of the join CTA. One small fetch,
   // only when authenticated.
-  const { data: meData } = useQuery<{ memberships: { clubCode: string; clubName: string }[] }>({
+  const { data: meData } = useQuery<{ memberships: { clubId: string; clubCode: string; clubName: string }[] }>({
     queryKey: ["me-membership-check", club.clubCode],
-    queryFn: () => api<{ memberships: { clubCode: string; clubName: string }[] }>("/api/me"),
+    queryFn: () => api<{ memberships: { clubId: string; clubCode: string; clubName: string }[] }>("/api/me"),
     enabled: isAuthenticated,
     staleTime: 30_000,
   })
-  const isMember = !!meData?.memberships?.some((m) => m.clubCode === club.clubCode)
+  const myMembership = meData?.memberships?.find((m) => m.clubCode === club.clubCode)
+  const isMember = !!myMembership
+
+  // "Open club workspace" — switch INTO this club (not whichever club the
+  // persisted store happens to have active). Same mechanism the join flow
+  // uses: stash the club id under SELECT_CLUB_KEY and do a FULL page
+  // navigation so the shell re-bootstraps and consumes it. Unlike a join, no
+  // JUST_JOINED_KEY marker → app-shell skips the introduction tour.
+  function openWorkspace() {
+    if (!myMembership) return
+    try {
+      sessionStorage.setItem(SELECT_CLUB_KEY, myMembership.clubId)
+    } catch {
+      /* ignore — worst case the shell opens the previously active club */
+    }
+    window.location.assign("/")
+  }
 
   return (
     <article className="flex flex-col">
@@ -502,15 +542,13 @@ function ProfileBody({
                   variant="club"
                   size="lg"
                   className="h-12 w-full sm:w-auto rounded-none font-bold tracking-wide uppercase"
-                  asChild
+                  onClick={openWorkspace}
                 >
-                  <Link href="/">
-                    <ArrowLeft className="h-4 w-4" />
-                    Open club workspace
-                  </Link>
+                  <ArrowLeft className="h-4 w-4" />
+                  Open club workspace
                 </Button>
                 <p className="text-sm text-[#f0ebe0]/50 max-w-md">
-                  You&apos;re a member of {club.name} — continue to your dashboard.
+                  You&apos;re a member of {club.name} — continue to its dashboard.
                 </p>
               </>
             ) : (
@@ -674,9 +712,12 @@ function ClubJoinDialog({
       toast.success(`Joined ${club.name}!`)
       // Stash the joined club so the app lands in THE club they just joined
       // (not whichever club was previously open) — a full page load would
-      // otherwise restore the old selection from the persisted store.
+      // otherwise restore the old selection from the persisted store. The
+      // JUST_JOINED_KEY marker tells app-shell this was a fresh join (→ open
+      // the introduction tour for the new club).
       try {
         sessionStorage.setItem(SELECT_CLUB_KEY, res.club.id)
+        sessionStorage.setItem(JUST_JOINED_KEY, "1")
       } catch {
         /* ignore */
       }
@@ -1024,7 +1065,7 @@ function ProfileError({ message, code }: { message: string; code: string }) {
         asChild
         className="mt-8 h-11 rounded-none border border-[#f0ebe0]/20 bg-transparent font-bold tracking-wide uppercase text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
       >
-        <Link href="/">
+        <Link href="/?landing=1">
           <ArrowLeft className="h-4 w-4" />
           Back to ClubHub
         </Link>

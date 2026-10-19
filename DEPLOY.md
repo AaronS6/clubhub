@@ -143,15 +143,20 @@ Fill in:
 
 Scroll to **Environment Variables**. Add each one by clicking **Add Environment Variable**:
 
-| # | Key | Value |
-|---|-----|-------|
-| 1 | `DATABASE_URL` | Paste your Supabase connection string from Step 2.3 |
-| 2 | `NEXTAUTH_SECRET` | Click **Generate** (or paste the one from Step 3) |
-| 3 | `NEXTAUTH_URL` | `https://clubhub-web.onrender.com` (we'll verify this after deploy) |
-| 4 | `ADMIN_CLUB_PASSCODE` | `buildtogether12$` |
-| 5 | `NODE_ENV` | `production` |
+| # | Key | Value | Notes |
+|---|-----|-------|-------|
+| 1 | `DATABASE_URL` | Paste your Supabase connection string from Step 2.3 | required |
+| 2 | `NEXTAUTH_SECRET` | Click **Generate** (or paste the one from Step 3) | required |
+| 3 | `NEXTAUTH_URL` | `https://clubhub-web.onrender.com` (we'll verify this after deploy) | required |
+| 4 | `ADMIN_CLUB_PASSCODE` | `buildtogether12$` | required |
+| 5 | `NODE_ENV` | `production` | required |
+| 6 | `RESEND_API_KEY` | `re_...` (from resend.com) | optional — password-reset emails; see the "Resend" section below |
+| 7 | `EMAIL_FROM` | `ClubHub <noreply@yourdomain.com>` | optional — defaults to Resend's sandbox sender |
 
-**That's only 5 env vars** — no realtime vars needed since we're using polling.
+**Required: 5 env vars** — no realtime vars needed since we're using polling. The
+last two are optional and only enable emailed password resets; without them the
+"Forgot?" flow can't deliver emails in production (dev still shows the reset
+link in the dialog).
 
 ### 4.4 Deploy
 
@@ -174,13 +179,36 @@ Scroll to **Environment Variables**. Add each one by clicking **Add Environment 
 
 ---
 
-## STEP 5: Database Auto-Initializes (0 min — automatic)
+## STEP 5: Database Schema — run `supabase_sync.sql` (2 min, once per deploy)
 
-**Nothing to do here.** The Dockerfile runs `npx prisma db push` on startup, which creates all database tables automatically. By the time the web service shows **Live**, your database is ready.
+**The app does NOT auto-create tables.** `prisma db push` can't run against
+the Supabase pooler (prepared statements aren't supported), so the schema is
+managed by hand-written SQL. After the FIRST deploy (and after any deploy
+where `prisma/schema.prisma` changed), bring the database in line:
 
-If you ever need to manually reset the database:
-1. Go to your web service → **Shell** tab
-2. Run: `npx prisma db push --accept-data-loss`
+1. Open the Supabase dashboard → **SQL Editor** → **New query**
+2. Paste the entire contents of **`supabase_sync.sql`** (repo root)
+3. Click **Run**
+
+The script is 100% idempotent — it creates any missing feature tables
+(`JoinRequest`, `ClubTransaction`, `Badge`, `MemberBadge`, notes tables),
+adds every missing column with the right defaults, creates missing indexes
+and foreign keys, and enables Row-Level Security everywhere. Re-running it
+never errors and never touches your data.
+
+> **If you skip this step**, the app boots but every request that touches a
+> drifted table 500s with `P2022: The column … does not exist` (this is
+> exactly what `User.avatarDecoration` missing looked like: session
+> callbacks + half the API failing).
+
+> **Historical scripts** (`supabase_schema.sql`, `supabase_badges.sql`,
+> `supabase_notes_schema.sql`, `supabase_rls_fix.sql`) are superseded by
+> `supabase_sync.sql` on existing deployments — don't re-run them (the
+> badges one DROPs its tables first!). They're kept for reference only.
+
+If you ever need to wipe and reset the database (⚠️ deletes all data):
+1. Drop every table in the public schema (SQL Editor)
+2. Run `supabase_schema.sql`, then `supabase_sync.sql`
 
 ---
 
@@ -300,24 +328,119 @@ Without email configured the flow still works in development (the reset link
 is returned directly in the dialog), but **in production emails are
 required** — otherwise nobody can reset a password.
 
-1. Create a free account at **https://resend.com** (3,000 emails/month free)
-2. (Recommended) Verify your domain: Dashboard → Domains → Add Domain, then
-   add the DNS records Resend shows you. With a verified domain you can send
-   to ANY address.
-   - No domain? Use Resend's sandbox sender `onboarding@resend.dev` — but it
-     only delivers to YOUR Resend account's own email address. Fine for
-     testing, not for a real club.
+1. Create a free account at **https://resend.com** (free tier: 100 emails/day,
+   3,000/month, 1 custom domain)
+2. (Recommended) Verify your own domain — this is what lets you send to ANY
+   address (not just your own). The from-address domain MUST be a domain
+   you verified here.
+   - **Prereq:** a domain whose DNS you control (~$10/yr from Namecheap or
+     Cloudflare). You CANNOT verify the free `*.onrender.com` subdomain —
+     Render controls that DNS, not you.
+   - **Resend → Domains → Add Domain.** Enter your domain — Resend
+     recommends a sending subdomain like `mail.yourdomain.com` (isolates
+     your email reputation; any address on what you enter can send, e.g.
+     `noreply@mail.yourdomain.com`). Pick the region closest to your
+     recipients.
+   - **Copy the records.** Open the domain's **Records** tab — it lists the
+     DNS records (DKIM + SPF: TXT / MX, or CNAME for newer domains, plus
+     Return-Path). Add each one EXACTLY (type + host + value) in your DNS
+     provider's panel. Copy/paste — don't retype.
+     - Most providers auto-append your domain to the Host field: if Resend
+       shows `resend._domainkey.yourdomain.com`, enter just
+       `resend._domainkey` (otherwise you get a doubled-domain record).
+     - Root-level records use `@` as the host (Namecheap/GoDaddy).
+     - **Cloudflare: set CNAMEs to "DNS only" (grey cloud)** — a proxied
+       (orange-cloud) CNAME breaks verification.
+     - Resend has per-provider screenshots: docs → "DNS provider guides".
+   - **Verify.** Back on the domain page click **Verify DNS Records**.
+     Usually verifies within ~15 minutes; worst case 72h for DNS
+     propagation. Still failing after 72h? Double-check the records and
+     click "Restart verification".
+   - **Add DMARC** once verified (the `_dmarc` record Resend shows) —
+     better deliverability, less spam-foldering.
+   - No domain at all? Use Resend's sandbox sender `onboarding@resend.dev` —
+     but it only delivers to YOUR Resend account's own email address. Fine
+     for testing, not for a real club.
 3. Create an API key: Dashboard → API Keys → Create API Key (Full access)
 4. Add two env vars to your web service / `.env`:
    - `RESEND_API_KEY` → `re_...` (the key from step 3)
-   - `EMAIL_FROM` → `ClubHub <noreply@yourdomain.com>` (or
-     `ClubHub <onboarding@resend.dev>` while testing)
+   - `EMAIL_FROM` → `ClubHub <noreply@yourdomain.com>` — must be on the
+     domain you verified in step 2 (e.g. `ClubHub <noreply@mail.yourdomain.com>`
+     if you verified a subdomain). While testing without a domain:
+     `ClubHub <onboarding@resend.dev>`.
 5. Redeploy / restart — "Forgot?" now sends a real email with a
    **Reset password** button
 
 **Verify:** request a reset for your own account and confirm the email
 arrives (check spam on first send). The link expires in 1 hour and works
 once — after a successful reset the token is deleted server-side.
+
+**Reading the logs** (Render → your service → Logs, filter for `[email]`):
+`RESEND_API_KEY is not set` → the key env var is missing; `Resend returned
+error: ... 403` → key is present but the send was rejected — almost always
+an unverified from-domain or the sandbox sender trying to deliver to
+someone other than the Resend account owner; `Sent successfully to: ...
+ID: ...` → working.
+
+---
+
+## Get Found on Search Engines (SEO) — 10 min
+
+The app ships SEO-ready: `robots.txt` welcomes crawlers, `/sitemap.xml` is
+generated from the database (homepage + every club whose execs enabled public
+listing — unlisted clubs never appear), pages carry OpenGraph/social-preview
+tags, and public club profiles set their own `<title>` ("Robotics Club —
+ClubHub"). What's left is telling Google your site exists:
+
+### 1. Verify ownership with Google Search Console (the big one)
+
+1. Go to **https://search.google.com/search-console** → sign in → **Add
+   property** → **URL prefix** → enter your site URL (e.g.
+   `https://your-web-name.onrender.com`).
+2. Choose the **"HTML tag"** verification method. Google shows a tag like
+   `<meta name="google-site-verification" content="abc123XYZ" />` — copy just
+   the `abc123XYZ` part.
+3. Render → your web service → **Environment** → add:
+   `GSC_VERIFICATION_TOKEN` = that token → save → **Manual Deploy → Deploy
+   latest commit**.
+4. Back in Search Console click **Verify**. (It reads the tag your app now
+   emits automatically — no code changes, ever.)
+
+### 2. Submit the sitemap + request indexing
+
+1. Search Console → **Sitemaps** → enter `sitemap.xml` → **Submit**.
+2. **URL Inspection** (top bar) → paste your site URL → **Request indexing**.
+   First indexing usually takes 1–7 days.
+
+### 3. Bing (+ DuckDuckGo + Yahoo, which use Bing's index)
+
+Go to **https://www.bing.com/webmasters** → **Import from Google Search
+Console** (one click once GSC is verified) — or add
+`BING_VERIFICATION_TOKEN` the same way as step 1.
+
+### 4. Keep the site awake (free-tier specifics)
+
+Render's free tier sleeps after 15 idle minutes — a sleeping site responds
+too slowly to crawlers. Set up **UptimeRobot** (already recommended in
+Troubleshooting): free account → HTTP monitor → ping your URL every 5 min.
+
+### 5. Get real links (fastest way to get indexed AND rank)
+
+Search engines discover and trust sites through links. Ask your school to
+link the site from its clubs page, post it in the club's Instagram bio, or
+share it anywhere members gather. Even 2–3 real links dramatically speed up
+indexing.
+
+### Honest notes
+
+- Logged-in club content is never indexed (it's behind auth — that's correct).
+  The indexable surface is the landing page + public club profiles.
+- A free `*.onrender.com` subdomain CAN rank, but a custom domain
+  (~$10/yr — same one you'd verify for Resend email) reads better in results.
+  After attaching it in Render → Settings → Custom Domains, set
+  `NEXT_PUBLIC_SITE_URL` = `https://yourdomain.com` on the service so the
+  sitemap, robots, and social previews all use it, then redeploy and add the
+  domain as a SECOND property in Search Console.
 
 ---
 
@@ -326,11 +449,15 @@ once — after a successful reset the token is deleted server-side.
 | Problem | Solution |
 |---------|----------|
 | **Build fails** | Check Render build logs. Verify all 5 env vars are set. |
+| **500s + `P2022: The column … does not exist`** | Production schema has drifted behind the code (e.g. `User.avatarDecoration`). Run the full **`supabase_sync.sql`** in the Supabase SQL Editor — see STEP 5. One run fixes every missing column/table at once. |
+| **`[auth] session callback error` in the logs** | Same root cause as above — the session callback reads `User` columns that don't exist yet. `supabase_sync.sql` fixes it. |
 | **Database connection error** | Verify `DATABASE_URL` has the password filled in and `?connection_limit=3&pool_timeout=10` at the end. Use port `6543` (pooler), not `5432`. |
 | **"Taking a moment to load" screen** | Supabase or Render is cold-starting. Click **Retry**. Set up UptimeRobot to prevent this. |
 | **Can't create a club** | Verify `ADMIN_CLUB_PASSCODE` is set to `buildtogether12$` in the web service env vars. |
 | **Updates slow between users** | Normal with polling — takes 5-30 seconds. This is expected behavior with the single-service setup. |
 | **404 on homepage** | Wait for the build to complete. Check the web service shows "Live". |
+| **"Forgot?" email never arrives** | `RESEND_API_KEY` is missing/invalid, or you're sending from `onboarding@resend.dev` to an address that isn't your own Resend account email (the sandbox sender only delivers to the account owner). Verify a domain in Resend and set `EMAIL_FROM` to it. Check the service logs for `[email]` lines. |
+| **Site doesn't show up on Google** | Verify ownership + submit `sitemap.xml` in Google Search Console (see "Get Found on Search Engines"), then Request indexing for your URL — first indexing takes 1–7 days. Also keep the site awake (UptimeRobot) and get real links (school website, socials). Check `/robots.txt` and `/sitemap.xml` load in a browser. |
 
 ---
 
@@ -345,6 +472,9 @@ once — after a successful reset the token is deleted server-side.
 | `NODE_ENV` | `production` |
 | `RESEND_API_KEY` | (optional — `re_...` from resend.com; enables password-reset emails) |
 | `EMAIL_FROM` | (optional — `ClubHub <noreply@yourdomain.com>` once your domain is verified) |
+| `GSC_VERIFICATION_TOKEN` | (optional — Google Search Console "HTML tag" token; see "Get Found on Search Engines") |
+| `BING_VERIFICATION_TOKEN` | (optional — Bing Webmaster Tools "Meta tag" token; covers DuckDuckGo/Yahoo too) |
+| `NEXT_PUBLIC_SITE_URL` | (optional — set to `https://yourdomain.com` when you attach a custom domain) |
 
 ---
 
@@ -356,7 +486,7 @@ once — after a successful reset the token is deleted server-side.
 | 2 | Create Supabase database | 5 min |
 | 3 | Generate NextAuth secret | 1 min |
 | 4 | Deploy web service on Render | 5 min |
-| 5 | Database auto-initializes | 0 min (automatic) |
+| 5 | Run `supabase_sync.sql` in the SQL Editor | 2 min |
 | 6 | Verify everything works | 5 min |
 | **Total** | | **~25 min** |
 
