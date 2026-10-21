@@ -141,6 +141,13 @@
   --chart-4: #7C3AED;
   --chart-5: #C2362E;
 
+  /* Skeleton shimmer tints (§ v7.2) — subtle WARM grays in light mode.
+     from/to = the resting ghost tint (≈ muted lightness, warm cast);
+     via = the sweep highlight (lighter, still short of card white). */
+  --skeleton-from: #ECEDE8;
+  --skeleton-via: #F8F9F5;
+  --skeleton-to: #ECEDE8;
+
   --sidebar: #FFFFFF;       /* surface */
   --sidebar-foreground: #12161C;
   --sidebar-primary: #0B8A5F;
@@ -169,7 +176,10 @@
   --accent-foreground: #ECEEF1;
   --destructive: #E0554A;
   --destructive-foreground: #F4B8B2;
-  --border: rgba(255, 255, 255, 0.08);
+  /* Border at 10% white (was 8%): with most surfaces layering
+     border-border/80, the effective hairline was ~6.4% and cards lost
+     their edges against the canvas in dark mode. */
+  --border: rgba(255, 255, 255, 0.10);
   --input: rgba(255, 255, 255, 0.12);
   --ring: #0B8A5F;
 
@@ -198,13 +208,20 @@
   --chart-4: #A78BFA;
   --chart-5: #E0554A;
 
+  /* Skeleton shimmer tints — subtle ELEVATED grays in dark mode: the
+     resting ghost sits a hair above the card surface, the sweep highlight
+     one step brighter still. */
+  --skeleton-from: #212630;
+  --skeleton-via: #2B313D;
+  --skeleton-to: #212630;
+
   --sidebar: #171B21;
   --sidebar-foreground: #ECEEF1;
   --sidebar-primary: #2BB67E;
   --sidebar-primary-foreground: #0F1216;
   --sidebar-accent: #1F242C;
   --sidebar-accent-foreground: #ECEEF1;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-border: rgba(255, 255, 255, 0.10);
   --sidebar-ring: #2BB67E;
 }
 
@@ -417,6 +434,37 @@
   }
   .ch-view-enter {
     animation: ch-view-enter 200ms var(--motion-ease) backwards;
+  }
+
+  /* Skeleton shimmer (§ v7.2) — the app's loading-ghost language. A soft
+     DIRECTIONAL SWEEP replaces the old opacity pulse: a 110° gradient
+     built from --skeleton-from/via/to slides across the ghost. The tile
+     is 2× the element width and the keyframes travel exactly one tile
+     period per 1.6s cycle, so one highlight band crosses left→right in a
+     seamless loop. Light mode: subtle warm grays; dark mode: elevated
+     grays (see the token blocks on :root / .dark). Ghosts keep their
+     rounded/base classes; this class only owns the background + motion. */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      110deg,
+      var(--skeleton-from) 30%,
+      var(--skeleton-via) 50%,
+      var(--skeleton-to) 70%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.6s linear infinite;
+  }
+  @keyframes skeleton-shimmer {
+    from { background-position: 100% 0; }
+    to   { background-position: -100% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer {
+      animation: none;
+      /* Static tint — the ghost still reads as "loading", just without
+         the sweep. */
+      background: var(--skeleton-from);
+    }
   }
 
   /* Staggered list/grid entrance — apply to feed/grid CHILDREN together
@@ -842,29 +890,6 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
    the app's theme tokens.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Auto-scrolling "moments" marquee. The track renders its items twice with a
-   uniform gap-4 (16px), so the seamless loop distance is exactly one set +
-   one gap = -50% - 8px. Pauses on hover/focus, freezes for reduced motion. */
-@keyframes landing-marquee {
-  from { transform: translateX(0); }
-  to   { transform: translateX(calc(-50% - 8px)); }
-}
-.landing-marquee {
-  /* 88s for an 18-photo set ≈ the same calm pace the original 9-photo
-     strip had at 48s (the strip is now twice as wide). */
-  animation: landing-marquee 88s linear infinite;
-  will-change: transform;
-}
-.landing-marquee:hover,
-.landing-marquee:focus-within {
-  animation-play-state: paused;
-}
-/* Soft edge fade for the marquee viewport — a gentle wash, not a hard clip. */
-.landing-marquee-mask {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
-}
-
 /* Paper grain — a whisper of monochrome SVG turbulence across the whole
    page so it feels printed rather than generated. Sits under the sticky
    nav (z-40), never intercepts pointer events, scales with the page root. */
@@ -878,6 +903,27 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
   background-size: 180px 180px;
 }
 
+/* Moments marquee — the auto-scrolling strip of real photos under the
+   stats band. 96s for a 21-photo set keeps the same calm pace as the old
+   24-photo strip at 108s; the track is doubled and translates -50%, so
+   the loop is seamless. Pauses on hover/focus; off under reduced motion. */
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-50% - 8px)); }
+}
+.landing-marquee {
+  animation: landing-marquee 96s linear infinite;
+  will-change: transform;
+}
+.landing-marquee:hover,
+.landing-marquee:focus-within {
+  animation-play-state: paused;
+}
+/* Soft edge fade for the marquee viewport — a gentle wash, not a hard clip. */
+.landing-marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   .landing-marquee {
     animation: none;

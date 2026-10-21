@@ -141,7 +141,7 @@ export function AvatarCropper({
   const busy = saving || confirming
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/70">
+    <div className="overflow-hidden rounded-xl border border-border/70">
       <div className="relative h-52 w-full bg-muted/60 sm:h-56">
         {imgSrc ? (
           <Cropper

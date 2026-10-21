@@ -332,14 +332,14 @@ export function CardSkeleton({ className }: { className?: string }) {
   return (
     <div className={cn("card-quiet p-5 space-y-3", className)}>
       <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
+        <div className="h-9 w-9 rounded-full skeleton-shimmer" />
         <div className="space-y-1.5 flex-1">
-          <div className="h-3.5 w-1/3 rounded bg-muted animate-pulse" />
-          <div className="h-2.5 w-1/4 rounded bg-muted animate-pulse" />
+          <div className="h-3.5 w-1/3 rounded skeleton-shimmer" />
+          <div className="h-2.5 w-1/4 rounded skeleton-shimmer" />
         </div>
       </div>
-      <div className="h-3 w-full rounded bg-muted animate-pulse" />
-      <div className="h-3 w-5/6 rounded bg-muted animate-pulse" />
+      <div className="h-3 w-full rounded skeleton-shimmer" />
+      <div className="h-3 w-5/6 rounded skeleton-shimmer" />
     </div>
   )
 }
@@ -347,12 +347,12 @@ export function CardSkeleton({ className }: { className?: string }) {
 export function RowSkeleton() {
   return (
     <div className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0">
-      <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0" />
+      <div className="h-8 w-8 rounded-full skeleton-shimmer shrink-0" />
       <div className="flex-1 space-y-1.5">
-        <div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
-        <div className="h-2.5 w-1/4 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-1/3 rounded skeleton-shimmer" />
+        <div className="h-2.5 w-1/4 rounded skeleton-shimmer" />
       </div>
-      <div className="h-6 w-16 rounded bg-muted animate-pulse" />
+      <div className="h-6 w-16 rounded skeleton-shimmer" />
     </div>
   )
 }
@@ -380,8 +380,8 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 export function StatCardSkeleton() {
   return (
     <div className="card-quiet p-5 space-y-3">
-      <div className="h-2.5 w-1/2 rounded bg-muted animate-pulse" />
-      <div className="h-7 w-1/3 rounded bg-muted animate-pulse" />
+      <div className="h-2.5 w-1/2 rounded skeleton-shimmer" />
+      <div className="h-7 w-1/3 rounded skeleton-shimmer" />
     </div>
   )
 }

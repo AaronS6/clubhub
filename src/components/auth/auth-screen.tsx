@@ -387,7 +387,7 @@ function AuthScreenInner() {
         v{APP_VERSION}
       </span>
       <span className="absolute bottom-3 left-4 text-xs font-medium text-[#1a1815]/45 dark:text-[#f0ebe0]/45 select-none pointer-events-none">
-        made by Aaron Shan
+        Made by Aaron Shan
       </span>
 
       <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />

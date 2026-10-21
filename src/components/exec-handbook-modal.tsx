@@ -152,7 +152,7 @@ export function ExecHandbookModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl bg-card text-foreground shadow-2xl ring-1 ring-border"
+            className="relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-border/80 bg-card text-foreground shadow-dialog"
           >
             {/* Header */}
             <div className="flex items-start gap-3.5 border-b border-border px-5 py-4 sm:px-6">

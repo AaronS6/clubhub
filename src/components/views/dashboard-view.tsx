@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
+import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import { useAppStore, type View } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -125,8 +126,21 @@ export function DashboardView() {
   const clubId = useAppStore((s) => s.currentClubId)
   const setView = useAppStore((s) => s.setView)
   const currentClub = useAppStore((s) => s.currentClub)
+  const { data: session } = useSession()
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const [memberOnboardingDismissed, setMemberOnboardingDismissed] = useState(false)
+
+  // ── Time-based greeting (§ v7.2) ──────────────────────────────────────────
+  // "Good morning/afternoon/evening, <first name> — here's where things
+  // stand." The hour is computed ONCE on mount (lazy initializer — no
+  // interval, no re-greeting mid-session); the NAME is read from the
+  // next-auth session user (re-renders resolve once it hydrates) and falls
+  // back to a nameless greeting when unavailable.
+  const [greetingWord] = useState(() => {
+    const h = new Date().getHours()
+    return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"
+  })
+  const firstName = session?.user?.name?.trim().split(/\s+/)[0] ?? null
 
   // Read dismissed state from localStorage on club change.
   // Deferred to a microtask so we don't call setState synchronously
@@ -648,6 +662,19 @@ export function DashboardView() {
 
   return (
     <div className="space-y-4 sm:space-y-5 min-w-0">
+      {/* Row 0 — Time-based greeting header. Sits above the banner as the
+          dashboard's page header: greeting word + first name in the display
+          face, the trailing "here's where things stand" in muted body ink.
+          Mobile matches the banner's 20px identity scale; sm+ matches the
+          app's 28px page-title scale. */}
+      <header className="min-w-0">
+        <p className="font-display text-[1.25rem] sm:text-[1.75rem] leading-tight font-semibold tracking-[-0.022em] text-foreground">
+          {greetingWord}
+          {firstName ? `, ${firstName}` : ""}
+          <span className="font-normal text-muted-foreground"> — here's where things stand.</span>
+        </p>
+      </header>
+
       {/* Row 1 — Cinematic club banner card (full width). The 30-day hours
           chart lives INSIDE this card now, below the identity — part of the
           banner, not another nested tile. On mobile the banner is compact
@@ -1933,7 +1960,7 @@ function formatTurnaround(hours: number | null) {
 // =========================================================================
 function DashboardSkeleton() {
   const tile =
-    "border border-border bg-card rounded-xl animate-pulse"
+    "border border-border rounded-xl skeleton-shimmer"
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* Row 1 — banner card (image + identity + analytics) */}

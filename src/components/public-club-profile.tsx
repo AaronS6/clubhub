@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { toast } from "sonner"
 import { api } from "@/lib/api/client"
+import { APP_VERSION } from "@/lib/version"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -197,7 +198,7 @@ export function PublicClubProfile({ code }: { code: string }) {
               ClubHub · Built for students at Burnaby North Secondary.
             </p>
             <p className="mt-0.5 text-[0.65rem] text-[#f0ebe0]/25 select-none">
-              made by Aaron Shan · v7
+              Made by Aaron Shan · v{APP_VERSION}
             </p>
           </div>
           <Link
@@ -541,7 +542,7 @@ function ProfileBody({
                 <Button
                   variant="club"
                   size="lg"
-                  className="h-12 w-full sm:w-auto rounded-none font-bold tracking-wide uppercase"
+                  className="h-12 w-full sm:w-auto rounded-lg font-bold tracking-wide uppercase"
                   onClick={openWorkspace}
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -556,7 +557,7 @@ function ProfileBody({
                 <Button
                   variant="club"
                   size="lg"
-                  className="h-12 w-full sm:w-auto rounded-none font-bold tracking-wide uppercase"
+                  className="h-12 w-full sm:w-auto rounded-lg font-bold tracking-wide uppercase"
                   onClick={() => setJoinOpen(true)}
                 >
                   <UserPlus className="h-4 w-4" />
@@ -573,7 +574,7 @@ function ProfileBody({
               <Button
                 variant="club"
                 size="lg"
-                className="h-12 w-full sm:w-auto rounded-none font-bold tracking-wide uppercase"
+                className="h-12 w-full sm:w-auto rounded-lg font-bold tracking-wide uppercase"
                 onClick={() => setAuthPromptOpen(true)}
               >
                 <UserPlus className="h-4 w-4" />
@@ -646,7 +647,7 @@ function StatBlock({
       <span className="text-2xl font-black tracking-tight tabular-nums leading-none">
         {value}
       </span>
-      <span className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-[#f0ebe0]/45">
+      <span className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-[#f0ebe0]/50">
         {label}
       </span>
     </div>
@@ -756,7 +757,7 @@ function ClubJoinDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-md rounded-none border border-[#f0ebe0]/15 bg-[#16130e] text-[#f0ebe0] p-6 sm:p-8 gap-0 shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
+        className="sm:max-w-md rounded-xl border border-[#f0ebe0]/15 bg-[#16130e] text-[#f0ebe0] p-6 sm:p-8 gap-0 shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
       >
         {/* Dark-styled close affordance (the built-in one inherits theme
             colors and would be near-invisible in light mode). */}
@@ -814,7 +815,7 @@ function ClubJoinDialog({
               <span className="text-xs font-bold uppercase tracking-[0.18em] text-[#f0ebe0]/45">
                 Club code
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-none border border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.05] px-2.5 py-1 font-mono text-sm font-semibold">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.05] px-2.5 py-1 font-mono text-sm font-semibold">
                 <Hash className="h-3 w-3 opacity-60" />
                 {club.clubCode}
               </span>
@@ -833,7 +834,7 @@ function ClubJoinDialog({
                     setPwFailed(false)
                   }}
                   placeholder="••••••••"
-                  className="h-11 rounded-none border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.04] placeholder:text-[#f0ebe0]/25 focus-visible:border-[#f0ebe0]/40 focus-visible:ring-[#f0ebe0]/10"
+                  className="h-11 rounded-lg border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.04] placeholder:text-[#f0ebe0]/25 focus-visible:border-[#f0ebe0]/40 focus-visible:ring-[#f0ebe0]/10"
                 />
                 {pwFailed && (
                   <p className="text-xs leading-relaxed text-[#f0ebe0]/60">
@@ -846,7 +847,7 @@ function ClubJoinDialog({
                 type="submit"
                 variant="club"
                 disabled={joining || requesting}
-                className="w-full h-11 rounded-none font-bold tracking-wide uppercase"
+                className="w-full h-11 rounded-lg font-bold tracking-wide uppercase"
               >
                 {joining ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -859,7 +860,7 @@ function ClubJoinDialog({
 
             {/* Secondary path — clearly separated box: no code? send a join
                 request an executive approves instead. */}
-            <div className="space-y-3 rounded-none border border-[#f0ebe0]/12 bg-[#f0ebe0]/[0.03] p-4">
+            <div className="space-y-3 rounded-xl border border-[#f0ebe0]/12 bg-[#f0ebe0]/[0.03] p-4">
               <div className="flex items-start gap-2.5">
                 <UserCheck
                   className="mt-0.5 h-4 w-4 shrink-0"
@@ -883,7 +884,7 @@ function ClubJoinDialog({
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="e.g. I'd love to help at events!"
                   maxLength={280}
-                  className="rounded-none min-h-20 bg-[#f0ebe0]/[0.04] border-[#f0ebe0]/20 placeholder:text-[#f0ebe0]/25 focus-visible:border-[#f0ebe0]/40 focus-visible:ring-[#f0ebe0]/10 resize-none text-sm"
+                  className="rounded-lg min-h-20 bg-[#f0ebe0]/[0.04] border-[#f0ebe0]/20 placeholder:text-[#f0ebe0]/25 focus-visible:border-[#f0ebe0]/40 focus-visible:ring-[#f0ebe0]/10 resize-none text-sm"
                 />
               </div>
               <Button
@@ -891,7 +892,7 @@ function ClubJoinDialog({
                 variant="ghost"
                 disabled={requesting || joining}
                 onClick={handleRequest}
-                className="w-full h-11 rounded-none font-bold tracking-wide uppercase border border-[#f0ebe0]/20 bg-transparent text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
+                className="w-full h-11 rounded-lg font-bold tracking-wide uppercase border border-[#f0ebe0]/20 bg-transparent text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
               >
                 {requesting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -932,7 +933,7 @@ function JoinPromptDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-md rounded-none border border-[#f0ebe0]/15 bg-[#16130e] text-[#f0ebe0] p-6 sm:p-8 gap-0 shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
+        className="sm:max-w-md rounded-xl border border-[#f0ebe0]/15 bg-[#16130e] text-[#f0ebe0] p-6 sm:p-8 gap-0 shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
       >
         {/* Dark-styled close affordance (the built-in one inherits theme
             colors and would be near-invisible in light mode). */}
@@ -966,7 +967,7 @@ function JoinPromptDialog({
           <Button
             type="button"
             variant="club"
-            className="flex-1 h-11 rounded-none font-bold tracking-wide uppercase"
+            className="flex-1 h-11 rounded-lg font-bold tracking-wide uppercase"
             onClick={() => onChoose("signup")}
           >
             <UserPlus className="h-4 w-4" />
@@ -975,7 +976,7 @@ function JoinPromptDialog({
           <Button
             type="button"
             variant="ghost"
-            className="flex-1 h-11 rounded-none font-bold tracking-wide uppercase border border-[#f0ebe0]/20 bg-transparent text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
+            className="flex-1 h-11 rounded-lg font-bold tracking-wide uppercase border border-[#f0ebe0]/20 bg-transparent text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
             onClick={() => onChoose("login")}
           >
             <LogIn className="h-4 w-4" />
@@ -1003,7 +1004,7 @@ function ProfileSkeleton() {
     <div>
       {/* Banner-shaped placeholder with the identity block ghosted in */}
       <div className="relative h-56 sm:h-72">
-        <Skeleton className="absolute inset-0 h-full w-full rounded-none bg-[#f0ebe0]/[0.05]" />
+        <Skeleton className="absolute inset-0 h-full w-full rounded-lg bg-[#f0ebe0]/[0.05]" />
         <div
           aria-hidden
           className="absolute inset-x-0 bottom-0 h-[70%] bg-gradient-to-t from-[#16130e] to-transparent"
@@ -1012,8 +1013,8 @@ function ProfileSkeleton() {
           <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-5 sm:pb-7 flex items-end gap-4">
             <Skeleton className="h-16 w-16 rounded-xl bg-[#f0ebe0]/10 shrink-0" />
             <div className="flex-1 space-y-3 pb-1 min-w-0">
-              <Skeleton className="h-8 w-2/3 rounded-none bg-[#f0ebe0]/10" />
-              <Skeleton className="h-4 w-44 rounded-none bg-[#f0ebe0]/[0.07]" />
+              <Skeleton className="h-8 w-2/3 rounded-lg bg-[#f0ebe0]/10" />
+              <Skeleton className="h-4 w-44 rounded-lg bg-[#f0ebe0]/[0.07]" />
             </div>
           </div>
         </div>
@@ -1021,8 +1022,8 @@ function ProfileSkeleton() {
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-14 space-y-10 sm:space-y-14">
         <div className="space-y-3">
-          <Skeleton className="h-5 w-full max-w-xl rounded-none bg-[#f0ebe0]/10" />
-          <Skeleton className="h-5 w-3/5 max-w-xl rounded-none bg-[#f0ebe0]/[0.07]" />
+          <Skeleton className="h-5 w-full max-w-xl rounded-lg bg-[#f0ebe0]/10" />
+          <Skeleton className="h-5 w-3/5 max-w-xl rounded-lg bg-[#f0ebe0]/[0.07]" />
         </div>
         <div className="grid grid-cols-3 divide-x divide-[#f0ebe0]/10">
           {[0, 1, 2].map((i) => (
@@ -1036,12 +1037,12 @@ function ProfileSkeleton() {
               )}
             >
               <Skeleton className="h-8 w-8 rounded-md bg-[#f0ebe0]/10" />
-              <Skeleton className="h-7 w-16 rounded-none bg-[#f0ebe0]/10" />
+              <Skeleton className="h-7 w-16 rounded-lg bg-[#f0ebe0]/10" />
             </div>
           ))}
         </div>
-        <Skeleton className="h-32 w-full rounded-none border border-[#f0ebe0]/10 bg-[#f0ebe0]/[0.03]" />
-        <Skeleton className="h-12 w-full sm:w-64 rounded-none bg-[#f0ebe0]/10" />
+        <Skeleton className="h-32 w-full rounded-lg border border-[#f0ebe0]/10 bg-[#f0ebe0]/[0.03]" />
+        <Skeleton className="h-12 w-full sm:w-64 rounded-lg bg-[#f0ebe0]/10" />
       </div>
     </div>
   )
@@ -1063,7 +1064,7 @@ function ProfileError({ message, code }: { message: string; code: string }) {
       <Button
         variant="ghost"
         asChild
-        className="mt-8 h-11 rounded-none border border-[#f0ebe0]/20 bg-transparent font-bold tracking-wide uppercase text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
+        className="mt-8 h-11 rounded-lg border border-[#f0ebe0]/20 bg-transparent font-bold tracking-wide uppercase text-[#f0ebe0] hover:bg-[#f0ebe0]/[0.05] hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0] dark:hover:bg-[#f0ebe0]/[0.05]"
       >
         <Link href="/?landing=1">
           <ArrowLeft className="h-4 w-4" />

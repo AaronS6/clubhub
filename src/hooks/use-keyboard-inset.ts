@@ -35,13 +35,18 @@ export function useKeyboardInset(): number {
       })
     }
 
+    // NOTE: we deliberately listen ONLY to `resize` — NOT `scroll` — here.
+    // The visual viewport also fires `scroll` when iOS caret-reveal pans the
+    // page under the keyboard; feeding those events back into setInset
+    // created an oscillating measure→patch→remeasure loop that made the
+    // chat composer visibly jump on every keystroke. Resize alone tracks
+    // the keyboard opening/closing; the 60px guard below filters URL-bar
+    // wobble and tiny sub-pixel changes.
     vv.addEventListener("resize", update)
-    vv.addEventListener("scroll", update)
     update()
     return () => {
       cancelAnimationFrame(raf)
       vv.removeEventListener("resize", update)
-      vv.removeEventListener("scroll", update)
     }
   }, [])
 

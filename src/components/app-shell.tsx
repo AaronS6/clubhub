@@ -54,7 +54,7 @@ import {
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, Check, ChevronRight, AlertTriangle, X, RefreshCw,
   Upload, Trash2, Palette, NotebookPen, KeyRound, Compass, UserCheck,
-  BookOpen, BookOpenCheck,
+  BookOpen, BookOpenCheck, Keyboard,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -87,6 +87,7 @@ import { useCustomizationStore, AMBIENT_PRESETS, THEME_COLOR_PRESETS } from "@/l
 import { useWhatsNewNotif, openWhatsNew, WHATS_NEW_VERSION } from "@/lib/whats-new"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import { ExecHandbookModal } from "@/components/exec-handbook-modal"
+import { KeyboardShortcuts, OPEN_KEYBOARD_SHORTCUTS_EVENT } from "@/components/shared/keyboard-shortcuts"
 
 interface MeResponse {
   user: { id: string; name: string; email: string; avatarUrl?: string | null } | null
@@ -600,9 +601,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (clubs.length === 0) {
     return (
       <div className="min-h-screen flex flex-col bg-transparent relative z-10">
-        <div className="flex-1 flex flex-col items-center justify-center bg-club-subtle/20 p-6 rounded-3xl m-3">
+        <div className="flex-1 flex flex-col items-center justify-center rounded-xl border border-border/80 bg-card shadow-card p-6 m-3">
           <div className="w-full max-w-md text-center">
-            <h1 className="text-3xl font-extrabold tracking-tight mb-2">ClubHub</h1>
+            <h1 className="text-page-title mb-2">ClubHub</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
               You&apos;re not in any clubs yet. Create a new club to become its first executive, or join an existing one with a club code.
             </p>
@@ -651,7 +652,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (items.length === 0) return null
         return (
           <div key={tier.id} className="space-y-0.5">
-            <div className="px-3 pt-1 pb-0.5 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            {/* Group label — one consistent 11px uppercase tracked muted label.
+                No top padding: the nav's gap-4 between tiers keeps the rhythm
+                even, so every label sits the same distance from what's above. */}
+            <div className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
               {tier.label}
             </div>
             {items.map((item) => {
@@ -662,37 +666,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group relative flex items-center gap-2.5 rounded-lg w-full h-9 px-2.5 text-left text-sm font-medium transition-[background-color,color,box-shadow,transform,translate,scale,rotate] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
+                    "group flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-medium transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
                     active
-                      ? "bg-club-subtle text-club-ink shadow-card"
+                      ? "bg-club-subtle text-club-ink"
                       : "text-muted-foreground hover:bg-accent/70 hover:text-foreground"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  {/* Active accent strip — a subtle 2px vertical bar on the
-                      left edge, flush against the icon. Reads as "this is the
-                      current surface" without competing with the icon. */}
-                  {active && (
-                    <span
-                      aria-hidden
-                      className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-club"
-                    />
-                  )}
-                  <div className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-md shrink-0 transition-colors",
-                    active
-                      ? "bg-club/15 text-club-ink"
-                      : "bg-muted/50 text-muted-foreground/80 group-hover:bg-accent group-hover:text-foreground"
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
+                  {/* One accent signal for the active row: the soft accent
+                      pill + club-ink text (icon inherits the row color).
+                      No left strip, no icon tile, no shadow — the quiet
+                      treatment leaves the club accent room to breathe. */}
+                  <Icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1 truncate">{item.label}</span>
                   {item.view === "announcements" &&
                     hasUnreadAnnouncements &&
                     !active && (
-                      <UnreadDot pulse className="ml-auto" aria-label="New announcements" />
+                      <UnreadDot pulse aria-label="New announcements" />
                     )}
-                  {item.execOnly && <ShieldCheck className="ml-auto h-3 w-3 text-muted-foreground/50" />}
+                  {item.execOnly && <ShieldCheck className="h-3 w-3 shrink-0 text-muted-foreground/50" />}
                 </button>
               )
             })}
@@ -741,9 +733,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left truncate">Search this club…</span>
-        <kbd className="inline-flex items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted-foreground">
-          <span className="text-xs">⌘</span>K
-        </kbd>
+        <SearchShortcutHint />
       </button>
 
       {/* Mobile: page title fills the gap (replaces the club name) */}
@@ -785,11 +775,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <UrgentBanner />
       {topBar}
       <div className="flex flex-1 min-h-0 p-3 gap-3">
-        {/* Floating sidebar card — ~240px, inset from the left edge + below
-            the top bar, 16px radius (rounded-2xl), 1px border. Club-switcher
+        {/* Sidebar surface — one card formula with everything else in the app:
+            rounded-xl (12px), 1px border, quiet card shadow. Club-switcher
             card pinned at the top, nav in the scrollable middle, theme toggle
             at the bottom. */}
-        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border/80 bg-card overflow-hidden shrink-0 shadow-card">
+        <aside className="hidden md:flex md:w-[240px] flex-col rounded-xl border border-border/80 bg-card overflow-hidden shrink-0 shadow-card">
           {/* Club switcher — bordered card at the top: accent logo, name,
               role, chevron. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
@@ -805,16 +795,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
-          {/* No top padding so view headers connect flush to the app top bar.
-              Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
-            {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
-                view/club switch (replayed by the remount key below);
-                neutralized under prefers-reduced-motion in globals.css. */}
-            <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
+          {view === "chat" ? (
+            /* ── iOS Safari keyboard fix: dedicated NON-scrollable branch ──
+               Chat renders its own full-height panes (conversation list +
+               thread) that manage their own internal scrolling. Wrapping
+               them in the standard overflow-y-auto container made the pane
+               (~48px taller than the wrapper: pt-4 + pb-16 + topbar) scroll
+               the page, and iOS caret-reveal rescrolled that container on
+               EVERY keystroke — the composer visibly slid down/jumped while
+               typing. Here the pane flex-fills this branch exactly, so
+               there is nothing to rescroll. No horizontal/bottom wrapper
+               padding; the only clearance is mobile-only, lifting the pane
+               above the shell's fixed bottom tab bar (52px + safe area;
+               the outer main row's p-3 adds the rest — desktop shows no
+               tab bar, hence md:pb-0). scrollRef stays unattached in this
+               branch — the scroll-reset effect above already null-guards
+               with optional chaining, so it's a no-op here. */
+            <div
+              className="ch-view-enter flex-1 min-h-0 flex flex-col pb-[calc(3.25rem_+_env(safe-area-inset-bottom))] md:pb-0"
+              key={`${currentClubId}-${view}`}
+            >
               {children}
             </div>
-          </div>
+          ) : (
+            /* No top padding so view headers connect flush to the app top bar.
+               Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */
+            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
+              {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
+                  view/club switch (replayed by the remount key below);
+                  neutralized under prefers-reduced-motion in globals.css. */}
+              <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
+                {children}
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -839,6 +853,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
       <GlobalSearch />
+      {/* g-chord navigation + `?` cheat sheet (§ v7.2). Listens globally;
+          only mounts inside the authenticated shell. */}
+      <KeyboardShortcuts />
       <BadgeConfettiPopup />
       {/* Onboarding tour — auto-opens on first club join, or replayable from
           the account menu via the `open-onboarding-tour` window event. */}
@@ -909,6 +926,26 @@ function InstallHint() {
   }
 
   return null
+}
+
+/** Platform-aware ⌘K / Ctrl K hint for the desktop search trigger.
+ *  Own component (its own hook) so AppShell's conditional branches don't
+ *  have to care. The trigger only renders in the authenticated, client-side
+ *  branch — never in SSR HTML — so there is no hydration mismatch. */
+function SearchShortcutHint() {
+  const [label] = useState(() => {
+    if (typeof navigator === "undefined") return "⌘K"
+    const platform = `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`.toLowerCase()
+    return platform.includes("mac") ? "⌘K" : "Ctrl K"
+  })
+  return (
+    <kbd
+      aria-hidden
+      className="ml-1 shrink-0 rounded border border-border/80 bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-muted-foreground"
+    >
+      {label}
+    </kbd>
+  )
 }
 
 /**
@@ -1005,7 +1042,6 @@ function MobileTabBar() {
   const view = useAppStore((s) => s.view)
   const setView = useAppStore((s) => s.setView)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const hasUnreadAnnouncements = useUnreadAnnouncements(useAppStore((s) => s.currentClubId) ?? undefined)
 
   const tabs: { view: View; label: string; icon: any }[] = [
     { view: "dashboard", label: "Home", icon: LayoutDashboard },
@@ -1033,26 +1069,25 @@ function MobileTabBar() {
               key={t.view}
               onClick={() => setView(t.view)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,transform,translate,scale,rotate] active:scale-[0.96]",
+                "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,background-color,transform] active:scale-[0.96]",
                 active ? "text-club-ink" : "text-muted-foreground hover:text-foreground"
               )}
               aria-current={active ? "page" : undefined}
             >
-              {/* Active indicator — a 2px pill above the icon, animated in
-                  and out via transition-all so it slides as the user
-                  switches tabs. Sits flush against the top edge. */}
+              {/* Active indicator — ONE signal: a soft accent-tinted pill
+                  sits behind the icon (icon + label also take the club ink).
+                  No top edge strip, no icon scale pop — quieter and easier
+                  to read at a glance. */}
               <span
                 aria-hidden
                 className={cn(
-                  "absolute top-0 h-0.5 rounded-full bg-club transition-all duration-200 ease-out",
-                  active ? "w-7 opacity-100" : "w-0 opacity-0"
+                  "flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150",
+                  active ? "bg-club-muted" : ""
                 )}
-              />
-              <Icon className={cn("h-5 w-5 transition-transform", active && "text-club-ink scale-110")} />
+              >
+                <Icon className="h-5 w-5" />
+              </span>
               <span>{t.label}</span>
-              {t.view === "announcements" && hasUnreadAnnouncements && !active && (
-                <UnreadDot className="absolute top-1 right-1/4" />
-              )}
             </button>
           )
         })}
@@ -1735,6 +1770,12 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
             className="cursor-pointer"
           >
             <Sparkles className="mr-2 h-4 w-4" /> Replay introduction guide
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_KEYBOARD_SHORTCUTS_EVENT))}
+            className="cursor-pointer"
+          >
+            <Keyboard className="mr-2 h-4 w-4" /> Keyboard shortcuts
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-danger-foreground focus:text-danger-foreground">

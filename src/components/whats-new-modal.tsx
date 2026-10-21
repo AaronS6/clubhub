@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Sparkles, X } from "lucide-react"
+import { X } from "lucide-react"
 import {
   checkAndMarkVisited,
   shouldShowWhatsNew,
@@ -14,11 +14,11 @@ import {
 
 /**
  * ============================================================================
- * WhatsNewModal — the "ClubHub v7 is officially HERE!" announcement
+ * WhatsNewModal — the "What's new in v7.5" announcement
  * ============================================================================
  *
- * Shown ONCE to returning visitors (first time they come back after the
- * release), centered on a blurred backdrop — never full-screen. Always in
+ * Shown ONCE to returning visitors (the first time they come back after
+ * this release), centered on a blurred backdrop — never full-screen. Always in
  * the ClubHub editorial dark palette (#16130e / #f0ebe0 / teal) so it reads
  * as a "release moment" in both the app and the public site.
  *
@@ -57,17 +57,6 @@ export function WhatsNewModal() {
     setWhatsNewNotif(true)
   }, [])
 
-  // "Pick your effect" — acknowledge the release AND hand the user straight
-  // to Settings → Profile, where the outer-effect picker lives (same
-  // open-settings CustomEvent the bell/other surfaces use; the app shell
-  // routes it to the dialog on the requested tab).
-  const openEffectsInSettings = useCallback(() => {
-    close()
-    window.dispatchEvent(
-      new CustomEvent("open-settings", { detail: { tab: "profile" } })
-    )
-  }, [close])
-
   // Escape closes; body scroll lock while open (same pattern as the
   // onboarding tour).
   useEffect(() => {
@@ -97,7 +86,7 @@ export function WhatsNewModal() {
           onClick={close}
           role="dialog"
           aria-modal="true"
-          aria-label="ClubHub v7 — what's new"
+          aria-label={`ClubHub v${WHATS_NEW_VERSION} — what's new`}
         >
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.985 }}
@@ -127,7 +116,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  ClubHub v{WHATS_NEW_VERSION} is officially HERE!
+                  ClubHub v{WHATS_NEW_VERSION} — your school, your photos.
                 </h2>
               </div>
               <button
@@ -143,68 +132,31 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                This is our biggest update yet, and we&apos;re really excited for
-                everyone to check out what&apos;s new. We&apos;ve been working on making
-                ClubHub better, easier to use, and a lot more than just a place
-                to manage your club.
+                The public landing page got its biggest visual refresh yet —
+                it now runs on real photos taken at North by students, and
+                every section got a polish pass.
               </p>
 
               <p className="mt-5 text-xs font-bold tracking-[0.18em] uppercase text-[#f0ebe0]/45">
                 Here&apos;s what&apos;s new in v{WHATS_NEW_VERSION}
               </p>
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="🌐" title="A brand-new landing page">
-                  ClubHub now has a new way for students to discover what
-                  we&apos;re all about and get started. Whether you&apos;re new to
-                  ClubHub or already using it, getting into the platform is
-                  easier than ever.
+                <ReleaseNote emoji="📸" title="Your photos, front and center">
+                  The landing page now runs on photos taken at North by
+                  students — club fairs, sign-up tables, snack socials, cake
+                  decorating — in a new “Club life, actually.” photo wall.
                 </ReleaseNote>
-                <ReleaseNote emoji="🔎" title="Introducing Explore Clubs">
-                  Looking for a new club to join? You can now explore available
-                  clubs, check out their descriptions, see their banners, and
-                  find something that matches your interests — even before
-                  creating an account!
+                <ReleaseNote emoji="🎨" title="A cleaner, calmer landing">
+                  The whole-team photo anchors the hero over the gym&apos;s NORTH
+                  wall, the how-it-works steps show real moments, and the
+                  auto-scrolling strip became a gallery that lets you actually
+                  look.
                 </ReleaseNote>
-                <ReleaseNote emoji="🎨" title="Custom club banners">
-                  Clubs can now have their own look and identity with custom
-                  banners. It&apos;s a small change that makes each club feel more
-                  personal and gives everyone a better experience when using
-                  ClubHub.
+                <ReleaseNote emoji="⌨️" title="Keyboard shortcuts">
+                  Carried over from the last release: press <Kbd>g</Kbd> then{" "}
+                  <Kbd>c</Kbd> to jump to chat, and <Kbd>?</Kbd> brings up the
+                  full cheat sheet.
                 </ReleaseNote>
-                <ReleaseNote emoji="🤝" title="A better way to join clubs">
-                  Finding a club you like is one thing. Actually joining it
-                  should be easy, too. With the new membership experience,
-                  clubs can manage how students join, whether it&apos;s through a
-                  club code or a request that executives approve.
-                </ReleaseNote>
-                <ReleaseNote emoji="✨" title="A fresh new experience">
-                  We&apos;ve also been working on the overall look and feel of
-                  ClubHub to make everything cleaner, more modern, and easier
-                  to navigate.
-                </ReleaseNote>
-                {/* Outer effects — gets its own card + a direct CTA into
-                    Settings → Profile so people actually find the picker. */}
-                <div className="py-3.5 last:pb-1">
-                  <div className="flex items-baseline gap-2">
-                    <span aria-hidden className="text-sm leading-none">💫</span>
-                    <h3 className="text-sm font-bold tracking-tight">
-                      Avatar outer effects
-                    </h3>
-                  </div>
-                  <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
-                    Make your avatar stand out with animated outer effects —
-                    rings, glows, and more, visible in chat, announcements, and
-                    the members list. Pick yours in Settings.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={openEffectsInSettings}
-                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-none border border-club/50 bg-club/10 px-3 h-9 text-xs font-bold tracking-wide uppercase text-club hover:bg-club/20 hover:border-club/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Choose your effect
-                  </button>
-                </div>
               </div>
 
               <div className="mt-6 rounded-xl border border-club/25 bg-club/[0.07] p-4">
@@ -219,8 +171,8 @@ export function WhatsNewModal() {
                   place.
                 </p>
                 <p className="mt-2 text-sm text-[#f0ebe0]/60 leading-relaxed">
-                  v{WHATS_NEW_VERSION} is a big step toward that vision, and
-                  there&apos;s still plenty more we&apos;d love to build.
+                  Every release — big or small — is a step toward that vision,
+                  and there&apos;s still plenty more we&apos;d love to build.
                 </p>
               </div>
 
@@ -277,5 +229,14 @@ function ReleaseNote({
       </div>
       <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">{children}</p>
     </div>
+  )
+}
+
+/** Tiny key cap — inline <kbd> styling for shortcut mentions in note copy. */
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="mx-0.5 inline-flex h-[1.25rem] min-w-[1.25rem] translate-y-[-1px] items-center justify-center rounded border border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.08] px-1 font-mono text-[0.7rem] font-semibold text-[#f0ebe0]/85">
+      {children}
+    </kbd>
   )
 }

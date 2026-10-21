@@ -2784,7 +2784,7 @@ function MembersSkeleton() {
     <div className="space-y-6">
       {/* Leadership row skeleton */}
       <section className="space-y-3">
-        <div className="h-3 w-20 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-20 rounded skeleton-shimmer" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
@@ -2811,7 +2811,7 @@ function MembersSkeleton() {
 
       {/* All members skeleton */}
       <section className="space-y-3">
-        <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-24 rounded skeleton-shimmer" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div

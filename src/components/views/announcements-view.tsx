@@ -477,8 +477,11 @@ function AnnouncementCard({
 
   return (
     <div className={cn(
-      "stagger-in rounded-xl border border-border bg-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
-      announcement.isPinned && "border-l-4 border-l-amber-400 bg-warning-subtle/30 dark:bg-warning-subtle/10"
+      "stagger-in rounded-xl border border-border/80 bg-card shadow-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
+      // Pinned — the app's ONE emphasized-card language: a quiet 2px club
+      // accent strip on the leading edge + a whisper of accent tint (same
+      // treatment as the dashboard attention cards). No 4px amber bar.
+      announcement.isPinned && "border-l-2 border-l-club bg-club-subtle/50 dark:bg-club-subtle/30"
     )}
       style={{ "--stagger-i": index } as CSSProperties}>
       <div className="p-4 md:p-5 space-y-3">
@@ -505,7 +508,7 @@ function AnnouncementCard({
                   </span>
                 )}
                 {announcement.isPinned && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-subtle text-warning-foreground dark:bg-warning-subtle dark:text-warning-foreground px-2 py-0.5 text-xs font-semibold">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-club-subtle text-club-ink dark:bg-club-subtle dark:text-club-ink px-2 py-0.5 text-xs font-semibold">
                     <Pin className="h-3 w-3" /> Pinned
                   </span>
                 )}

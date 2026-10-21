@@ -581,16 +581,9 @@ export function OnboardingTour() {
             transition={{ duration: reduce ? 0 : 0.3, ease: EASE }}
             className="relative flex max-h-[85dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-border/70 bg-card shadow-2xl outline-none will-change-transform sm:rounded-3xl"
           >
-            {/* Header: brand + counter + close, then the animated progress */}
+            {/* Header: wordmark + counter + close, then the animated progress */}
             <header className="shrink-0">
               <div className="flex items-center gap-3 px-4 pt-3 sm:px-6 sm:pt-4">
-                <div
-                  aria-hidden
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-club text-sm font-bold text-club-foreground shadow-card"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  C
-                </div>
                 <span
                   className="min-w-0 truncate text-sm font-semibold leading-none text-foreground"
                   style={{ fontFamily: "var(--font-display)" }}

@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useSession } from "next-auth/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { motion, useReducedMotion } from "framer-motion"
 import { useAppStore } from "@/lib/store"
 import { usePresence } from "@/lib/use-presence"
 import { useKeyboardInset } from "@/hooks/use-keyboard-inset"
@@ -339,26 +340,24 @@ function ChatPane({ clubId }: { clubId: string }) {
   }
 
   return (
-    // Mobile: dynamic viewport height (dvh) instead of vh so the chat panel
-    // shrinks correctly when the mobile browser's URL bar is visible. When
-    // the iOS/Android soft keyboard is open we ALSO subtract the measured
-    // keyboard inset (see useKeyboardInset) so the whole pane — including
-    // the composer — fits above the keys instead of scrolling under them.
-    // Desktop uses dvh too — same math, no behavioral change because desktop
-    // browsers don't hide the URL bar and have no soft keyboard.
+    // iOS Safari keyboard fix: the pane now FLEX-FILLS the app shell's
+    // dedicated non-scrollable chat branch (h-full) instead of computing its
+    // own height with 100dvh math — the old calc overflowed the shell's
+    // scroll wrapper by ~48px, which made iOS caret-reveal rescroll the
+    // page on every keystroke (composer visibly sliding down).
+    // When the soft keyboard opens we shrink via BOTTOM MARGIN (measured by
+    // useKeyboardInset) rather than height math: margin transitions
+    // smoothly, keeps the flex-fill layout intact, and is a no-op on
+    // desktop where the inset is always 0.
     <div
-      className="h-[calc(100dvh-7rem)] md:h-[calc(100dvh-5rem)]"
-      style={
-        keyboardInset > 0
-          ? { height: `calc(100dvh - 7rem - ${keyboardInset}px)` }
-          : undefined
-      }
+      className="h-full min-h-0 flex flex-col transition-[margin] duration-150 ease-out"
+      style={keyboardInset > 0 ? { marginBottom: keyboardInset } : undefined}
     >
       <div className="flex h-full gap-0 md:gap-3">
         {/* Conversation list — floating panel on desktop */}
         <aside
           className={cn(
-            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col bg-sidebar md:rounded-2xl md:border md:border-border",
+            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col bg-sidebar md:rounded-xl md:border md:border-border",
             isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -378,7 +377,7 @@ function ChatPane({ clubId }: { clubId: string }) {
         {/* Thread — floating panel on desktop */}
         <main
           className={cn(
-            "flex-1 overflow-hidden flex flex-col bg-card md:rounded-2xl md:border md:border-border",
+            "flex-1 overflow-hidden flex flex-col bg-card md:rounded-xl md:border md:border-border",
             !isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -1126,11 +1125,13 @@ function ConversationPane({
         <PinnedMessagesBar pinned={pinnedMessages} />
       )}
 
-      {/* Messages */}
+      {/* Messages — the ONLY scrollable area in the thread panel.
+          min-h-0 lets it shrink inside the flex column so the header,
+          typing indicator, and composer footer always stay on-screen. */}
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto scrollbar-thin px-3 md:px-4 py-4 space-y-1"
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-3 md:px-4 py-4 space-y-1"
         aria-live="polite"
       >
         {loadingOlder && (
@@ -1193,7 +1194,7 @@ function ConversationPane({
             if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
             setShowJumpToBottom(false)
           }}
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-card border border-border px-3 py-1.5 text-xs font-medium shadow-lg hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-2 duration-180"
+          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-card border border-border px-3 py-1.5 text-xs font-medium shadow-popover hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-2 duration-180"
           aria-label="Jump to latest messages"
         >
           <ArrowDown className="h-3.5 w-3.5" />
@@ -1486,6 +1487,37 @@ function MessageList({
   onPin: (messageId: string, pinned: boolean) => void
   reactingId: string
 }) {
+  // ── Entrance animation bookkeeping (§ v7.2) ──────────────────────────────
+  // History — this list's FIRST paint — renders statically (no 50-message
+  // cascade on load/reload). Only messages that arrive LATER, appended at
+  // the END of the thread (just-sent messages, realtime events), fade+rise
+  // in via <AnimatedMessage> below. Messages PREPENDED by "Load older
+  // messages" land BEFORE the known tail and therefore never animate.
+  //
+  // Bookkeeping: `initialIds` is a per-mount constant (lazy state init from
+  // the first messages array — the parent keys ConversationPane by
+  // conversation id, so switching threads resets it). A message animates
+  // when it mounts with an id NOT in that set AND positioned after the last
+  // known message. The `entering` flag only matters at mount (framer's
+  // `initial` is mount-only), so stale-true values on later re-renders
+  // (reactions, edits) are harmless — no re-animation, no remount.
+  const [initialIds] = useState<Set<string>>(
+    () => new Set(messages.map((m) => m.id))
+  )
+  // Index of the last message present at first paint in the current array —
+  // everything AFTER it that we've never seen is a newly-appended message.
+  let lastKnownIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (initialIds.has(messages[i].id)) {
+      lastKnownIdx = i
+      break
+    }
+  }
+  const enteringIds = new Set<string>()
+  for (let i = messages.length - 1; i > lastKnownIdx; i--) {
+    if (!initialIds.has(messages[i].id)) enteringIds.add(messages[i].id)
+  }
+
   // Group consecutive messages by the same author within 5 minutes for a compact look.
   const grouped: MessageItem[][] = []
   let currentGroup: MessageItem[] = []
@@ -1571,18 +1603,19 @@ function MessageList({
                 )}
                 <div className={cn("flex flex-col gap-1 w-full max-w-[78%]", isMine ? "items-end" : "items-start")}>
                   {group.map((m) => (
-                    <MessageBubble
-                      key={m.id}
-                      message={m}
-                      isMine={isMine}
-                      canDelete={m.isMine || canManage}
-                      canPin={canPin}
-                      showActions={!m.deletedAt}
-                      onEdit={(body) => onEdit(m.id, body)}
-                      onDelete={() => onDelete(m.id)}
-                      onReact={(emoji) => onReact(m.id, emoji)}
-                      onPin={(pinned) => onPin(m.id, pinned)}
-                    />
+                    <AnimatedMessage key={m.id} entering={enteringIds.has(m.id)}>
+                      <MessageBubble
+                        message={m}
+                        isMine={isMine}
+                        canDelete={m.isMine || canManage}
+                        canPin={canPin}
+                        showActions={!m.deletedAt}
+                        onEdit={(body) => onEdit(m.id, body)}
+                        onDelete={() => onDelete(m.id)}
+                        onReact={(emoji) => onReact(m.id, emoji)}
+                        onPin={(pinned) => onPin(m.id, pinned)}
+                      />
+                    </AnimatedMessage>
                   ))}
                 </div>
               </div>
@@ -1591,6 +1624,33 @@ function MessageList({
         )
       })}
     </div>
+  )
+}
+
+/* ── Message entrance wrapper (§ v7.2) ─────────────────────────────────────
+ * Newly-arriving messages fade + rise (opacity 0, y: 8 → 0, ~200ms eased).
+ * The wrapper element is ALWAYS a motion.div so an individual message's
+ * subtree never remounts when its `entering` flag settles back to false —
+ * `initial={false}` (history) simply skips the entrance. Reduced-motion
+ * users get no transform/opacity entrance (no MotionConfig wraps the app,
+ * so we gate on useReducedMotion directly). */
+function AnimatedMessage({
+  entering,
+  children,
+}: {
+  entering: boolean
+  children: ReactNode
+}) {
+  const reduceMotion = useReducedMotion()
+  const active = entering && !reduceMotion
+  return (
+    <motion.div
+      initial={active ? { opacity: 0, y: 8 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      {children}
+    </motion.div>
   )
 }
 
@@ -2006,13 +2066,10 @@ function MessageComposer({
       avatarUrl: m.user.avatarUrl ?? null,
     }))
 
-  // Auto-grow.
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = Math.min(el.scrollHeight, 160) + "px"
-  }, [value])
+  // NOTE: no auto-grow here by design (iOS Safari keyboard fix). A
+  // height-changing textarea makes iOS caret-reveal rescroll the page on
+  // every keystroke, which visibly jolted the composer. The textarea is a
+  // FIXED-height (h-10) input with internal scrolling for long drafts.
 
   // Emit a typing event (debounced). We throttle to one event per
   // TYPING_DEBOUNCE_MS so the server isn't spammed on every keystroke.
@@ -2049,7 +2106,10 @@ function MessageComposer({
   }
 
   return (
-    <div className="border-t border-border p-3 md:p-4 bg-background" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+    // shrink-0: the composer footer must NEVER be crushed away by the flex
+    // column on short viewports / landscape — the messages list above is
+    // the flexible (min-h-0) element, this row keeps its natural height.
+    <div className="shrink-0 border-t border-border p-3 md:p-4 bg-background" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
       {/* Composer container — wraps textarea + send button in a substantial
           rounded panel, iMessage/Telegram-style. */}
       <div className="rounded-xl border border-border bg-muted/40 p-2 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
@@ -2063,7 +2123,7 @@ function MessageComposer({
               maybeEmitTyping()
             }}
             placeholder="Type a message… use @ to mention someone"
-            className="flex-1 resize-none min-h-[40px] max-h-40 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="flex-1 h-10 min-h-0 shrink-0 resize-none overflow-y-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

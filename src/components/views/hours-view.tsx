@@ -883,7 +883,7 @@ function SubmitHoursDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={submitting || uploading} variant="club"
-              className="pointer-events-auto shadow-lg rounded-full sm:rounded-md h-11">
+              className="pointer-events-auto rounded-full sm:rounded-md h-11">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? "Submitting…" : "Submit for review"}
             </Button>

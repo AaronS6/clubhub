@@ -164,10 +164,9 @@ function BalanceHero({ balance, revenue, expense, mRev, mExp }: { balance: numbe
   const isPositive = balance >= 0
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-club/20 p-6 sm:p-8 transition-transform duration-300 hover:-translate-y-0.5"
+      className="relative overflow-hidden rounded-xl border border-club/25 p-6 sm:p-8 shadow-card transition-[box-shadow,border-color] duration-200 hover:shadow-card-hover"
       style={{
         background: "linear-gradient(135deg, var(--club-subtle) 0%, var(--card) 60%, var(--club-subtle) 100%)",
-        boxShadow: "0 20px 40px -12px rgba(0,0,0,0.18), 0 8px 16px -8px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.04)",
       }}
     >
       <div aria-hidden className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-club/10 blur-3xl" />
@@ -252,7 +251,7 @@ function DonutChart({ revenue, expense }: { revenue: number; expense: number }) 
 function TransactionCard({ t, isExec, index, onDelete, onEdit }: { t: Transaction; isExec: boolean; index: number; onDelete: () => void; onEdit: () => void }) {
   const isRev = t.type === "revenue"
   return (
-    <div className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 cv-auto  transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/20 hover:shadow-sm stagger-in"
+    <div className="group flex items-center gap-4 rounded-xl border border-border/80 bg-card p-4 cv-auto shadow-card transition-[color,background-color,border-color,transform,box-shadow] hover:border-club/20 hover:shadow-card-hover stagger-in"
       style={{ "--stagger-i": index } as CSSProperties}>
       <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform group-hover:scale-110",
         isRev ? "bg-success-subtle text-success-foreground" : "bg-danger-subtle text-danger-foreground")}>

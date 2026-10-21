@@ -97,12 +97,14 @@ model Club {
   // Controls which part of the image stays visible on wide/short crops.
   // Null = default center (0.5). Adjusted in the exec banner editor.
   bannerFocalY     Float?
-  // Opt-in PUBLIC DIRECTORY listing. When true, the club appears in the
-  // public landing page's "Explore clubs" directory and is discoverable by
-  // unauthenticated visitors. The public profile by club code stays
-  // available either way (the code itself gates discovery — existing
-  // convention). Executives toggle this from Members → Club settings.
-  isListedPublic   Boolean  @default(false)
+  // PUBLIC DIRECTORY listing. When true, the club appears in the public
+  // landing page's "Explore clubs" directory and is discoverable by
+  // unauthenticated visitors. New clubs are listed BY DEFAULT (per the
+  // owner's call — discoverability beats hiding); executives can flip it
+  // off any time from Members → Club settings. The public profile by club
+  // code stays available either way (the code itself gates discovery —
+  // existing convention).
+  isListedPublic   Boolean  @default(true)
   // How new members join. "code" (default) = the classic club code +
   // join password flow. "request" = students send a join request and an
   // executive approves or declines it (JoinRequest rows). Executives toggle

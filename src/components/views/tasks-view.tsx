@@ -728,7 +728,6 @@ function MainGoalCard({
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(mainGoal ?? "")
   const [saving, setSaving] = React.useState(false)
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
   // Sync the draft when the upstream mainGoal changes (e.g. another exec
   // edited it and a realtime event refreshed the query).
@@ -736,15 +735,8 @@ function MainGoalCard({
     if (!editing) setDraft(mainGoal ?? "")
   }, [mainGoal, editing])
 
-  // Auto-grow the textarea on input. Capped so it doesn't push the action
-  // row off the card.
-  React.useEffect(() => {
-    if (!editing) return
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`
-  }, [draft, editing])
+  // NOTE: no JS auto-grow here (iOS Safari keyboard fix) — the textarea
+  // keeps a static shape and scrolls internally for long text.
 
   async function handleSave() {
     if (draft.length > MAIN_GOAL_MAX) {
@@ -803,7 +795,6 @@ function MainGoalCard({
           </span>
         </div>
         <Textarea
-          ref={textareaRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, MAIN_GOAL_MAX))}
           placeholder="What is the club working on right now? (e.g. Win the regional competition by March.)"
@@ -897,19 +888,13 @@ function TeamMainIdeaChip({
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(team.mainIdea ?? "")
   const [saving, setSaving] = React.useState(false)
-  const taRef = React.useRef<HTMLTextAreaElement>(null)
 
   React.useEffect(() => {
     if (!editing) setDraft(team.mainIdea ?? "")
   }, [team.mainIdea, editing])
 
-  React.useEffect(() => {
-    if (!editing) return
-    const el = taRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
-  }, [draft, editing])
+  // NOTE: no JS auto-grow here (iOS Safari keyboard fix) — the textarea
+  // keeps a static shape and scrolls internally for long text.
 
   async function handleSave() {
     if (draft.length > MAIN_IDEA_MAX) {
@@ -942,7 +927,6 @@ function TeamMainIdeaChip({
           </span>
         </div>
         <Textarea
-          ref={taRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, MAIN_IDEA_MAX))}
           placeholder={`What is "${team.name}" working on?`}

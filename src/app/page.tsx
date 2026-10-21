@@ -1,6 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
+import { Loader2 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { AppShell } from "@/components/app-shell"
 import { FeedSkeleton } from "@/components/shared/page-header"
@@ -37,10 +38,26 @@ function ViewLoader() {
   return (
     <div className="space-y-6" role="status" aria-label="Loading view">
       <div className="space-y-2">
-        <div className="h-7 w-44 rounded-md bg-muted animate-pulse" />
-        <div className="h-4 w-64 rounded bg-muted animate-pulse" />
+        <div className="h-7 w-44 rounded-md skeleton-shimmer" />
+        <div className="h-4 w-64 rounded skeleton-shimmer" />
       </div>
       <FeedSkeleton count={3} />
+    </div>
+  )
+}
+
+// Chat renders in the shell's dedicated NON-scrollable full-height branch
+// (iOS Safari keyboard fix), so its loading fallback can't lean on the
+// standard shell wrapper for padding/max-width — it gets a self-contained
+// centered spinner that fills the branch while the chunk streams in.
+function ChatViewLoader() {
+  return (
+    <div
+      className="flex flex-1 items-center justify-center text-muted-foreground"
+      role="status"
+      aria-label="Loading chat"
+    >
+      <Loader2 className="h-6 w-6 animate-spin" />
     </div>
   )
 }
@@ -87,7 +104,7 @@ const NotesView = dynamic(
 )
 const ChatView = dynamic(
   () => import("@/components/views/chat-view").then((m) => m.ChatView),
-  { loading: () => <ViewLoader />, ssr: false },
+  { loading: () => <ChatViewLoader />, ssr: false },
 )
 const NotificationsView = dynamic(
   () => import("@/components/views/notifications-view").then((m) => m.NotificationsView),

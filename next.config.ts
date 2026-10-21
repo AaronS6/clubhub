@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Hide the Next.js dev-tools badge (the floating "N" circle, bottom-left)
+  // — it only exists in development, but the sandbox preview IS the dev
+  // server, and the badge reads as a stray artifact to visitors.
+  devIndicators: false,
   // Do NOT ignore TypeScript build errors — real type errors should fail the
   // build, not be silently swallowed. (Previously `ignoreBuildErrors: true`
   // was set, which hides bugs shipping to users.)

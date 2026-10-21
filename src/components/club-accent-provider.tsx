@@ -2,6 +2,7 @@
 
 import { useEffect, useState, ReactNode } from "react"
 import { useAppStore } from "@/lib/store"
+import { useTheme } from "next-themes"
 
 /**
  * ============================================================================
@@ -19,8 +20,11 @@ import { useAppStore } from "@/lib/store"
  * Accent utilities you should use
  * -------------------------------
  *   bg-club                — solid accent background (primary CTAs, active dots)
- *   bg-club-muted          — 12%-alpha accent tint (active rows, subtle washes)
- *   bg-club-subtle         — 6%-alpha accent tint (unread highlights, hover bg)
+ *   bg-club-muted          — 12%-alpha accent tint in light / 18% in dark
+ *                           (active rows, tab-bar pills, subtle washes)
+ *   bg-club-subtle         — 6%-alpha accent tint in light / 12% in dark
+ *                           (unread highlights, hover bg). Dark surfaces need
+ *                           a stronger wash for the same perceived emphasis.
  *   text-club              — accent text (links, active labels, focused icons)
  *   text-club-foreground   — readable foreground ON accent (used inside bg-club)
  *   ring-club              — accent focus ring (used by interactive elements)
@@ -91,11 +95,12 @@ const DEFAULT_ACCENT = "#10b981"
 export function ClubAccentProvider({ children }: { children: ReactNode }) {
   const currentClub = useAppStore((s) => s.currentClub)
   const accent = currentClub?.accentColor || DEFAULT_ACCENT
-  const [vars, setVars] = useState<Record<string, string>>(() => computeVars(DEFAULT_ACCENT))
+  const { resolvedTheme } = useTheme()
+  const [vars, setVars] = useState<Record<string, string>>(() => computeVars(DEFAULT_ACCENT, false))
 
   useEffect(() => {
-    setVars(computeVars(accent))
-  }, [accent])
+    setVars(computeVars(accent, resolvedTheme === "dark"))
+  }, [accent, resolvedTheme])
 
   return (
     <div
@@ -108,13 +113,16 @@ export function ClubAccentProvider({ children }: { children: ReactNode }) {
   )
 }
 
-function computeVars(accent: string): Record<string, string> {
+function computeVars(accent: string, dark: boolean): Record<string, string> {
   const fg = readableForeground(accent)
   return {
     "--club-accent": accent,
     "--club-accent-foreground": fg,
-    "--club-accent-muted": hexToRgba(accent, 0.12),
-    "--club-accent-subtle": hexToRgba(accent, 0.06),
+    // Theme-aware tint alphas — the same alpha reads far weaker on a dark
+    // surface, so dark mode doubles it (matching the .dark token fallbacks
+    // in globals.css: subtle 12%, muted 18%).
+    "--club-accent-muted": hexToRgba(accent, dark ? 0.18 : 0.12),
+    "--club-accent-subtle": hexToRgba(accent, dark ? 0.12 : 0.06),
     // Override the global --ring so focus rings on every shadcn primitive
     // pick up the active club's accent. The default --ring in globals.css
     // is hardcoded to a warm emerald; without this override, focus rings

@@ -1,17 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
-import { MotionConfig, motion } from "framer-motion"
+import {
+  MotionConfig,
+  animate,
+  motion,
+  useInView,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "framer-motion"
 import type { LucideIcon } from "lucide-react"
 import {
   ArrowDown,
   ArrowRight,
   CalendarDays,
   CheckSquare,
+  ChevronDown,
   Clock,
   Compass,
   KeyRound,
@@ -27,6 +36,7 @@ import {
 } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { api } from "@/lib/api/client"
+import { APP_VERSION } from "@/lib/version"
 import { cn } from "@/lib/utils"
 import { initials } from "@/components/shared/page-header"
 
@@ -37,10 +47,11 @@ import { initials } from "@/components/shared/page-header"
  * WARM DARK redesign: a soft espresso canvas (#171310 — deliberately NOT
  * pure black) with cream ink, the ClubHub green brightened for dark
  * backgrounds (#22c55e fills / #4ade80 display), and terracotta accents.
- * REAL documentary photos (fetched from the web, not generated) live in the
- * hero collage, the auto-scrolling "moments" marquee, and the onboarding
- * tour. Everything stays rounded (2xl–3xl cards, full pill buttons) with
- * scroll reveals and gentle floats (all honoring prefers-reduced-motion).
+ * REAL photos — taken at Burnaby North by the students themselves and
+ * shared straight from the club's camera roll — live in the hero collage
+ * and the auto-scrolling "club life" marquee. Everything stays rounded (2xl–3xl
+ * cards, full pill buttons) with scroll reveals and gentle floats (all
+ * honoring prefers-reduced-motion).
  *
  * Responsive media:
  *   • lg+      — full hero collage beside the left-aligned text (a large
@@ -51,9 +62,9 @@ import { initials } from "@/components/shared/page-header"
  *                faded with a deep espresso wash so the words stay perfectly
  *                readable ("media behind, fade for text").
  *
- *   nav → hero (LEFT-aligned text) → moments marquee → #clubs directory
- *   (REAL public-listed clubs) → how it works → what's inside → create with
- *   ClubHub → sign-off → footer.
+ *   nav → hero (LEFT-aligned text) → stats → moments marquee → #clubs
+ *   directory (REAL public-listed clubs) → how it works → what's inside →
+ *   create with ClubHub → sign-off → footer.
  *
  * All club data is REAL — fetched from the public /api/public/clubs
  * directory (executive opt-in). No fabricated stats or testimonials.
@@ -138,24 +149,37 @@ const CARD_HOVER =
 
 // ── Copy ────────────────────────────────────────────────────────────────────
 
-const STEPS: { icon: LucideIcon; word: string; title: string; body: string }[] = [
+const STEPS: {
+  icon: LucideIcon
+  word: string
+  title: string
+  body: string
+  photo: string
+  photoAlt: string
+}[] = [
   {
     icon: Compass,
     word: "one",
     title: "Discover",
     body: "Browse the clubs at North and see what they're actually about.",
+    photo: "/landing/bn-club-fair.jpg",
+    photoAlt: "Students exploring club tables at the club fair",
   },
   {
     icon: KeyRound,
     word: "two",
     title: "Join",
     body: "Enter a club code, or send a request if the club wants to meet you first.",
+    photo: "/landing/bn-signup-table.jpg",
+    photoAlt: "A club sign-up table with laptops, flyers, and candy",
   },
   {
     icon: CalendarDays,
     word: "three",
     title: "Show up",
     body: "Meetings, tasks, announcements, service hours — all in one calm place.",
+    photo: "/landing/bn-welcome-meeting.jpg",
+    photoAlt: "Students at a club's welcome meeting",
   },
 ]
 
@@ -170,33 +194,143 @@ const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: Trophy, title: "Badges", body: "Earn them. Climb the leaderboard." },
 ]
 
-/** Marquee moments — REAL documentary photos + the real seeded club banners.
- *  The Robotics Club banner + the learning-commons shot are genuine Burnaby
- *  North Secondary School photos (the school the demo club calls home).
- *  The rest are real school-club team photos — track & field, FRC robotics,
- *  jazz band, basketball, science, leadership, service drives, grad — the
- *  kind of shots club accounts (think ontrackyvr_ and friends) post after
- *  a meet, a build season, or a food drive. People first, always. */
+/** Moments — every photo here is one of OURS: taken at Burnaby North by
+ *  the students themselves, shared straight from the club's camera roll
+ *  (plus two of the club's own banner shots). No stock, no stock-adjacent.
+ *  Rendered as the auto-scrolling marquee strip under the stats band: one
+ *  calm row of fixed-height cards, edge-faded viewport, pauses on hover,
+ *  honors prefers-reduced-motion. People first, always. */
 const MOMENTS: { src: string; alt: string }[] = [
-  { src: "/landing/real-track-team.jpg", alt: "A track and field team posing together after practice" },
-  { src: "/banners/robotics-banner.jpg", alt: "Robotics Club meeting space — the social stairs at Burnaby North Secondary" },
-  { src: "/landing/real-frc-team.jpg", alt: "A robotics team posing with their competition robot" },
-  { src: "/landing/real-bn-commons.jpg", alt: "Burnaby North Secondary's bright learning commons" },
-  { src: "/landing/real-jazz-band.jpg", alt: "The jazz band mid-song on stage" },
-  { src: "/banners/photography-banner.jpg", alt: "Photography Club out on a shoot" },
-  { src: "/landing/real-basketball.jpg", alt: "A basketball team huddled together on court" },
-  { src: "/landing/real-science.jpg", alt: "Science club students running an experiment" },
-  { src: "/landing/real-robotics.jpg", alt: "A robotics team with their competition robot" },
-  { src: "/landing/real-leaders.jpg", alt: "Student leaders talking with a mentor in the commons" },
-  { src: "/landing/real-debate.jpg", alt: "Students celebrating at a tournament" },
-  { src: "/banners/debate-banner.jpg", alt: "Debate Society at the podium" },
-  { src: "/landing/real-service.jpg", alt: "Students with the boxes from their food drive" },
-  { src: "/landing/real-friends.jpg", alt: "Students riding the school bus together after a competition" },
-  { src: "/landing/real-robotics-comp.jpg", alt: "Students driving their robot on the competition field" },
-  { src: "/landing/real-photography.jpg", alt: "A student photographer capturing spring blossoms" },
-  { src: "/landing/real-volunteer.jpg", alt: "Volunteers tending a community garden" },
-  { src: "/landing/real-grad.jpg", alt: "Graduates tossing their caps" },
+  {
+    src: "/landing/bn-team-photo.jpg",
+    alt: "About fifty students in matching navy club shirts posing together outdoors",
+  },
+  {
+    src: "/landing/real-campus.jpg",
+    alt: "The sunlit Burnaby North campus between classes",
+  },
+  {
+    src: "/landing/bn-club-fair.jpg",
+    alt: "A crowded school atrium during the club fair, students around sign-up tables",
+  },
+  {
+    src: "/landing/real-robotics.jpg",
+    alt: "A robotics team with their competition robot",
+  },
+  {
+    src: "/landing/bn-snack-social.jpg",
+    alt: "Students sharing Timbits and cookies at a club social",
+  },
+  {
+    src: "/landing/real-friends.jpg",
+    alt: "Students riding the school bus together after a competition",
+  },
+  {
+    src: "/landing/bn-cake-decorating.jpg",
+    alt: "Hands decorating a heart-shaped cake with pink frosting and sprinkles",
+  },
+  {
+    src: "/landing/bn-gym-north.jpg",
+    alt: "The school gym with NORTH spelled out in giant letters on the wall",
+  },
+  {
+    src: "/landing/real-debate.jpg",
+    alt: "Students celebrating at a tournament",
+  },
+  {
+    src: "/landing/bn-theater-fundraiser.jpg",
+    alt: "A theater club fundraising table covered with items for sale under a pop-up tent",
+  },
+  {
+    src: "/landing/bn-signup-table.jpg",
+    alt: "A club sign-up table with laptops, flyers, QR codes, and candy",
+  },
+  {
+    src: "/landing/real-volunteer.jpg",
+    alt: "Volunteers tending a community garden",
+  },
+  {
+    src: "/landing/bn-welcome-meeting.jpg",
+    alt: "Students at desks watching a welcome presentation at a club's first meeting",
+  },
+  {
+    src: "/landing/real-photography.jpg",
+    alt: "A student photographer capturing spring blossoms",
+  },
+  {
+    src: "/banners/photography-banner.jpg",
+    alt: "Photography Club out on a shoot",
+  },
+  {
+    src: "/landing/bn-study-hangout.jpg",
+    alt: "Students studying together around tables in a bright room",
+  },
+  {
+    src: "/landing/real-debate-hoodie.jpg",
+    alt: "A Debate Society member repping the team hoodie outside",
+  },
+  {
+    src: "/landing/bn-atrium.jpg",
+    alt: "The school's bright modern atrium between classes",
+  },
+  {
+    src: "/landing/real-study.jpg",
+    alt: "Reading buddies — club members reading with younger students",
+  },
+  {
+    src: "/banners/debate-banner.jpg",
+    alt: "Debate Society at the podium",
+  },
+  {
+    src: "/landing/bn-lobby.jpg",
+    alt: "The school's bright front lobby on a regular Tuesday",
+  },
 ]
+
+/** FAQ — plain answers in the site's voice (first person, no corporate
+ *  speak). Rendered as the hairline accordion after "Create with ClubHub"
+ *  and emitted once as FAQPage JSON-LD for search engines. */
+const FAQS: { q: string; a: string }[] = [
+  {
+    q: "What is ClubHub, actually?",
+    a: "The home for every club at Burnaby North. There's a public directory of what's out there, and once you're in a club you get announcements, tasks, meetings, chat, and service-hour tracking — all in one calm place instead of five group chats.",
+  },
+  {
+    q: "Do I need an account to look around?",
+    a: "Nope. The whole directory is open — browse every listed club, read what they're about, see how many members they have. You only need an account to join a club or run one.",
+  },
+  {
+    q: "How do I join a club?",
+    a: "Find it in Explore, tap Join, then enter the club's code — or send a request if the club wants to meet you first. Either way it takes about ten seconds.",
+  },
+  {
+    q: "Is it free?",
+    a: "Yes, completely. ClubHub was built by students, not a company — no subscriptions, no ads, no upsells. It's just a tool that makes clubs easier to run.",
+  },
+  {
+    q: "My club isn't listed — can we get on it?",
+    a: "Any club at North can be. A leader creates the club in a couple of minutes and flips on the public directory in club settings — after that it shows up here for everyone.",
+  },
+  {
+    q: "Who made this?",
+    a: "A student at North who got tired of the group-chat chaos and decided to build the fix. The footer at the bottom of this page says exactly who.",
+  },
+]
+
+/** FAQPage structured data, derived from the same FAQS array so the visible
+ *  answers and the machine-readable ones can never drift apart. */
+const FAQ_JSONLD = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQS.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: f.a,
+    },
+  })),
+}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -295,7 +429,7 @@ export function LandingPage() {
                     onClick={() => router.push("/?auth=login")}
                     className={cn(
                       PILL_BASE,
-                      "h-11 px-5 text-sm text-[#f0ebe0] bg-[#f0ebe0]/[0.06] ring-1 ring-[#f0ebe0]/15 hover:bg-[#f0ebe0]/[0.1]",
+                      "h-11 px-5 text-sm text-[#f0ebe0]/90 bg-[#f0ebe0]/[0.07] ring-1 ring-[#f0ebe0]/22 hover:bg-[#f0ebe0]/[0.12] hover:ring-[#f0ebe0]/30 hover:text-[#f0ebe0]",
                     )}
                   >
                     Log in
@@ -322,7 +456,7 @@ export function LandingPage() {
                 espresso wash and faded out toward the section edges so text
                 stays readable and the texture never fights the content. */}
             <img
-              src="/landing/real-hero.jpg"
+              src="/landing/bn-gym-north.jpg"
               alt=""
               aria-hidden
               className="absolute inset-0 h-full w-full object-cover opacity-45"
@@ -351,12 +485,12 @@ export function LandingPage() {
                 readable. sm:hidden. */}
             <div aria-hidden className="absolute inset-0 sm:hidden">
               <img
-                src="/landing/real-photography.jpg"
+                src="/landing/bn-club-fair.jpg"
                 alt=""
                 className="absolute right-[-8%] top-[5%] w-[52%] rotate-2 rounded-2xl object-cover opacity-75 ring-1 ring-[#f0ebe0]/10 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
               />
               <img
-                src="/landing/real-robotics.jpg"
+                src="/landing/bn-cake-decorating.jpg"
                 alt=""
                 className="absolute left-[-6%] top-[34%] w-[42%] -rotate-3 rounded-xl object-cover opacity-80 ring-1 ring-[#f0ebe0]/10 shadow-[0_14px_36px_rgba(0,0,0,0.5)]"
               />
@@ -415,7 +549,7 @@ export function LandingPage() {
                 </Reveal>
 
                 <Reveal delay={0.18}>
-                  <p className="mt-6 max-w-[34rem] text-base sm:text-lg leading-relaxed text-[#f0ebe0]/65">
+                  <p className="mt-7 max-w-[34rem] text-base sm:text-lg leading-relaxed text-[#f0ebe0]/65">
                     ClubHub is the home for every club at Burnaby North. Browse
                     what&apos;s out there, join in a couple of clicks, and stop
                     running your whole club out of a group chat.
@@ -443,9 +577,6 @@ export function LandingPage() {
                       />
                     </button>
                   </div>
-                  <p className="mt-4 text-sm text-[#f0ebe0]/45">
-                    No account needed to look around.
-                  </p>
                 </Reveal>
               </div>
 
@@ -464,8 +595,8 @@ export function LandingPage() {
                   className="absolute bottom-2 -left-8 h-48 w-48 rounded-full bg-[#f0a876]/[0.1] blur-3xl"
                 />
 
-                {/* Main photo card — the REAL golden-hour campus shot,
-                    rounded soft, floating gently. */}
+                {/* Main photo card — the REAL whole-team shot, fifty
+                    students deep, rounded soft, floating gently. */}
                 <Float
                   className="absolute right-0 top-5 z-10 w-[86%] lg:top-9 lg:w-[76%]"
                   duration={7}
@@ -473,8 +604,8 @@ export function LandingPage() {
                 >
                   <div className="overflow-hidden rounded-[1.5rem] ring-1 ring-[#f0ebe0]/12 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_28px_56px_-18px_rgba(0,0,0,0.55)]">
                     <img
-                      src="/landing/real-campus.jpg"
-                      alt="Students on a sunlit campus staircase"
+                      src="/landing/bn-team-photo.jpg"
+                      alt="The whole club together — fifty students in matching navy shirts"
                       loading="lazy"
                       draggable={false}
                       className="aspect-[4/3] w-full object-cover lg:aspect-[16/10]"
@@ -547,9 +678,15 @@ export function LandingPage() {
             </div>
           </section>
 
-          {/* ── Moments — auto-scrolling strip of real photos + banners ── */}
-          <section aria-label="Club life photos" className="relative overflow-hidden py-12 sm:py-16">
-            <Reveal delay={0.1}>
+          {/* ── By the numbers — a quiet trust band fed by the real
+              directory (clubs listed, members across them, chaos left) ── */}
+          <StatsBand clubs={clubs} loading={isLoading} />
+
+          {/* ── Moments — the auto-scrolling photo strip: ONE calm horizontal
+              row of the students' own photos, edge-faded, pauses on hover.
+              Compact on every screen. ──────────────────────────────────── */}
+          <section aria-label="Club life photos" className="relative overflow-hidden py-10 sm:py-14">
+            <Reveal>
               <div className="landing-marquee-mask overflow-hidden">
                 <div aria-hidden className="landing-marquee flex w-max items-center gap-4 py-2">
                   {[...MOMENTS, ...MOMENTS].map((m, i) => (
@@ -559,16 +696,16 @@ export function LandingPage() {
                       alt={m.alt}
                       loading="lazy"
                       draggable={false}
-                      className="h-36 sm:h-44 w-auto aspect-[7/5] rounded-2xl object-cover ring-1 ring-[#f0ebe0]/10 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_14px_30px_-12px_rgba(0,0,0,0.45)]"
+                      className="h-36 w-auto aspect-[7/5] rounded-2xl object-cover ring-1 ring-[#f0ebe0]/10 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_14px_30px_-12px_rgba(0,0,0,0.45)] sm:h-44"
                     />
                   ))}
                 </div>
               </div>
             </Reveal>
-            <Reveal delay={0.18}>
-              <p className="mx-auto mt-8 max-w-xl text-center font-serif text-lg italic leading-relaxed text-[#f0ebe0]/55">
-                Made for Burnaby North students, by students who lived in Group
-                Chat chaos.
+            <Reveal delay={0.16}>
+              <p className="mx-auto mt-6 max-w-xl text-center font-serif text-lg italic leading-relaxed text-[#f0ebe0]/55 sm:mt-8">
+                Made for Burnaby North students, by students who lived in
+                Group Chat chaos.
               </p>
             </Reveal>
           </section>
@@ -604,7 +741,7 @@ export function LandingPage() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search clubs at North…"
                     aria-label="Search public clubs"
-                    className="h-12 w-full rounded-full border-0 bg-[#221d15] pl-11 pr-12 text-[15px] text-[#f0ebe0] ring-1 ring-[#f0ebe0]/12 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_10px_24px_-14px_rgba(0,0,0,0.5)] placeholder:text-[#f0ebe0]/35 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#22c55e]/50"
+                    className="h-12 w-full rounded-full border-0 bg-[#221d15] pl-11 pr-12 text-[15px] text-[#f0ebe0] ring-1 ring-[#f0ebe0]/15 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_10px_24px_-14px_rgba(0,0,0,0.5)] placeholder:text-[#f0ebe0]/45 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#22c55e]/50"
                   />
                   {query && (
                     <button
@@ -673,17 +810,34 @@ export function LandingPage() {
               <div className="mt-10 sm:mt-14 grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6">
                 {STEPS.map((step, i) => (
                   <Reveal key={step.title} delay={i * 0.08} className="h-full">
-                    <div className={cn(CARD, CARD_HOVER, "h-full p-6 sm:p-7")}>
-                      <div className="flex items-center justify-between">
-                        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#4ade80]/[0.12] text-[#4ade80]">
+                    <div className={cn(CARD, CARD_HOVER, "group h-full overflow-hidden")}>
+                      {/* Real-photo header — the step, seen at North. */}
+                      <div className="relative h-36 overflow-hidden">
+                        <img
+                          src={step.photo}
+                          alt={step.photoAlt}
+                          loading="lazy"
+                          draggable={false}
+                          className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+                        />
+                        <div
+                          aria-hidden
+                          className="absolute inset-0 bg-gradient-to-t from-[#1d1812] via-[#1d1812]/45 to-[#171310]/15"
+                        />
+                        {/* Icon as a glass chip pinned over the photo. */}
+                        <span className="absolute left-5 top-5 grid h-11 w-11 place-items-center rounded-2xl bg-[#171310]/70 text-[#4ade80] ring-1 ring-[#f0ebe0]/15 backdrop-blur-md">
                           <step.icon className="h-5 w-5" aria-hidden />
                         </span>
-                        <span className="font-serif text-sm italic text-[#f0ebe0]/30">
-                          step {step.word}
-                        </span>
                       </div>
-                      <h3 className="mt-5 text-lg font-semibold text-[#f0ebe0]">{step.title}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-[#f0ebe0]/60">{step.body}</p>
+                      <div className="p-6 sm:p-7">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-lg font-semibold text-[#f0ebe0]">{step.title}</h3>
+                          <span className="shrink-0 font-serif text-sm italic text-[#f0ebe0]/45">
+                            step {step.word}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm leading-relaxed text-[#f0ebe0]/60">{step.body}</p>
+                      </div>
                     </div>
                   </Reveal>
                 ))}
@@ -734,12 +888,12 @@ export function LandingPage() {
             <div className="mx-auto max-w-6xl px-5 sm:px-8 py-16 sm:py-24">
               <Reveal>
                 <div className="grid overflow-hidden rounded-[2rem] bg-[#221d15] ring-1 ring-[#f0ebe0]/[0.09] shadow-[0_2px_8px_rgba(0,0,0,0.25),0_36px_72px_-24px_rgba(0,0,0,0.55)] lg:grid-cols-[1fr_1.05fr]">
-                  {/* Softly dimmed REAL photo panel for contrast — students
-                      heads-down together around a table. */}
+                  {/* Softly dimmed REAL photo panel — students heads-down
+                      around a laptop, running the workshop themselves. */}
                   <div className="relative h-48 sm:h-64 overflow-hidden lg:h-auto lg:min-h-[440px]">
                     <img
-                      src="/landing/real-meeting.jpg"
-                      alt="Students leading a club meeting around a table"
+                      src="/landing/bn-classroom-demo.jpg"
+                      alt="Students leading a club workshop around a laptop"
                       loading="lazy"
                       className="absolute inset-0 h-full w-full object-cover"
                     />
@@ -749,7 +903,7 @@ export function LandingPage() {
                       className="absolute inset-0 bg-gradient-to-t from-[#171310]/80 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-[#221d15]/70"
                     />
                     <p className="absolute bottom-4 left-5 font-serif text-sm italic text-[#f0ebe0]/85 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
-                      weekly meetings that (mostly) run themselves
+                      workshops that (mostly) run themselves
                     </p>
                   </div>
 
@@ -798,6 +952,9 @@ export function LandingPage() {
             </div>
           </section>
 
+          {/* ── FAQ — honest answers to what people actually ask ────────── */}
+          <FaqSection />
+
           {/* ── Sign-off — one warm, human line before the footer ────────── */}
           <section aria-label="Closing note" className="pb-16 sm:pb-24">
             <Reveal>
@@ -819,7 +976,7 @@ export function LandingPage() {
         </main>
 
         {/* ── Footer — soft, quiet, bottom of the page ────────────────────── */}
-        <footer className="mt-auto border-t border-[#f0ebe0]/[0.07] bg-[#141110]">
+        <footer className="mt-auto border-t border-[#f0ebe0]/[0.09] bg-[#141110]">
           <div className="mx-auto max-w-6xl px-5 sm:px-8 py-10 flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="text-center sm:text-left">
               <p className="font-display text-base font-bold tracking-tight text-[#f0ebe0]">
@@ -828,8 +985,8 @@ export function LandingPage() {
               <p className="mt-2.5 text-sm text-[#f0ebe0]/55">
                 Built for students at Burnaby North Secondary.
               </p>
-              <p className="mt-1 text-xs text-[#f0ebe0]/30 select-none">
-                made by Aaron Shan · v7
+              <p className="mt-1 text-xs text-[#f0ebe0]/35 select-none">
+                Made by Aaron Shan · v{APP_VERSION}
               </p>
             </div>
             <nav className="flex flex-wrap items-center justify-center gap-1.5" aria-label="Footer">
@@ -950,6 +1107,227 @@ function Eyebrow({
 }
 
 // ---------------------------------------------------------------------------
+// Stats band — quiet trust strip under the hero (real directory numbers)
+// ---------------------------------------------------------------------------
+
+/** Animated numeral — counts 0 → value the first time it scrolls into view.
+ *  Rendering goes through a MotionValue so the text updates outside React;
+ *  under prefers-reduced-motion (honored via the page's MotionConfig
+ *  reducedMotion="user") it jumps straight to the final value. */
+function CountUp({
+  value,
+  duration = 1.1,
+  delay = 0,
+}: {
+  value: number
+  duration?: number
+  delay?: number
+}) {
+  const reduced = useReducedMotion()
+  const ref = useRef<HTMLSpanElement>(null)
+  const inView = useInView(ref, { once: true, margin: "-60px" })
+  const count = useMotionValue(0)
+  const display = useTransform(count, (latest) => Math.round(latest).toLocaleString("en-US"))
+
+  useEffect(() => {
+    if (!inView) return
+    // Reduced motion, or a target of zero (the "chaos remaining" gag):
+    // land instantly — no count-up theatre.
+    if (reduced || value === 0) {
+      count.set(value)
+      return
+    }
+    const controls = animate(count, value, { duration, delay, ease: EASE })
+    return () => controls.stop()
+  }, [inView, reduced, value, duration, delay, count])
+
+  // aria-hidden: the final value also ships as sr-only text beside this
+  // span, so screen readers get the number without the per-frame chatter.
+  return (
+    <motion.span ref={ref} aria-hidden>
+      {display}
+    </motion.span>
+  )
+}
+
+/** StatsBand — three REAL numbers pulled from the public clubs query, no
+ *  fabrication: how many clubs are listed, how many members sit across them,
+ *  and how much group-chat chaos remains (always zero — that's the pitch).
+ *  ONE slim horizontal strip on every screen — the three stats sit side by
+ *  side even on phones, numbers scaled down so the band never towers. */
+function StatsBand({ clubs, loading }: { clubs: PublicClubSummary[]; loading: boolean }) {
+  const members = clubs.reduce((sum, club) => sum + club.memberCount, 0)
+
+  const stats: { value: number; label: string; green?: boolean }[] = [
+    { value: clubs.length, label: "clubs on the directory" },
+    { value: members, label: "members across them" },
+    { value: 0, label: "chaos remaining", green: true },
+  ]
+
+  return (
+    <section aria-label="ClubHub by the numbers" className="border-y border-[#f0ebe0]/[0.07] bg-[#1d1812]">
+      <div className="mx-auto max-w-6xl px-4 sm:px-8">
+        <Reveal>
+          <dl className="grid grid-cols-3">
+            {stats.map((stat, i) => (
+              <div
+                key={stat.label}
+                className={cn(
+                  "flex flex-col-reverse items-center justify-center gap-1 py-4 sm:gap-2 sm:py-7",
+                  // Hairline rules between the three side-by-side columns —
+                  // the band is one horizontal strip at every breakpoint.
+                  i < stats.length - 1 && "border-r border-[#f0ebe0]/[0.09]",
+                )}
+              >
+                <dt className="px-1 text-center text-[10px] leading-tight text-[#f0ebe0]/[0.42] sm:text-sm">
+                  {stat.label}
+                </dt>
+                <dd
+                  className="font-display text-2xl font-bold tabular-nums tracking-tight sm:text-4xl"
+                  style={{
+                    lineHeight: 1.06,
+                    color: stat.green ? GREEN_DISPLAY : INK,
+                  }}
+                >
+                  {loading ? (
+                    <span
+                      aria-hidden
+                      className="block h-[1.05em] w-[1.4em] animate-pulse rounded-lg bg-[#f0ebe0]/[0.07]"
+                    />
+                  ) : (
+                    <>
+                      <span className="sr-only">{stat.value.toLocaleString("en-US")}</span>
+                      <CountUp value={stat.value} delay={i * 0.12} />
+                    </>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// FAQ — hairline accordion, one row open at a time (+ FAQPage JSON-LD)
+// ---------------------------------------------------------------------------
+
+/** FaqSection — six honest questions in the site's voice. Full-width rows
+ *  separated by hairlines (no card boxes), single-open accordion, chevron
+ *  rotates 180°, and the whole row is the button. */
+function FaqSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+  return (
+    <section aria-labelledby="faq-title">
+      <div className="mx-auto max-w-6xl px-5 sm:px-8 py-16 sm:py-24">
+        <Reveal>
+          <div className="max-w-xl">
+            <Eyebrow>FAQ</Eyebrow>
+            <h2
+              id="faq-title"
+              className="mt-4 font-display text-3xl sm:text-4xl font-bold tracking-tight text-balance text-[#f0ebe0]"
+            >
+              Questions, answered.
+            </h2>
+            <p className="mt-4 text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
+              The stuff people actually ask us, answered plainly.
+            </p>
+          </div>
+        </Reveal>
+
+        <Reveal delay={0.08}>
+          <div className="mt-10 sm:mt-12 max-w-3xl">
+            {FAQS.map((item, i) => (
+              <FaqItem
+                key={item.q}
+                item={item}
+                index={i}
+                open={openIndex === i}
+                onToggle={() => setOpenIndex(openIndex === i ? null : i)}
+              />
+            ))}
+          </div>
+        </Reveal>
+
+        {/* Structured data — the single FAQPage JSON-LD for this page. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSONLD) }}
+        />
+      </div>
+    </section>
+  )
+}
+
+/** One FAQ row — a full-width button (≥44px touch target) + an animated
+ *  panel. Opening a row collapses its siblings (single-open, owned by the
+ *  parent). Reduced motion collapses the animations to instant swaps. */
+function FaqItem({
+  item,
+  index,
+  open,
+  onToggle,
+}: {
+  item: { q: string; a: string }
+  index: number
+  open: boolean
+  onToggle: () => void
+}) {
+  const reduced = useReducedMotion()
+  const buttonId = `faq-question-${index}`
+  const panelId = `faq-answer-${index}`
+
+  return (
+    <div className="border-b border-[#f0ebe0]/[0.09] last:border-b-0">
+      <h3>
+        <button
+          type="button"
+          id={buttonId}
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
+          // Pin the theme ring var to the landing green so the global
+          // :focus-visible ring reads green on this always-dark page.
+          style={{ "--ring": GREEN_DISPLAY } as CSSProperties}
+          className="group flex min-h-[44px] w-full items-center justify-between gap-4 rounded-2xl py-5 pl-4 -ml-4 text-left outline-none transition-colors hover:bg-[#f0ebe0]/[0.035] focus-visible:ring-2 focus-visible:ring-[#4ade80]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#171310]"
+        >
+          <span className="text-[15px] sm:text-base font-semibold leading-snug text-[#f0ebe0]">
+            {item.q}
+          </span>
+          {/* The chevron — spins 180° when open (instant under reduced
+              motion, where globals.css also freezes transforms). */}
+          <motion.span
+            aria-hidden
+            animate={{ rotate: open ? 180 : 0 }}
+            transition={reduced ? { duration: 0 } : { duration: 0.3, ease: EASE }}
+            className="grid h-6 w-6 shrink-0 place-items-center text-[#f0ebe0]/[0.45] transition-colors group-hover:text-[#f0ebe0]"
+          >
+            <ChevronDown className="h-[18px] w-[18px]" aria-hidden />
+          </motion.span>
+        </button>
+      </h3>
+      <motion.div
+        id={panelId}
+        role="region"
+        aria-labelledby={buttonId}
+        aria-hidden={!open}
+        initial={false}
+        animate={open ? { height: "auto", opacity: 1 } : { height: 0, opacity: 0 }}
+        transition={reduced ? { duration: 0 } : { duration: 0.38, ease: EASE }}
+        className="overflow-hidden"
+      >
+        <p className="max-w-2xl pb-6 pl-4 pr-10 text-sm sm:text-[15px] leading-relaxed text-[#f0ebe0]/60">
+          {item.a}
+        </p>
+      </motion.div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Club card — banner-first, big + visual, soft corners, hover lift.
 // ---------------------------------------------------------------------------
 
@@ -962,7 +1340,16 @@ function PublicClubCard({ club }: { club: PublicClubSummary }) {
     <Link
       href={`/?public=${encodeURIComponent(club.clubCode)}`}
       aria-label={`View ${club.name} club profile`}
-      className={cn(CARD, CARD_HOVER, "group block overflow-hidden")}
+      className={cn(
+        CARD,
+        CARD_HOVER,
+        "group block overflow-hidden outline-none",
+        // A touch more lift than the generic card hover, an accent ring
+        // in the landing green, and a matching keyboard focus ring — the
+        // whole card stays ONE tap target (the Link wraps everything).
+        "hover:-translate-y-1.5 hover:shadow-[0_2px_10px_rgba(0,0,0,0.28),0_28px_56px_-18px_rgba(0,0,0,0.55)] hover:ring-[#4ade80]/[0.3]",
+        "focus-visible:ring-2 focus-visible:ring-[#4ade80]/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#171310]",
+      )}
     >
       {/* Banner — real club banner where set, quiet accent wash fallback.
           Tall + object-cover keeps the grid lush even when clubs upload
@@ -993,8 +1380,10 @@ function PublicClubCard({ club }: { club: PublicClubSummary }) {
           aria-hidden
           className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent"
         />
-        {/* Join mode chip — dark glass pill, top-right. */}
-        <span className="absolute right-3.5 top-3.5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-[#f0ebe0] shadow-sm backdrop-blur-md">
+        {/* Join mode chip — dark glass pill, top-right. Micro-scales with
+            the card hover (as does the logo tile below) so the whole card
+            feels alive under the cursor. */}
+        <span className="absolute right-3.5 top-3.5 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-[#f0ebe0] shadow-sm backdrop-blur-md transition-transform duration-300 group-hover:scale-[1.05]">
           {needsApproval ? (
             <UserCheck className="h-3.5 w-3.5 text-[#4ade80]" aria-hidden />
           ) : (
@@ -1005,7 +1394,7 @@ function PublicClubCard({ club }: { club: PublicClubSummary }) {
         {/* Logo tile + name riding the fade. */}
         <div className="absolute bottom-0 inset-x-0 p-4 flex items-end gap-3 min-w-0">
           <span
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl overflow-hidden text-sm font-bold ring-2 ring-white/60 shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl overflow-hidden text-sm font-bold ring-2 ring-white/60 shadow-[0_4px_12px_rgba(0,0,0,0.35)] transition-transform duration-300 ease-out group-hover:scale-[1.07]"
             style={{
               backgroundColor: club.accentColor,
               color: readableForeground(club.accentColor),
@@ -1028,7 +1417,7 @@ function PublicClubCard({ club }: { club: PublicClubSummary }) {
         <p className="text-sm leading-relaxed text-[#f0ebe0]/60 line-clamp-2 min-h-[2.6rem]">
           {club.description ?? "A club at Burnaby North."}
         </p>
-        <div className="mt-3 flex items-center gap-2 text-xs text-[#f0ebe0]/40">
+        <div className="mt-4 flex items-center gap-2 text-xs text-[#f0ebe0]/40">
           <span
             aria-hidden
             className="h-2 w-2 shrink-0 rounded-full"
@@ -1039,9 +1428,11 @@ function PublicClubCard({ club }: { club: PublicClubSummary }) {
           </span>
         </div>
         <div className="mt-4 flex items-center justify-between border-t border-[#f0ebe0]/[0.08] pt-3.5">
-          <span className="text-sm font-semibold text-[#4ade80]">View club</span>
+          <span className="text-sm font-semibold text-[#4ade80] transition-colors duration-200 group-hover:text-[#86efac]">
+            View club
+          </span>
           <ArrowRight
-            className="h-4 w-4 text-[#4ade80] transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-0.5"
+            className="h-4 w-4 text-[#4ade80] transition-all duration-200 group-hover:translate-x-1 group-hover:-translate-y-0.5 group-hover:text-[#86efac]"
             aria-hidden
           />
         </div>
@@ -1062,8 +1453,9 @@ function EmptyDirectory() {
       </div>
       <h3 className="text-base font-semibold text-[#f0ebe0]">No clubs are listed yet</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#f0ebe0]/55">
-        Clubs choose whether to appear here. Club leaders can turn this on
-        from <span className="font-semibold text-[#f0ebe0]">Members → Club settings</span>.
+        New clubs show up here automatically. Club leaders can manage their
+        listing from{" "}
+        <span className="font-semibold text-[#f0ebe0]">Members → Club settings</span>.
       </p>
     </div>
   )
@@ -1084,7 +1476,7 @@ function NoMatchState({ query, onClear }: { query: string; onClear: () => void }
         onClick={onClear}
         className={cn(
           PILL_BASE,
-          "mt-5 h-10 px-5 text-sm text-[#f0ebe0] bg-[#f0ebe0]/[0.06] ring-1 ring-[#f0ebe0]/15 hover:bg-[#f0ebe0]/[0.1]",
+          "mt-5 h-11 px-5 text-sm text-[#f0ebe0] bg-[#f0ebe0]/[0.06] ring-1 ring-[#f0ebe0]/15 hover:bg-[#f0ebe0]/[0.1]",
         )}
       >
         Clear search

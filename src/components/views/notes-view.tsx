@@ -749,7 +749,6 @@ function NoteComposerDialog({
   const [newTagName, setNewTagName] = React.useState("")
   const [creatingTag, setCreatingTag] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
-  const contentRef = React.useRef<HTMLTextAreaElement>(null)
 
   const maxContent = caps?.maxContentChars ?? 5000
   const maxTitle = caps?.maxTitleChars ?? 120
@@ -763,15 +762,8 @@ function NoteComposerDialog({
     }
   }, [open, mode, note])
 
-  // Auto-grow the textarea on input. The default Textarea uses field-sizing
-  // which grows naturally, but we cap the height so a long note doesn't push
-  // the action buttons off-screen.
-  React.useEffect(() => {
-    const el = contentRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 480)}px`
-  }, [state.content])
+  // NOTE: no JS auto-grow here (iOS Safari keyboard fix) — the textarea
+  // keeps a static shape (min-h) and scrolls internally for long notes.
 
   // Lazy-load the member list only when the note goes private. Public notes
   // never need the member list — saves a request on the common case.
@@ -910,7 +902,6 @@ function NoteComposerDialog({
               </span>
             </div>
             <Textarea
-              ref={contentRef}
               id="note-content"
               value={state.content}
               onChange={(e) => setState((s) => ({ ...s, content: e.target.value.slice(0, maxContent) }))}
@@ -1091,13 +1082,13 @@ function NotesLoadingSkeleton() {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="card-quiet p-4 space-y-3">
-          <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
-          <div className="h-3 w-full rounded bg-muted animate-pulse" />
-          <div className="h-3 w-5/6 rounded bg-muted animate-pulse" />
-          <div className="h-3 w-3/4 rounded bg-muted animate-pulse" />
+          <div className="h-4 w-2/3 rounded skeleton-shimmer" />
+          <div className="h-3 w-full rounded skeleton-shimmer" />
+          <div className="h-3 w-5/6 rounded skeleton-shimmer" />
+          <div className="h-3 w-3/4 rounded skeleton-shimmer" />
           <div className="flex items-center justify-between pt-2 border-t border-border/60">
-            <div className="h-6 w-24 rounded bg-muted animate-pulse" />
-            <div className="h-6 w-10 rounded bg-muted animate-pulse" />
+            <div className="h-6 w-24 rounded skeleton-shimmer" />
+            <div className="h-6 w-10 rounded skeleton-shimmer" />
           </div>
         </div>
       ))}
