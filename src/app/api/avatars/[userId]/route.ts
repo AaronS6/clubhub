@@ -5,7 +5,8 @@ import { readImage } from "@/lib/image-store"
  * GET /api/avatars/[userId]?v=…
  *
  * Public (no auth — images are visible to club members anyway and userIds are
- * unguessable cuids). Serves the JPEG stored on disk by /api/me/avatar with
+ * unguessable cuids). Serves the JPEG stored in the `StoredImage` DB table
+ * by /api/me/avatar with
  * immutable caching: the `?v=` version param changes on every re-upload, so
  * browsers can cache each version forever.
  */

@@ -225,3 +225,83 @@ Work Log:
 
 Stage Summary:
 - Introduction guide header is now wordmark-only — no C logo tile. Everything else in the modal (progress bar, step counter, close button) untouched.
+
+---
+Task ID: 14 (re-applied after environment loss)
+Agent: Z.ai Code (main orchestrator)
+Task: Render build-log fix — silence the build-time sitemap PrismaClientInitializationError. (Originally completed and committed as 22ef4d3 in the previous sandbox; the environment was migrated and the work had to be re-applied on top of the GitHub restore in Task 16.)
+
+Work Log:
+- .dockerignore: added `.env` + `.env.*` (with comment) — local env never enters the Docker build context (was the root cause: leaked SQLite DATABASE_URL + Dockerfile sed flipping provider to postgresql → caught error in Render build logs).
+- src/app/sitemap.ts: DB query gated on `process.env.NEXT_PHASE !== PHASE_PRODUCTION_BUILD` — no DB attempt during `next build`; dev + runtime query normally; ISR self-heals the deployed sitemap.
+- render.yaml: NEXTAUTH_URL clubhub-web.onrender.com → myclubhub.onrender.com.
+
+Stage Summary:
+- Render builds silent; runtime DATABASE_URL still set via Render dashboard (Supabase pooler URL).
+
+---
+Task ID: 15 (re-applied after environment loss)
+Agent: Z.ai Code (main orchestrator)
+Task: v7.5 release notes expanded to "the biggest update in ClubHub history" — full v7.0→v7.5 recap. (Originally committed as 7c28a2b in the previous sandbox; re-applied after the environment migration.)
+
+Work Log:
+- src/lib/whats-new.ts: WHATS_NEW_VERSION ack key "7.5" → "7.5.1" (re-arms the once-per-visitor cycle for the expanded notes); notif message → "ClubHub v7.5 — the biggest update yet. Tap to see what's new".
+- src/components/whats-new-modal.tsx: rewritten — title "v7.5 — the biggest update in ClubHub history." (displays APP_VERSION); 3 sections via new SectionLabel: v7.0 The redesign (landing, Explore Clubs, join modes, banners, avatar outer effects + "Choose your effect" CTA → open-settings profile tab), v7.1→v7.4 The polish rounds (shortcuts, iOS keyboard fix, stats+FAQ, finishing touches), v7.5 Your school your photos.
+- src/components/app-shell.tsx: bell section label uses APP_VERSION ("ClubHub v7.5"), not the ack key.
+- src/lib/version.ts: comment documents the ack-key/display split.
+
+Stage Summary:
+- Everyone — including dismissers of the shorter v7.5 notes — sees the full story once; user-facing surfaces all read v7.5.
+
+---
+Task ID: 16
+Agent: Z.ai Code (main orchestrator)
+Task: User: "copy any missing code from https://github.com/AaronS6/clubhub — see if the code you have matches, if it doesn't fix it."
+
+Work Log:
+- DIAGNOSED: the sandbox environment was migrated to a new machine between sessions; the working tree had silently regressed to an early-stage snapshot (src/lib had only db.ts + utils.ts; no whats-new/version/site/middleware; no public/landing photos; no Dockerfile/DEPLOY/worklog; empty DB) while a dev server served GET / 200s from that ancient code. Local .git was a fresh single "Initial commit" with no remotes.
+- Re-added origin (https://github.com/AaronS6/clubhub) and fetched: origin/main HEAD a38d5fa = the complete Task-13 state (verified: worklog entries through Task 13, isListedPublic @default(true), devIndicators:false, v9 screenshots). Tasks 14/15 (Render fix + whats-new expansion) were never pushed — they existed only in the lost sandbox — so they were re-applied by hand from the conversation record.
+- RESTORED via `git checkout origin/main -- . ':(exclude).env'`: full src/ (26 lib files), prisma, public/landing (36 photos), mini-services/realtime, Dockerfile/DEPLOY/render.yaml/supabase SQL/scripts, gdrive-new source photos, upload/ verification screenshots, worklog.md. Local .env deliberately kept (GitHub's tracked .env has a hard-coded NEXTAUTH_URL=http://localhost:3000 that would break gateway auth; the local one has AUTH_TRUST_HOST=1 + commented NEXTAUTH_URL per 2a6cca6). db/ + Caddyfile + .zscripts + examples/ (untracked sandbox infra) untouched. Disk-vs-origin hash comparison after restore: only .env differs — by design.
+- DATABASE: migration also wiped db/custom.db (no tables). Re-pushed schema (`bun run db:push`) and re-ran both seeds: Robotics Club ROBOTIX (7 members + full demo data), Photography Club PHOTOS1 (4 members), Debate Society DEBATE (3 members, request-to-join) — 3 clubs / 14 members, matching the pre-migration state. Login: alex@clubhub.example / ClubHub2026!.
+- PROCESS MANAGEMENT DISCOVERY: the new machine kills every background process at each Bash-command boundary (even setsid+nohup+disown — the processes were still fork-tree children of the command shell). Solution: double-fork daemonization via subshell `( setsid nohup CMD … < /dev/null & )` — the subshell exits instantly, reparenting the service to init. Verified a `sleep 600` survives command boundaries; then used the pattern for both services.
+- SERVICES: bun install (17 pkgs incl. react-easy-crop/resend/socket.io-client) + prisma generate; realtime mini-service on 3003/3004 + Next dev on 3000 — both surviving across commands.
+- RE-APPLIED Task 14 (sitemap PHASE_PRODUCTION_BUILD gate, .dockerignore .env lines, render.yaml myclubhub URL) and Task 15 (whats-new 7.5.1 ack key + "biggest update" modal + app-shell APP_VERSION label + version.ts comment) exactly as originally built.
+- VERIFIED through gateway :81: tsc 0 errors; lint clean; /sitemap.xml lists all 3 public clubs; landing = full v7.5 state (56 images, 0 broken, marquee animating via landing-marquee keyframes, stats band, "Made by Aaron Shan", no stock eyebrow); simulated returning visitor → What's New modal auto-opens with the 3 sections + 11 notes; login → greeting "Good morning, Alex", dashboard renders (VLM 9/10, "no broken UI or defects"); exec handbook acknowledged for all 3 clubs (fresh DB → shows once per club, by design); bell shows "ClubHub v7.5" + biggest-update message with no ack-key leak; chat view + composer render; mobile 390px no horizontal overflow; dev.log + console clean. Screenshots: upload/restore-whatsnew.png, restore-dashboard.png, restore-chat.png, restore-landing-mobile.png.
+
+Stage Summary:
+- The sandbox now matches GitHub exactly (through Task 13) PLUS the re-applied Task 14/15 work — i.e., the newest ClubHub state, fully rebuilt and verified: code, database, seeds, realtime service, and the persistent dev server. Remaining for the user: push the new commit from your machine (the sandbox cannot push) so GitHub gains Tasks 14/15 too.
+
+---
+Task ID: 17
+Agent: Z.ai Code (main orchestrator)
+Task: User: "check if the new code is still there if not copy from https://github.com/AaronS6/clubhub"
+
+Work Log:
+- CODE VERIFIED INTACT: git fetch origin → no new commits (origin/main still a38d5fa); local HEAD 9d3ef83 contains a38d5fa's full tree + re-applied Task 14/15. All markers grep-confirmed: sitemap.ts PHASE_PRODUCTION_BUILD gate, .dockerignore .env/.env.*, render.yaml myclubhub.onrender.com, whats-new.ts WHATS_NEW_VERSION "7.5.1" + biggest-update notes, app-shell APP_VERSION bell label. git diff origin/main --diff-filter=D → zero files missing; 135 "M" entries are mode-only changes (100644→100755 filesystem artifact) + .zscripts/dev.pid PID change — no content regressions. Conclusion: NO copy from GitHub needed — the sandbox is AHEAD of GitHub (Tasks 14/15 were never pushed).
+- SERVICES STILL UP from previous session: next dev on :3000 (200s in dev.log), realtime mini-service on :3003/:3004.
+- DATABASE WAS WIPED AGAIN by the environment migration (db/custom.db had tables but 0 clubs / 0 users — same failure mode as Task 16). Re-pushed schema (bun run db:push, client regenerated) and re-ran both idempotent seeds: seed-example-account.ts (Robotics ROBOTIX, 7 members, login alex@clubhub.example / ClubHub2026!) + seed-public-clubs.ts (Photography PHOTOS1 4 members, Debate DEBATE 3 members request-to-join) → 3 clubs / 14 members / 12 users, public=true all.
+- BROWSER-VERIFIED end-to-end: landing renders (56 images, marquee, stats, "Made by Aaron Shan", directory lists all 3 seeded clubs, 0 console errors); login → dashboard with seeded urgent announcement + notifications; acknowledged exec handbook for all 3 clubs (shows once per fresh DB, by design) and skipped setup tour; Chat view → composer + sent "Restore check" message → appeared in thread AND persisted in DB (prisma query 1 row); /sitemap.xml lists all 3 public clubs (Task 14 gate working); mobile 390px zero horizontal overflow; dev.log clean (no errors/warnings).
+- Screenshots: upload/check-code-restored.png (landing full page), check-code-restored-dashboard.png, check-code-restored-chat.png, check-code-restored-mobile.png.
+
+Stage Summary:
+- The new code was NEVER lost — the full Task-13 GitHub state + Task 14/15 re-applies are all present and verified running. Only the DB needed re-seeding after the silent environment wipe; now fully restored (3 clubs / 14 members) and browser-verified through the golden path. GitHub remains 2 tasks behind the sandbox — pushing the local commit 9d3ef83 from the user's machine will sync Tasks 14/15 up to GitHub.
+
+---
+Task ID: 18
+Agent: Z.ai Code (main orchestrator)
+Task: User: (1) remove the bot-detection thing from login/signup — many find it difficult; (2) club logo + banner sometimes disappear for no reason; (3) make the "main goal" thing more modern/clean/smaller.
+
+Work Log:
+- INVESTIGATED "bot detection": there is no captcha widget anywhere — the friction is the RATE LIMITING on auth: /api/auth/signup capped 5 signups/IP/hour (a school NATs an entire campus to one IP → the 6th+ student is blocked with 429 "Too many signups") and authOptions authorize() capped logins 10/email + 30/IP per 5 min (silently returns null = "Invalid email or password" even with correct creds). That is exactly what users experience as bot detection.
+- FIX 1 — REMOVED RATE LIMITS FROM AUTH: signup route's IP limit deleted (zod validation + password strength + unique-email constraint remain); authOptions' per-email/per-IP login limits deleted (comments document why: school NAT). Forgot/reset/join/chat rate limits untouched (not login/signup; forgot/reset protect email-sending cost).
+- INVESTIGATED disappearing logo/banner: images lived as JPEGs on DISK under storage/ (not in git, not in the DB) while Club/User rows keep /api/... URLs — every ephemeral-filesystem event (sandbox migration, Render redeploy, free-tier sleep/wake) wipes the files and the URLs 404 → "disappears for no reason". storage/ was literally missing in this sandbox right now.
+- FIX 2 — DB-BACKED IMAGE STORE: new prisma model StoredImage { key @id, kind, data Bytes, version, timestamps } (schema pushed, client regenerated); src/lib/image-store.ts rewritten — saveImage upserts bytes into the table, readImage reads the DB AND falls back to legacy disk files with SELF-HEAL import (a machine that still has storage/ migrates transparently on first read), deleteImage removes row + legacy file, publicUrl unchanged. Same exported API → logo/banner/avatar routes untouched. Route comments updated to say StoredImage instead of storage/ paths.
+- FIX 3 — MAIN GOAL REDESIGNED: tasks-view MainGoalCard read-state is now ONE compact 50px bar (was a ~96-116px card): tinted Target chip (size-7 rounded-lg) · "Main goal" caption label (hidden on mobile) · hairline divider · truncated one-line goal text (title tooltip for full text) · icon-only edit (Pencil when set / Plus when empty, exec-only, 32px button). Editing state now mirrors the TeamMainIdeaChip editor (p-3 card, 64px textarea, inline counter, right-aligned Save/Cancel) so both surfaces read as one family. Empty state is the same slim bar with muted italic hint.
+- TYPING FIX: Prisma Bytes wants Uint8Array<ArrayBuffer> — toBytes() helper copies Node Buffers via the length constructor (out.set(b)); explicit return annotation needed because plain Uint8Array widens to ArrayBufferLike.
+- DEV SERVER RESTARTED (running server had the pre-StoredImage Prisma client cached → db.storedImage was undefined → 500s on image routes). Double-fork relaunch pattern reused; 500 → proper 404 for missing keys after restart.
+- VERIFIED: 7 rapid same-IP signups all 200 (was 429 at #6) + 13 rapid bad logins all pass through normal auth; test users cleaned up. Banner uploaded via the real exec dialog (Edit banner → upload real-campus.jpg → Save banner) → StoredImage row created, serves 200 image/jpeg 93KB, renders on dashboard; logo uploaded via API with session cookie → serves 5.3KB; BOTH survive TWO full dev-server restarts with storage/ absent — the disappearing scenario is structurally fixed. Legacy self-heal proven: planted a disk file with no DB row → GET served it AND imported it into the DB automatically. UI signup end-to-end instant (no friction) → landed in the clubs onboarding state. Main goal bar: 50px read-state (both themes, desktop + 390px mobile, zero horizontal overflow), goal saved via editor, persists across reload, truncation + title tooltip working. Landing: 57 images 0 broken, club logo now serves from the DB route on the public directory. tsc 0 errors, lint clean, dev.log clean. Screenshots: upload/fix3-dashboard.png, fix3-banner-uploaded.png, fix3-banner-live.png, fix3-banner-logo-live.png, fix3-maingoal-empty.png, fix3-maingoal-set.png, fix3-maingoal-mobile.png, fix3-maingoal-dark.png, fix3-landing-final.png.
+
+Stage Summary:
+- Login/signup: zero rate-limit friction left — a whole school behind one IP can sign up and sign in freely.
+- Logos/banners/avatars now live in the database (the only durable store in every deployment) with automatic migration of any legacy disk files — they can no longer disappear on redeploy, restart, or environment migration.
+- Main goal: one clean 50px line (icon · label · truncated goal · edit affordance) that never eats the task list's vertical space; editor matches the team-idea chips.

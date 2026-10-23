@@ -14,7 +14,7 @@ const AVATAR_QUALITY = 80
  * POST /api/me/avatar
  * Accepts a multipart file upload (field name "file"), processes it with
  * sharp (resize 256×256, JPEG q80), and stores the result as a JPEG file in
- * `storage/avatars/{userId}.jpg`. The DB keeps only a short URL
+ * the `StoredImage` DB table (key = userId). The DB User row keeps only a short URL
  * (`/api/avatars/{userId}?v=…` served by the cached public route).
  * Returns { avatarUrl }.
  *

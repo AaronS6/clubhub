@@ -644,3 +644,28 @@ model NoteHeart {
   @@unique([noteId, userId])
   @@index([noteId])
 }
+
+// ---------------------------------------------------------------------------
+// Stored images (avatars, club logos/banners)
+// ---------------------------------------------------------------------------
+// Images used to live as JPEG files on disk under `storage/` — but the disk is
+// EPHEMERAL: sandbox migrations, Render redeploys and free-tier sleep/wake
+// cycles all start with a fresh filesystem, so clubs' logos and banners would
+// silently vanish while the DB kept pointing at `/api/club-images/{key}?v=…`
+// ("disappears for no reason"). Rows here make the DATABASE (the only durable
+// store in every deployment) the source of truth. The `data` blob is capped by
+// the upload routes (≤140KB banners, ~20-60KB logos/avatars) and lives in its
+// OWN table, so Club/Member/User rows keep short URLs and payloads stay small.
+model StoredImage {
+  // Same key as the old disk filename: `{clubId}-logo`, `{clubId}-banner`, or a
+  // userId for avatars. Validated by image-store's KEY_RE (no path traversal).
+  key       String   @id
+  // "avatar" | "club-image" — mirrors image-store's ImageKind.
+  kind      String
+  // Processed JPEG bytes (sharp-resized + compressed before landing here).
+  data      Bytes
+  // Bumped on every save; used for the immutable-cache-busting `?v=` param.
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

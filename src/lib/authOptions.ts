@@ -3,7 +3,6 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 import { db } from "@/lib/db"
 import { verifyPassword } from "@/lib/auth"
-import { rateLimit } from "@/lib/rate-limit"
 
 /**
  * ⚠️ FAIL CLOSED in production: the historic fallback secret is committed to
@@ -29,19 +28,11 @@ function requireSessionSecret(): string {
   return secret ?? "dev-secret-change-me-in-production"
 }
 
-/** Best-effort client IP (behind the Caddy gateway / Render's proxy). */
-function clientIpFromHeaders(h: Headers): string {
-  const xff = h.get("x-forwarded-for")
-  if (xff) return xff.split(",")[0].trim()
-  return h.get("x-real-ip") ?? "unknown"
-}
-
-// Brute-force guard on the credentials login: per-email (tighter) and
-// per-IP (catches one attacker spraying many emails) sliding windows.
-const LOGIN_EMAIL_LIMIT = 10 // attempts …
-const LOGIN_EMAIL_WINDOW = 5 * 60_000 // …per 5 minutes
-const LOGIN_IP_LIMIT = 30
-const LOGIN_IP_WINDOW = 5 * 60_000
+// NOTE: no per-email/per-IP login rate limiting by design. School networks
+// NAT an entire campus (or a computer lab signing in at once) behind ONE
+// public IP, so IP-based caps lock real students out of their accounts and
+// read as "bot detection" to them. Password hashing + the silent null return
+// remain the anti-brute-force posture.
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days
@@ -63,20 +54,6 @@ export const authOptions: NextAuthOptions = {
         try {
           if (!credentials?.email || !credentials?.password) return null
           const email = credentials.email.toLowerCase().trim()
-
-          // Rate limit BEFORE touching bcrypt/the DB (also blunts timing oracles
-          // and password-guessing). Deliberately returns the same null as a
-          // wrong-password so the response can't reveal which check failed.
-          const headers = (req as any)?.headers ?? new Headers()
-          const ip = clientIpFromHeaders(
-            headers instanceof Headers ? headers : new Headers(headers as Record<string, string>),
-          )
-          const emailOk = rateLimit(`login:email:${email}`, LOGIN_EMAIL_LIMIT, LOGIN_EMAIL_WINDOW)
-          const ipOk = rateLimit(`login:ip:${ip}`, LOGIN_IP_LIMIT, LOGIN_IP_WINDOW)
-          if (!emailOk.ok || !ipOk.ok) {
-            console.warn(`[auth] rate-limited login: email=${email} ip=${ip}`)
-            return null
-          }
 
           const user = await db.user.findUnique({ where: { email } })
           if (!user) return null

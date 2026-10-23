@@ -4,9 +4,10 @@ import { readImage } from "@/lib/image-store"
 /**
  * GET /api/club-images/[key]?v=…
  *
- * Public (no auth — see /api/avatars). Serves club logos/banners stored on
- * disk by /api/clubs/[clubId]/logo|banner, where `key` is `{clubId}-logo` or
- * `{clubId}-banner`. Immutable caching keyed off the `?v=` version param.
+ * Public (no auth — see /api/avatars). Serves club logos/banners stored in
+ * the `StoredImage` DB table by /api/clubs/[clubId]/logo|banner, where `key`
+ * is `{clubId}-logo` or `{clubId}-banner`. Immutable caching keyed off the
+ * `?v=` version param.
  */
 export async function GET(
   _req: Request,

@@ -759,38 +759,16 @@ function MainGoalCard({
     }
   }
 
-  // Empty-state card: no main goal yet. Exec sees a "Set the main goal" CTA;
-  // members see a neutral "no main goal set" line.
-  if (!mainGoal && !editing) {
-    return (
-      <div className="card-quiet p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-        <div className="flex size-9 items-center justify-center rounded-full bg-club-subtle text-club-ink shrink-0">
-          <Target className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-card-title">Main goal</div>
-          <p className="text-body text-muted-foreground mt-0.5">
-            No main goal set yet{isExec ? " — tell everyone what the club is working on." : "."}
-          </p>
-        </div>
-        {isExec && (
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="shrink-0">
-            <Pencil className="size-4" />
-            <span className="hidden sm:inline">Set main goal</span>
-            <span className="sm:hidden">Set</span>
-          </Button>
-        )}
-      </div>
-    )
-  }
-
+  // Editing state — compact card mirroring the TeamMainIdeaChip editor so the
+  // two surfaces read as one family. Small textarea, inline counter,
+  // right-aligned Save/Cancel.
   if (editing) {
     return (
-      <div className="card-quiet p-4 sm:p-5 shadow-popover">
-        <div className="flex items-center gap-2 mb-2">
-          <Target className="size-4 text-club-ink" />
+      <div className="card-quiet p-3 shadow-popover flex flex-col gap-2">
+        <div className="flex items-center gap-1.5">
+          <Target className="size-3.5 text-club-ink" />
           <span className="text-card-title">Edit main goal</span>
-          <span className="ml-auto text-caption text-muted-foreground tabular-nums">
+          <span className="text-caption text-muted-foreground tabular-nums ml-auto">
             {draft.length}/{MAIN_GOAL_MAX}
           </span>
         </div>
@@ -799,10 +777,10 @@ function MainGoalCard({
           onChange={(e) => setDraft(e.target.value.slice(0, MAIN_GOAL_MAX))}
           placeholder="What is the club working on right now? (e.g. Win the regional competition by March.)"
           maxLength={MAIN_GOAL_MAX}
-          className="min-h-[80px] resize-y"
+          className="min-h-[64px] resize-y text-sm"
           autoFocus
         />
-        <div className="flex items-center justify-end gap-2 mt-3">
+        <div className="flex items-center justify-end gap-2">
           <Button
             variant="ghost"
             size="sm"
@@ -814,12 +792,7 @@ function MainGoalCard({
           >
             Cancel
           </Button>
-          <Button
-            variant="club"
-            size="sm"
-            onClick={handleSave}
-            disabled={saving}
-          >
+          <Button variant="club" size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
             Save
           </Button>
@@ -828,21 +801,40 @@ function MainGoalCard({
     )
   }
 
-  // Read-only display (members + execs when not editing).
+  // Read state (including empty) — ONE compact line instead of the old tall
+  // card: tinted target chip · small label · truncated goal text · icon-only
+  // edit affordance for execs. Long goals stay fully readable via the native
+  // title tooltip (and inside the editor); the point is that the bar never
+  // eats vertical space the task list needs.
   return (
-    <div className="card-quiet-hover p-4 sm:p-5 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
-      <div className="flex size-9 items-center justify-center rounded-full bg-club-subtle text-club-ink shrink-0">
-        <Target className="size-4" />
+    <div className="card-quiet px-3 py-2 sm:px-3.5 flex items-center gap-2 sm:gap-2.5 min-w-0">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-club-subtle text-club-ink">
+        <Target className="size-3.5" />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-caption-medium text-muted-foreground">Main goal</div>
-        <p className="text-body-medium mt-1 break-words">{mainGoal}</p>
-      </div>
+      <span className="text-caption-medium shrink-0 hidden sm:inline">Main goal</span>
+      <span aria-hidden className="h-3.5 w-px shrink-0 bg-border/70 hidden sm:block" />
+      {mainGoal ? (
+        <p
+          className="text-body-medium min-w-0 flex-1 truncate"
+          title={mainGoal}
+        >
+          {mainGoal}
+        </p>
+      ) : (
+        <p className="text-body min-w-0 flex-1 truncate text-muted-foreground italic">
+          No main goal set{isExec ? " — set one to focus the club." : "."}
+        </p>
+      )}
       {isExec && (
-        <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="shrink-0 -mr-2">
-          <Pencil className="size-4" />
-          <span className="hidden sm:inline">Edit</span>
-        </Button>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="ml-auto inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          aria-label={mainGoal ? "Edit main goal" : "Set main goal"}
+          title={mainGoal ? "Edit main goal" : "Set main goal"}
+        >
+          {mainGoal ? <Pencil className="size-3.5" /> : <Plus className="size-4" />}
+        </button>
       )}
     </div>
   )

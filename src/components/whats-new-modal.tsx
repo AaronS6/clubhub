@@ -2,25 +2,39 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { X } from "lucide-react"
+import { Sparkles, X } from "lucide-react"
 import {
   checkAndMarkVisited,
   shouldShowWhatsNew,
   ackWhatsNew,
   setWhatsNewNotif,
   OPEN_WHATS_NEW_EVENT,
-  WHATS_NEW_VERSION,
 } from "@/lib/whats-new"
+import { APP_VERSION } from "@/lib/version"
 
 /**
  * ============================================================================
- * WhatsNewModal — the "What's new in v7.5" announcement
+ * WhatsNewModal — "v7.5 — the biggest update in ClubHub history"
  * ============================================================================
  *
- * Shown ONCE to returning visitors (the first time they come back after
- * this release), centered on a blurred backdrop — never full-screen. Always in
- * the ClubHub editorial dark palette (#16130e / #f0ebe0 / teal) so it reads
- * as a "release moment" in both the app and the public site.
+ * The whole v7 wave (7.0 through 7.5) shipped to the school as ONE giant
+ * release, so this announcement recaps the entire wave in three sections:
+ *
+ *   v7.0          the redesign (landing page, Explore Clubs, join modes,
+ *                 banners, avatar outer effects)
+ *   v7.1 → v7.4   the polish rounds (iOS keyboard fix, shortcuts, stats +
+ *                 FAQ, shimmer, greeting, share cards)
+ *   v7.5          the photo overhaul (landing runs on student photos)
+ *
+ * The DISPLAYED version is APP_VERSION ("7.5") — whats-new.ts's
+ * WHATS_NEW_VERSION ("7.5.1") is only the localStorage ack key; the .1
+ * re-armed the once-per-visitor cycle when these notes were expanded, so
+ * people who already closed the shorter v7.5 notes see these exactly once.
+ *
+ * Shown ONCE to returning visitors, centered on a blurred backdrop — never
+ * full-screen. Always in the ClubHub editorial dark palette (#16130e /
+ * #f0ebe0 / teal) so it reads as a "release moment" in both the app and the
+ * public site.
  *
  * Closing it:
  *   - marks this release as acknowledged (won't auto-open again)
@@ -57,6 +71,17 @@ export function WhatsNewModal() {
     setWhatsNewNotif(true)
   }, [])
 
+  // "Pick your effect" — acknowledge the release AND hand the user straight
+  // to Settings → Profile, where the outer-effect picker lives (same
+  // open-settings CustomEvent the bell/other surfaces use; the app shell
+  // routes it to the dialog on the requested tab).
+  const openEffectsInSettings = useCallback(() => {
+    close()
+    window.dispatchEvent(
+      new CustomEvent("open-settings", { detail: { tab: "profile" } })
+    )
+  }, [close])
+
   // Escape closes; body scroll lock while open (same pattern as the
   // onboarding tour).
   useEffect(() => {
@@ -86,7 +111,7 @@ export function WhatsNewModal() {
           onClick={close}
           role="dialog"
           aria-modal="true"
-          aria-label={`ClubHub v${WHATS_NEW_VERSION} — what's new`}
+          aria-label={`ClubHub v${APP_VERSION} — what's new`}
         >
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.985 }}
@@ -116,7 +141,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  ClubHub v{WHATS_NEW_VERSION} — your school, your photos.
+                  v{APP_VERSION} — the biggest update in ClubHub history.
                 </h2>
               </div>
               <button
@@ -132,30 +157,90 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                The public landing page got its biggest visual refresh yet —
-                it now runs on real photos taken at North by students, and
-                every section got a polish pass.
+                Everything from v7.0 through v7.5 landed in one wave — a
+                redesigned app, a brand-new public home for your clubs, and a
+                landing page that runs on your school&apos;s own photos. This is,
+                hands down, the biggest release ClubHub has ever shipped.
               </p>
 
-              <p className="mt-5 text-xs font-bold tracking-[0.18em] uppercase text-[#f0ebe0]/45">
-                Here&apos;s what&apos;s new in v{WHATS_NEW_VERSION}
-              </p>
+              {/* ── v7.0 — the redesign ─────────────────────────────────── */}
+              <SectionLabel version="v7.0" label="The redesign" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="🌐" title="A brand-new landing page">
+                  A new public home for ClubHub — what it is, how it works, and
+                  where to start, whether you&apos;re brand-new or already here.
+                </ReleaseNote>
+                <ReleaseNote emoji="🔎" title="Explore Clubs">
+                  Browse every public club — descriptions, banners, and more —
+                  and find your people before ever creating an account.
+                </ReleaseNote>
+                <ReleaseNote emoji="🤝" title="A better way to join clubs">
+                  Clubs choose how students join: the classic club code, or a
+                  request that executives approve.
+                </ReleaseNote>
+                <ReleaseNote emoji="🎨" title="Custom club banners">
+                  Every club gets its own look and identity — upload a banner
+                  and make the space yours.
+                </ReleaseNote>
+                {/* Outer effects — gets its own card + a direct CTA into
+                    Settings → Profile so people actually find the picker. */}
+                <div className="py-3.5 last:pb-1">
+                  <div className="flex items-baseline gap-2">
+                    <span aria-hidden className="text-sm leading-none">💫</span>
+                    <h3 className="text-sm font-bold tracking-tight">
+                      Avatar outer effects
+                    </h3>
+                  </div>
+                  <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
+                    Make your avatar stand out with animated outer effects —
+                    rings, glows, and more, visible in chat, announcements, and
+                    the members list.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openEffectsInSettings}
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-none border border-club/50 bg-club/10 px-3 h-9 text-xs font-bold tracking-wide uppercase text-club hover:bg-club/20 hover:border-club/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Choose your effect
+                  </button>
+                </div>
+              </div>
+
+              {/* ── v7.1 → v7.4 — the polish rounds ─────────────────────── */}
+              <SectionLabel version="v7.1 → v7.4" label="The polish rounds" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="⌨️" title="Keyboard shortcuts">
+                  Press <Kbd>g</Kbd> then <Kbd>c</Kbd> to jump straight to
+                  chat (<Kbd>d</Kbd> dashboard, <Kbd>t</Kbd> tasks…), and{" "}
+                  <Kbd>?</Kbd> brings up the full cheat sheet.
+                </ReleaseNote>
+                <ReleaseNote emoji="📱" title="iOS keyboard fix">
+                  The chat composer now stays exactly where it should when you
+                  type on iPhone — no more sliding around.
+                </ReleaseNote>
+                <ReleaseNote emoji="📊" title="Landing stats + FAQ">
+                  Live club and member counts on the landing page, plus answers
+                  to the questions we hear most.
+                </ReleaseNote>
+                <ReleaseNote emoji="✨" title="Finishing touches">
+                  A time-based dashboard greeting, shimmer loading skeletons,
+                  and proper share cards when you send ClubHub to a friend.
+                </ReleaseNote>
+              </div>
+
+              {/* ── v7.5 — your school, your photos ─────────────────────── */}
+              <SectionLabel version="v7.5" label="Your school, your photos" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
                 <ReleaseNote emoji="📸" title="Your photos, front and center">
                   The landing page now runs on photos taken at North by
                   students — club fairs, sign-up tables, snack socials, cake
-                  decorating — in a new “Club life, actually.” photo wall.
+                  decorating, and more.
                 </ReleaseNote>
-                <ReleaseNote emoji="🎨" title="A cleaner, calmer landing">
-                  The whole-team photo anchors the hero over the gym&apos;s NORTH
-                  wall, the how-it-works steps show real moments, and the
-                  auto-scrolling strip became a gallery that lets you actually
-                  look.
-                </ReleaseNote>
-                <ReleaseNote emoji="⌨️" title="Keyboard shortcuts">
-                  Carried over from the last release: press <Kbd>g</Kbd> then{" "}
-                  <Kbd>c</Kbd> to jump to chat, and <Kbd>?</Kbd> brings up the
-                  full cheat sheet.
+                <ReleaseNote emoji="🖼️" title="A cleaner, calmer landing">
+                  The whole team anchors the hero over the gym&apos;s NORTH wall,
+                  and the how-it-works steps show real moments instead of
+                  stock illustrations.
                 </ReleaseNote>
               </div>
 
@@ -171,8 +256,8 @@ export function WhatsNewModal() {
                   place.
                 </p>
                 <p className="mt-2 text-sm text-[#f0ebe0]/60 leading-relaxed">
-                  Every release — big or small — is a step toward that vision,
-                  and there&apos;s still plenty more we&apos;d love to build.
+                  This update is a giant step toward that vision, and
+                  there&apos;s still plenty more we&apos;d love to build.
                 </p>
               </div>
 
@@ -180,8 +265,8 @@ export function WhatsNewModal() {
                 A huge thank-you to everyone who&apos;s been using ClubHub so far.
               </p>
               <p className="mt-2 text-sm text-[#f0ebe0]/75 leading-relaxed">
-                Go check out ClubHub v{WHATS_NEW_VERSION} and let us know what
-                you think! 👀
+                Go explore everything new in ClubHub v{APP_VERSION} and let us
+                know what you think! 👀
               </p>
               <p className="mt-4 text-xs text-[#f0ebe0]/45 font-medium">
                 — The ClubHub Team | Aaron Shan
@@ -229,6 +314,16 @@ function ReleaseNote({
       </div>
       <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">{children}</p>
     </div>
+  )
+}
+
+/** Section label for one wave of the v7 story — e.g. "v7.0 · The redesign". */
+function SectionLabel({ version, label }: { version: string; label: string }) {
+  return (
+    <p className="mt-7 text-xs font-bold tracking-[0.18em] uppercase">
+      <span className="text-club">{version}</span>
+      <span className="text-[#f0ebe0]/45">{" · "}{label}</span>
+    </p>
   )
 }
 

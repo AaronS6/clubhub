@@ -3,7 +3,6 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { hashPassword, isPasswordStrong } from "@/lib/auth"
 import { notify } from "@/lib/activity"
-import { rateLimit, getClientIp, tooManyRequests } from "@/lib/rate-limit"
 
 const schema = z.object({
   name: z.string().min(1).max(80),
@@ -11,17 +10,13 @@ const schema = z.object({
   password: z.string().min(8),
 })
 
-// 5 signups per IP per hour — plenty for a human, hopeless for a bot farm
-// filling the DB with junk accounts.
-const SIGNUP_LIMIT = 5
-const SIGNUP_WINDOW = 60 * 60_000
+// NOTE: no IP rate limit here by design. School networks NAT an entire campus
+// to ONE public IP, so a signup cap per IP blocks the 6th+ student in an hour —
+// real humans, not bots. Validation + the DB's unique-email constraint remain
+// the guardrails.
 
 export async function POST(req: Request) {
   try {
-    // Brute-force/spam guard BEFORE any DB work.
-    const rl = rateLimit(`signup:ip:${getClientIp(req)}`, SIGNUP_LIMIT, SIGNUP_WINDOW)
-    if (!rl.ok) return tooManyRequests(rl.retryAfterMs, "Too many signups")
-
     const body = await req.json().catch(() => null)
     const parsed = schema.safeParse(body)
     if (!parsed.success) {

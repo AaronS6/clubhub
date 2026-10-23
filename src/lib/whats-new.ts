@@ -5,7 +5,8 @@ import type { NotifItem } from "@/components/views/notifications-view"
 
 /**
  * ============================================================================
- * What's New (release notes) — v7.5
+ * What's New (release notes) — v7.5 · “the biggest update in ClubHub
+ * history”
  * ============================================================================
  *
  * A one-time, client-side announcement system:
@@ -25,12 +26,19 @@ import type { NotifItem } from "@/components/views/notifications-view"
  * (and APP_VERSION) and the whole cycle repeats automatically for returning
  * visitors. Since v7.4 the key carries the full minor ("7.5"), so anyone who
  * acked an older key (e.g. "7" or "7.4") sees the new notes exactly once.
+ *
+ * NOTE: WHATS_NEW_VERSION is the ACK KEY, not the display version. It sits at
+ * "7.5.1" because the v7.5 notes were EXPANDED to recap the entire v7.0 →
+ * v7.5 wave ("the biggest update in ClubHub history") — the .1 re-arms the
+ * once-per-visitor cycle so everyone who already acked plain "7.5" sees the
+ * expanded notes exactly once. Everything USER-FACING displays APP_VERSION
+ * ("7.5") from lib/version — never this key.
  * ============================================================================
  */
 
-/** The release this announcement covers (a minor of the full APP_VERSION,
- *  e.g. "7.5" — also the value stored in the ack key). */
-export const WHATS_NEW_VERSION = "7.5"
+/** The release this announcement covers — the localStorage ack-key version.
+ * "7.5.1" ≠ the display version; see the note above. */
+export const WHATS_NEW_VERSION = "7.5.1"
 
 const VISITED_KEY = "clubhub-visited"
 /** Marks the CURRENT browsing session so reloads (login/signup do a full
@@ -120,7 +128,7 @@ export function buildReleaseNotesNotif(): NotifItem {
   return {
     id: RELEASE_NOTES_NOTIF_ID,
     type: "release_notes",
-    message: "ClubHub v7.5 is here — tap to see what's new",
+    message: "ClubHub v7.5 — the biggest update yet. Tap to see what's new",
     linkUrl: null,
     isRead: true,
     createdAt: new Date().toISOString(),

@@ -13,7 +13,7 @@ const LOGO_QUALITY = 80
  * POST /api/clubs/[clubId]/logo
  * Accepts a multipart file upload (field name "file"), processes it with
  * sharp (resize 256×256, JPEG q80), and stores the result as a JPEG file in
- * `storage/club-images/{clubId}-logo.jpg`. The DB keeps only a short URL
+ * the `StoredImage` DB table (key `{clubId}-logo`). The DB Club row keeps only a short URL
  * (`/api/club-images/{clubId}-logo?v=…`). Executive-only via getClubContext.
  * Returns { logoUrl }.
  *

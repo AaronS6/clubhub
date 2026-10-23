@@ -84,7 +84,10 @@ import {
   notifMeta, notifToneClasses, targetViewFor,
 } from "@/lib/notif-meta"
 import { useCustomizationStore, AMBIENT_PRESETS, THEME_COLOR_PRESETS } from "@/lib/customization-store"
-import { useWhatsNewNotif, openWhatsNew, WHATS_NEW_VERSION } from "@/lib/whats-new"
+import { useWhatsNewNotif, openWhatsNew } from "@/lib/whats-new"
+// APP_VERSION (not whats-new's ack key "7.5.1") — the bell section label
+// displays the real user-facing version.
+import { APP_VERSION } from "@/lib/version"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import { ExecHandbookModal } from "@/components/exec-handbook-modal"
 import { KeyboardShortcuts, OPEN_KEYBOARD_SHORTCUTS_EVENT } from "@/components/shared/keyboard-shortcuts"
@@ -3249,7 +3252,7 @@ function BellBody({
             {/* Pinned local release-notes row — re-opens the What's New
                 modal on click. Always first, above any unread items. */}
             {releaseNotif && (
-              <NotifSection label={`ClubHub v${WHATS_NEW_VERSION}`}>
+              <NotifSection label={`ClubHub v${APP_VERSION}`}>
                 <NotifRow
                   n={releaseNotif}
                   onClick={() => onNotifClick(releaseNotif)}

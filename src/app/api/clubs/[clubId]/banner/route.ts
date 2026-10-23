@@ -23,7 +23,7 @@ const BANNER_TARGET_BYTES = 140 * 1024
  * (0–1 vertical focal point). Processes with sharp (downscale to fit inside
  * 1280×720, progressive JPEG starting at q62 with adaptive step-down to
  * ~140KB) and stores the result as a JPEG file in
- * `storage/club-images/{clubId}-banner.jpg`; the DB keeps only a short URL
+ * the `StoredImage` DB table (key `{clubId}-banner`); the Club row keeps only a short URL
  * (`/api/club-images/{clubId}-banner?v=…`), plus the focal point in
  * `Club.bannerFocalY`.
  * Executive-only via getClubContext — members get 403.
