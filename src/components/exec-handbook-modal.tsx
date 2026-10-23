@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Check, ExternalLink, FileText, ShieldAlert, X } from "lucide-react"
+import { ExternalLink, FileText, ShieldAlert, X } from "lucide-react"
 import { Loader2 } from "lucide-react"
 import { api } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
@@ -13,26 +13,26 @@ import { cn } from "@/lib/utils"
  * ============================================================================
  *
  * 1) ACKNOWLEDGE (default) — shown EXACTLY ONCE PER CLUB LIFETIME: app-shell
- * mounts this for the first club where the viewer is an ACTIVE EXECUTIVE and
- * `club.handbookAcceptedAt` is still null (typically the club they just
- * created). Confirming POSTs /api/clubs/[clubId]/handbook-ack, which stamps
- * the flag in the DB — the popup can then never render again for that club,
- * even on another device or after a reinstall (the DB is the source of truth,
- * not localStorage).
+ *    mounts this for the first club where the viewer is an ACTIVE EXECUTIVE and
+ *    `club.handbookAcceptedAt` is still null (typically the club they just
+ *    created). Confirming POSTs /api/clubs/[clubId]/handbook-ack, which stamps
+ *    the flag in the DB — the popup can then never render again for that club,
+ *    even on another device or after a reinstall (the DB is the source of truth,
+ *    not localStorage).
  *
- * The dialog is intentionally NON-DISMISSIBLE until confirmed: no X button,
- * no scrim-click close, no Escape. It requires BOTH checkboxes:
- *   1. "Confirm and continue"
- *   2. "I have read the terms and conditions"
- * …before the "I confirm" button enables. This guarantees the handbook was
- * acknowledged exactly once (a dismissible popup could be skipped and then
- * never shown again — the opposite of what the exec needs).
+ *    One-tap confirm: there are NO checkboxes to tick — a single "I confirm"
+ *    button acknowledges the handbook immediately.
+ *
+ *    The dialog is intentionally NON-DISMISSIBLE until confirmed: no X button,
+ *    no scrim-click close, no Escape. This guarantees the handbook was
+ *    acknowledged exactly once (a dismissible popup could be skipped and then
+ *    never shown again — the opposite of what the exec needs).
  *
  * 2) REVIEW — a dismissible re-read opened from Settings → Security (execs
- * of the active club only, via the `open-exec-handbook` window event). Same
- * content and handbook link, but with an X button, scrim-click and Escape
- * dismissal and a plain "Close" footer — nothing to re-confirm. This is the
- * "I want to see that guide again" path for executives.
+ *    of the active club only, via the `open-exec-handbook` window event). Same
+ *    content and handbook link, but with an X button, scrim-click and Escape
+ *    dismissal and a plain "Close" footer — nothing to re-confirm. This is the
+ *    "I want to see that guide again" path for executives.
  *
  * Theme-aware (bg-card / text-foreground / ring-border) so it matches the
  * app shell light/dark theme like every other in-app modal.
@@ -62,8 +62,6 @@ export function ExecHandbookModal({
   onClose,
 }: ExecHandbookModalProps) {
   const review = mode === "review"
-  const [confirmChecked, setConfirmChecked] = useState(false)
-  const [termsChecked, setTermsChecked] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   // Track the club this instance confirmed so the exit animation doesn't
@@ -73,17 +71,8 @@ export function ExecHandbookModal({
   const shownClubName = useRef<string>("")
   if (club) shownClubName.current = club.clubName
 
-  // Reset the checkboxes whenever a NEW club's handbook is presented.
-  useEffect(() => {
-    if (club) {
-      setConfirmChecked(false)
-      setTermsChecked(false)
-      setSaveError(null)
-    }
-  }, [club?.clubId])
-
   const open = !!club
-  const canConfirm = confirmChecked && termsChecked && !saving
+  const canConfirm = !saving
 
   async function handleConfirm() {
     if (!club || !canConfirm || !onConfirmed) return
@@ -100,10 +89,10 @@ export function ExecHandbookModal({
   }
 
   // Keyboard: in ACKNOWLEDGE mode Escape is intentionally IGNORED
-  // (non-dismissible) and Enter confirms once both checkboxes are ticked.
-  // In REVIEW mode Escape closes. The listener runs in the CAPTURE phase on
-  // document so stopPropagation() blocks the Escape before it can reach any
-  // Radix dialog underneath (the settings dialog this was opened from).
+  // (non-dismissible) and Enter confirms directly. In REVIEW mode Escape
+  // closes. The listener runs in the CAPTURE phase on document so
+  // stopPropagation() blocks the Escape before it can reach any Radix dialog
+  // underneath (the settings dialog this was opened from).
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape" && review && onClose) {
@@ -240,25 +229,6 @@ export function ExecHandbookModal({
                 <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               </a>
 
-              {/* Checkboxes — acknowledge mode only (review mode is a re-read,
-                  nothing left to confirm). */}
-              {!review && (
-                <div className="mt-5 space-y-3">
-                  <HandbookCheck
-                    id="handbook-confirm"
-                    checked={confirmChecked}
-                    onChange={setConfirmChecked}
-                    label="Confirm and continue"
-                  />
-                  <HandbookCheck
-                    id="handbook-terms"
-                    checked={termsChecked}
-                    onChange={setTermsChecked}
-                    label="I have read the terms and conditions"
-                  />
-                </div>
-              )}
-
               {saveError && (
                 <p className="mt-3 text-[13px] font-medium text-destructive">{saveError}</p>
               )}
@@ -297,10 +267,7 @@ export function ExecHandbookModal({
                       Confirming…
                     </>
                   ) : (
-                    <>
-                      {confirmChecked && termsChecked && <Check className="h-4 w-4" aria-hidden />}
-                      I confirm
-                    </>
+                    "I confirm"
                   )}
                 </button>
               )}
@@ -309,48 +276,5 @@ export function ExecHandbookModal({
         </div>
       )}
     </AnimatePresence>
-  )
-}
-
-/** One row of the two required checkboxes — big touch targets, accent when on. */
-function HandbookCheck({
-  id,
-  checked,
-  onChange,
-  label,
-}: {
-  id: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  label: string
-}) {
-  return (
-    <label
-      htmlFor={id}
-      className={cn(
-        "flex cursor-pointer select-none items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors",
-        checked
-          ? "border-club/50 bg-club-subtle"
-          : "border-border bg-background hover:bg-accent/60",
-      )}
-    >
-      <span className="relative grid h-5.5 w-5.5 place-items-center">
-        <input
-          id={id}
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border-2 border-border bg-background transition-colors checked:border-club checked:bg-club focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        />
-        <Check
-          aria-hidden
-          className="pointer-events-none absolute h-3.5 w-3.5 text-white opacity-0 transition-opacity peer-checked:opacity-100"
-          strokeWidth={3.5}
-        />
-      </span>
-      <span className={cn("text-sm font-medium", checked ? "text-foreground" : "text-foreground/80")}>
-        {label}
-      </span>
-    </label>
   )
 }

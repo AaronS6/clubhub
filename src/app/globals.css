@@ -242,6 +242,13 @@
        aurora/blobs/bubbles/etc. effects be visible behind the app shell. */
     background-color: transparent;
   }
+  /* Selection — a soft brand-green highlight instead of the OS default,
+     in both the light app and on the always-dark public surfaces. Feels
+     deliberate wherever a visitor highlights text. */
+  ::selection {
+    background-color: rgba(74, 222, 128, 0.32);
+    color: inherit;
+  }
   /* Refined focus ring: 2px ring at 60% opacity, 2px offset against the
      background. Soft enough not to jolt, distinct enough to be findable.
      Keyboard users get this on every focusable element; mouse users see
@@ -927,6 +934,27 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
 @media (prefers-reduced-motion: reduce) {
   .landing-marquee {
     animation: none;
+  }
+}
+
+/* Breathing glows — the soft color halos behind the hero headline, the
+   collage, and the sign-off line. One slow opacity/scale pulse (7s) keeps
+   them feeling like light through paper rather than blinking decoration.
+   Off entirely under reduced motion (the base layer above already freezes
+   transforms globally, but opacity would still step — so we stop the
+   animation outright and pin a static mid-opacity). */
+@keyframes landing-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.95; transform: scale(1.05); }
+}
+.landing-breathe {
+  animation: landing-breathe 7s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-breathe {
+    animation: none;
+    opacity: 0.7;
   }
 }
 

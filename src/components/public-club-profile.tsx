@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/avatar"
 import {
   Users, Clock, CalendarDays, ArrowLeft, AlertCircle, Hash,
-  UserPlus, LogIn, X, Compass, KeyRound, UserCheck, Loader2,
+  UserPlus, LogIn, X, Compass, KeyRound, UserCheck, Loader2, Share2,
 } from "lucide-react"
 import { format, parseISO } from "date-fns"
 import { initials } from "@/components/shared/page-header"
@@ -310,6 +310,39 @@ function ProfileBody({
     window.location.assign("/")
   }
 
+  // "Share" — recruit where recruits actually are: on phones the native
+  // share sheet (Instagram stories, Messages, Snapchat…), everywhere else
+  // the page link lands on the clipboard with a toast. NO tracking params,
+  // just the clean public URL. A dismissed share sheet is not an error.
+  async function handleShare() {
+    const url = window.location.href
+    const data = {
+      title: `${club.name} — ClubHub`,
+      text: club.description ?? `Check out ${club.name} on ClubHub`,
+      url,
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share(data)
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      toast.success("Link copied", {
+        description: "Paste it anywhere — bios, stories, group chats.",
+      })
+    } catch (err) {
+      if ((err as Error)?.name === "AbortError") return // user closed the sheet
+      try {
+        await navigator.clipboard.writeText(url)
+        toast.success("Link copied", {
+          description: "Paste it anywhere — bios, stories, group chats.",
+        })
+      } catch {
+        toast.error("Couldn't copy — grab the link from the address bar.")
+      }
+    }
+  }
+
   return (
     <article className="flex flex-col">
       {/* ── Cinematic banner header — full-bleed, melts into the page ────── */}
@@ -413,6 +446,24 @@ function ProfileBody({
                     <Hash className="h-3 w-3" />
                     {club.clubCode}
                   </span>
+                  {/* Share — the club's public page, in a bio or a story.
+                      Styled as a sibling of the code chip so the identity row
+                      reads as one family of quiet glass pills. */}
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    aria-label={`Share ${club.name}'s page`}
+                    className={cn(
+                      "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[0.68rem] font-bold tracking-wide backdrop-blur-sm transition-colors shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[#4ade80]/70",
+                      hasBanner
+                        ? "border-white/30 bg-white/15 text-white"
+                        : "border-[#f0ebe0]/18 bg-[#f0ebe0]/5 text-[#f0ebe0]/80",
+                      "hover:border-[#4ade80]/60 hover:bg-[#4ade80]/10 hover:text-[#4ade80]",
+                    )}
+                  >
+                    <Share2 className="h-3 w-3" aria-hidden />
+                    Share
+                  </button>
                 </div>
                 <p
                   className={cn(

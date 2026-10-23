@@ -1,23 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import {
+  AnimatePresence,
   MotionConfig,
   animate,
   motion,
   useInView,
   useMotionValue,
   useReducedMotion,
+  useSpring,
   useTransform,
 } from "framer-motion"
 import type { LucideIcon } from "lucide-react"
 import {
   ArrowDown,
   ArrowRight,
+  ArrowUp,
   CalendarDays,
   CheckSquare,
   ChevronDown,
@@ -122,8 +125,7 @@ const FORCED_DARK_VARS = {
   "--color-background": BASE,
 } as CSSProperties
 
-/** Pill button base — soft, rounded-full, ≥44px touch targets. */
-const PILL_BASE =
+/** Pill button base — soft, rounded-full, ≥44px touch targets. */const PILL_BASE =
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold " +
   "transition-all duration-200 active:scale-[0.98] select-none"
 
@@ -378,12 +380,60 @@ export function LandingPage() {
     document.getElementById("clubs")?.scrollIntoView({ behavior: "smooth" })
   }
 
+  // ── Hero pointer parallax ──────────────────────────────────────────────
+  // Desktop (pointer:fine) only, and off entirely under prefers-reduced-
+  // motion: the collage layers drift a few pixels against the cursor through
+  // soft springs. Each parallax wrapper sits OUTSIDE its Float, so the
+  // pointer drift and the vertical bob compose as nested transforms instead
+  // of fighting over one motion value. Touch visitors see the static collage.
+  // Gated via useSyncExternalStore (not setState-in-effect) so it also flips
+  // live if the visitor changes their reduced-motion preference mid-visit.
+  const parallaxOn = useSyncExternalStore(
+    subscribeParallaxMedia,
+    () =>
+      window.matchMedia("(pointer: fine)").matches &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
+  )
+  const heroRef = useRef<HTMLElement | null>(null)
+  const px = useMotionValue(0.5)
+  const py = useMotionValue(0.5)
+  const spx = useSpring(px, { stiffness: 55, damping: 16, mass: 0.6 })
+  const spy = useSpring(py, { stiffness: 55, damping: 16, mass: 0.6 })
+  const mainX = useTransform(spx, [0, 1], [8, -8])
+  const mainY = useTransform(spy, [0, 1], [6, -6])
+  const pol1X = useTransform(spx, [0, 1], [-12, 12])
+  const pol1Y = useTransform(spy, [0, 1], [-8, 8])
+  const pol2X = useTransform(spx, [0, 1], [14, -14])
+  const pol2Y = useTransform(spy, [0, 1], [9, -9])
+  const glowX = useTransform(spx, [0, 1], [26, -26])
+  const glowY = useTransform(spy, [0, 1], [18, -18])
+
+  const handleHeroPointer = (e: ReactPointerEvent<HTMLElement>) => {
+    const rect = heroRef.current?.getBoundingClientRect()
+    if (!rect) return
+    px.set(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)))
+    py.set(Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)))
+  }
+  const resetHeroPointer = () => {
+    px.set(0.5)
+    py.set(0.5)
+  }
+
   return (
     <MotionConfig reducedMotion="user">
       <div
         className="relative min-h-screen flex flex-col bg-[#171310] text-[#f0ebe0]"
         style={FORCED_DARK_VARS}
       >
+        {/* Skip link — keyboard visitors jump straight past the nav. */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:inline-flex focus:h-11 focus:items-center focus:rounded-full focus:bg-[#22c55e] focus:px-5 focus:text-sm focus:font-semibold focus:text-[#07130b] focus:shadow-[0_8px_22px_-10px_rgba(34,197,94,0.6)] focus:outline-none"
+        >
+          Skip to content
+        </a>
+
         {/* Film grain — a whisper of texture so the page feels printed,
             not generated. Never intercepts pointer events. */}
         <div aria-hidden className="landing-grain" />
@@ -447,11 +497,17 @@ export function LandingPage() {
           </div>
         </motion.header>
 
-        <main className="flex-1 flex flex-col">
+        <main id="main" tabIndex={-1} className="flex-1 flex flex-col outline-none">
           {/* ── Hero — left-aligned text over a dimmed real photo; the
               collage floats beside it on sm+ and melts into the background
               with an espresso fade on phones ── */}
-          <section aria-labelledby="hero-title" className="relative overflow-hidden">
+          <section
+            ref={heroRef}
+            onPointerMove={parallaxOn ? handleHeroPointer : undefined}
+            onPointerLeave={parallaxOn ? resetHeroPointer : undefined}
+            aria-labelledby="hero-title"
+            className="relative overflow-hidden"
+          >
             {/* Ambient photo background — the REAL campus photo, dimmed by an
                 espresso wash and faded out toward the section edges so text
                 stays readable and the texture never fights the content. */}
@@ -459,6 +515,8 @@ export function LandingPage() {
               src="/landing/bn-gym-north.jpg"
               alt=""
               aria-hidden
+              fetchPriority="high"
+              decoding="async"
               className="absolute inset-0 h-full w-full object-cover opacity-45"
             />
             <div aria-hidden className="absolute inset-0 bg-[#171310]/45" />
@@ -514,6 +572,12 @@ export function LandingPage() {
             <div className="relative mx-auto max-w-6xl px-5 sm:px-8 pt-12 sm:pt-20 pb-16 sm:pb-20 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,290px)] sm:items-center sm:gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,330px)] lg:grid-cols-[minmax(0,21fr)_minmax(0,19fr)] lg:gap-12 xl:gap-16 lg:pt-24">
               {/* LEFT — the words (headline, subtext, CTAs all anchored left) */}
               <div className="relative z-10 text-left">
+                {/* A soft green halo breathing behind the headline — barely
+                    there, but it keeps the text column from feeling flat. */}
+                <div
+                  aria-hidden
+                  className="landing-breathe pointer-events-none absolute -left-20 -top-24 hidden h-72 w-72 rounded-full bg-[#22c55e]/[0.09] blur-[90px] sm:block"
+                />
                 <Reveal delay={0.1}>
                   <h1
                     id="hero-title"
@@ -585,72 +649,84 @@ export function LandingPage() {
                   Below sm this whole column is hidden — the media renders in
                   the phone background layer above instead. */}
               <div className="relative z-10 hidden sm:block sm:h-[300px] md:h-[340px] lg:h-[460px]">
-                {/* Soft color glows breathing behind the collage. */}
-                <div
+                {/* Soft color glows behind the collage — they breathe AND
+                    drift with the hero parallax at a wider radius, which makes
+                    the whole composition feel lit rather than pasted. (Nest the
+                    breathing CSS animation inside the parallax wrapper — a
+                    CSS transform animation would otherwise stomp framer's
+                    inline transform on the same node.) */}
+                <motion.div
                   aria-hidden
-                  className="absolute -top-8 right-6 h-44 w-44 rounded-full bg-[#22c55e]/[0.13] blur-3xl"
-                />
-                <div
+                  style={{ x: glowX, y: glowY }}
+                  className="absolute -top-8 right-6 h-44 w-44"
+                >
+                  <div className="landing-breathe h-full w-full rounded-full bg-[#22c55e]/[0.13] blur-3xl" />
+                </motion.div>
+                <motion.div
                   aria-hidden
-                  className="absolute bottom-2 -left-8 h-48 w-48 rounded-full bg-[#f0a876]/[0.1] blur-3xl"
-                />
+                  style={{ x: pol1X, y: pol1Y }}
+                  className="absolute bottom-2 -left-8 h-48 w-48"
+                >
+                  <div className="landing-breathe h-full w-full rounded-full bg-[#f0a876]/[0.1] blur-3xl" />
+                </motion.div>
 
                 {/* Main photo card — the REAL whole-team shot, fifty
                     students deep, rounded soft, floating gently. */}
-                <Float
+                <motion.div
+                  style={{ x: mainX, y: mainY }}
                   className="absolute right-0 top-5 z-10 w-[86%] lg:top-9 lg:w-[76%]"
-                  duration={7}
-                  dy={7}
                 >
-                  <div className="overflow-hidden rounded-[1.5rem] ring-1 ring-[#f0ebe0]/12 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_28px_56px_-18px_rgba(0,0,0,0.55)]">
-                    <img
-                      src="/landing/bn-team-photo.jpg"
-                      alt="The whole club together — fifty students in matching navy shirts"
-                      loading="lazy"
-                      draggable={false}
-                      className="aspect-[4/3] w-full object-cover lg:aspect-[16/10]"
-                    />
-                  </div>
-                </Float>
+                  <Float duration={7} dy={7}>
+                    <div className="overflow-hidden rounded-[1.5rem] ring-1 ring-[#f0ebe0]/12 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_28px_56px_-18px_rgba(0,0,0,0.55)]">
+                      <img
+                        src="/landing/bn-team-photo.jpg"
+                        alt="The whole club together — fifty students in matching navy shirts"
+                        loading="lazy"
+                        draggable={false}
+                        className="aspect-[4/3] w-full object-cover lg:aspect-[16/10]"
+                      />
+                    </div>
+                  </Float>
+                </motion.div>
 
                 {/* Polaroid 1 — the REAL robotics team photo, tilted +2.5deg.
                     White polaroid frames keep the printed-photo feel on the
                     dark canvas. */}
-                <Float
+                <motion.div
+                  style={{ x: pol1X, y: pol1Y }}
                   className="absolute left-0 top-0 z-20 w-[52%] lg:w-[46%]"
-                  duration={6}
-                  delay={1.4}
-                  dy={10}
                 >
-                  <div className="rotate-[2.5deg] rounded-[1.25rem] bg-[#f5f1e8] p-2 shadow-[0_2px_4px_rgba(0,0,0,0.35),0_20px_40px_-12px_rgba(0,0,0,0.55)]">
-                    <img
-                      src="/landing/real-robotics.jpg"
-                      alt="A robotics team posing with their competition robot"
-                      loading="lazy"
-                      draggable={false}
-                      className="aspect-[7/5] w-full rounded-[0.9rem] object-cover"
-                    />
-                  </div>
-                </Float>
+                  <Float duration={6} delay={1.4} dy={10}>
+                    <div className="rotate-[2.5deg] rounded-[1.25rem] bg-[#f5f1e8] p-2 shadow-[0_2px_4px_rgba(0,0,0,0.35),0_20px_40px_-12px_rgba(0,0,0,0.55)]">
+                      <img
+                        src="/landing/real-robotics.jpg"
+                        alt="A robotics team posing with their competition robot"
+                        loading="lazy"
+                        draggable={false}
+                        className="aspect-[7/5] w-full rounded-[0.9rem] object-cover"
+                      />
+                    </div>
+                  </Float>
+                </motion.div>
 
                 {/* Polaroid 2 — the REAL school-bus photo, tilted -3deg
                     (lg+ only — the tablet collage stays compact). */}
-                <Float
+                <motion.div
+                  style={{ x: pol2X, y: pol2Y }}
                   className="absolute right-7 bottom-0 z-20 hidden w-[48%] lg:block"
-                  duration={6.5}
-                  delay={2.8}
-                  dy={8}
                 >
-                  <div className="rotate-[-3deg] rounded-[1.25rem] bg-[#f5f1e8] p-2 shadow-[0_2px_4px_rgba(0,0,0,0.35),0_20px_40px_-12px_rgba(0,0,0,0.55)]">
-                    <img
-                      src="/landing/real-friends.jpg"
-                      alt="Students laughing together on the school bus"
-                      loading="lazy"
-                      draggable={false}
-                      className="aspect-[7/5] w-full rounded-[0.9rem] object-cover"
-                    />
-                  </div>
-                </Float>
+                  <Float duration={6.5} delay={2.8} dy={8}>
+                    <div className="rotate-[-3deg] rounded-[1.25rem] bg-[#f5f1e8] p-2 shadow-[0_2px_4px_rgba(0,0,0,0.35),0_20px_40px_-12px_rgba(0,0,0,0.55)]">
+                      <img
+                        src="/landing/real-friends.jpg"
+                        alt="Students laughing together on the school bus"
+                        loading="lazy"
+                        draggable={false}
+                        className="aspect-[7/5] w-full rounded-[0.9rem] object-cover"
+                      />
+                    </div>
+                  </Float>
+                </motion.div>
 
                 {/* Annotation — the human little note pointing at the photo. */}
                 <p
@@ -696,7 +772,7 @@ export function LandingPage() {
                       alt={m.alt}
                       loading="lazy"
                       draggable={false}
-                      className="h-36 w-auto aspect-[7/5] rounded-2xl object-cover ring-1 ring-[#f0ebe0]/10 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_14px_30px_-12px_rgba(0,0,0,0.45)] sm:h-44"
+                      className="h-36 w-auto aspect-[7/5] rounded-2xl object-cover ring-1 ring-[#f0ebe0]/10 shadow-[0_2px_6px_rgba(0,0,0,0.3),0_14px_30px_-12px_rgba(0,0,0,0.45)] transition-transform duration-300 hover:scale-[1.05] hover:ring-[#f0ebe0]/25 sm:h-44"
                     />
                   ))}
                 </div>
@@ -868,10 +944,13 @@ export function LandingPage() {
                       className={cn(
                         CARD,
                         CARD_HOVER,
-                        "h-full rounded-3xl p-5",
+                        "group h-full rounded-3xl p-5",
+                        // Hover: a faint green edge-light joins the usual lift,
+                        // and the icon tile wakes up under the cursor.
+                        "hover:shadow-[0_2px_8px_rgba(0,0,0,0.25),0_22px_48px_-18px_rgba(74,222,128,0.22)]",
                       )}
                     >
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#4ade80]/[0.12] text-[#4ade80]">
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#4ade80]/[0.12] text-[#4ade80] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">
                         <f.icon className="h-[18px] w-[18px]" aria-hidden />
                       </span>
                       <p className="mt-4 text-[15px] font-semibold text-[#f0ebe0]">{f.title}</p>
@@ -958,8 +1037,13 @@ export function LandingPage() {
           {/* ── Sign-off — one warm, human line before the footer ────────── */}
           <section aria-label="Closing note" className="pb-16 sm:pb-24">
             <Reveal>
-              <div className="mx-auto max-w-6xl px-5 sm:px-8 text-center">
-                <p className="font-serif text-2xl sm:text-3xl italic text-[#f0ebe0]">
+              <div className="relative mx-auto max-w-6xl px-5 sm:px-8 text-center">
+                {/* A final soft halo breathing behind the sign-off line. */}
+                <div
+                  aria-hidden
+                  className="landing-breathe pointer-events-none absolute -top-10 left-1/2 h-40 w-80 -translate-x-1/2 rounded-full bg-[#4ade80]/[0.07] blur-[70px]"
+                />
+                <p className="relative font-serif text-2xl sm:text-3xl italic text-[#f0ebe0]">
                   go join something.
                 </p>
                 <button
@@ -974,6 +1058,9 @@ export function LandingPage() {
             </Reveal>
           </section>
         </main>
+
+        {/* ── Back to top — floats in once the visitor is past the hero ──── */}
+        <BackToTop />
 
         {/* ── Footer — soft, quiet, bottom of the page ────────────────────── */}
         <footer className="mt-auto border-t border-[#f0ebe0]/[0.09] bg-[#141110]">
@@ -1078,6 +1165,53 @@ function Float({
     >
       {children}
     </motion.div>
+  )
+}
+
+/** Shared media-query subscription for the hero-parallax gate — one set
+ *  of listeners for the whole page, re-checked whenever the pointer type or
+ *  the reduced-motion preference changes. */
+function subscribeParallaxMedia(onChange: () => void) {
+  const fine = window.matchMedia("(pointer: fine)")
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)")
+  fine.addEventListener("change", onChange)
+  reduced.addEventListener("change", onChange)
+  return () => {
+    fine.removeEventListener("change", onChange)
+    reduced.removeEventListener("change", onChange)
+  }
+}
+
+/** Back to top — a quiet glass pill that floats in once the visitor has
+ *  scrolled past the hero, and glides them home. 44px touch target. */
+function BackToTop() {
+  const reduced = useReducedMotion()
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setShow(window.scrollY > window.innerHeight * 1.2)
+    onScroll()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.button
+          type="button"
+          aria-label="Back to top"
+          initial={{ opacity: 0, y: 12, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 12, scale: 0.9 }}
+          transition={{ duration: 0.25, ease: EASE }}
+          onClick={() => window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" })}
+          className="fixed bottom-5 right-5 z-30 grid h-11 w-11 place-items-center rounded-full bg-[#221d15]/90 text-[#f0ebe0]/80 ring-1 ring-[#f0ebe0]/15 shadow-[0_2px_10px_rgba(0,0,0,0.35),0_14px_30px_-10px_rgba(0,0,0,0.5)] backdrop-blur-md transition-colors hover:bg-[#221d15] hover:text-[#4ade80] hover:ring-[#4ade80]/30 outline-none focus-visible:ring-2 focus-visible:ring-[#4ade80]/70"
+        >
+          <ArrowUp className="h-[18px] w-[18px]" aria-hidden />
+        </motion.button>
+      )}
+    </AnimatePresence>
   )
 }
 

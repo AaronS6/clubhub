@@ -2,7 +2,12 @@ import ZAI from 'z-ai-web-dev-sdk'
 import { readFileSync, writeFileSync } from 'fs'
 
 async function main() {
-  const imageBuffer = readFileSync('/home/z/my-project/upload/ChatGPT Image Sep 8, 2026, 06_39_10 PM.png')
+  const input = process.argv[2]
+  if (!input) {
+    console.error('Usage: bun run scripts/remove-bg.ts <input-image>')
+    process.exit(1)
+  }
+  const imageBuffer = readFileSync(input)
   const base64Image = imageBuffer.toString('base64')
   const dataUrl = `data:image/png;base64,${base64Image}`
 
