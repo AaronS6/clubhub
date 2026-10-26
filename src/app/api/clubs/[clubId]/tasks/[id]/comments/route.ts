@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { emitClubEvent } from "@/lib/realtime-server"
 
 export async function GET(
@@ -44,6 +45,11 @@ export async function POST(
   const { clubId, id } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
+
+  // Storage pause: at 100% of the club quota new content is held until
+  // an executive clears room (deletes + edits stay open — that's the recovery path).
+  const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+  if (storageFull) return storageFull
 
   const task = await db.task.findUnique({ where: { id } })
   if (!task || task.clubId !== clubId || task.deletedAt)

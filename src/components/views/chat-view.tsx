@@ -56,6 +56,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ChevronDown,
@@ -357,7 +358,7 @@ function ChatPane({ clubId }: { clubId: string }) {
         {/* Conversation list — floating panel on desktop */}
         <aside
           className={cn(
-            "w-full md:w-[280px] flex-shrink-0 overflow-hidden flex flex-col bg-sidebar md:rounded-xl md:border md:border-border",
+            "w-full md:w-[264px] flex-shrink-0 overflow-hidden flex flex-col bg-sidebar md:rounded-xl md:border md:border-border",
             isMobileShowingMessages && "hidden md:flex",
           )}
         >
@@ -482,8 +483,8 @@ function ConversationList({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 border-b border-border">
-        <div className="flex items-center justify-between mb-3">
+      <div className="px-3 pt-3 pb-2.5 border-b border-border">
+        <div className="flex items-center justify-between mb-2.5">
           <h2 className="text-section-title">Chat</h2>
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -622,7 +623,7 @@ function ConversationRow({
       onClick={onClick}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "relative w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
+        "relative w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors hover:bg-accent/60 dark:hover:bg-accent/40 focus-visible:bg-accent/60",
         active && "bg-club-subtle",
       )}
     >
@@ -632,13 +633,13 @@ function ConversationRow({
             decoration={conversation.otherUser?.avatarDecoration}
             src={conversation.otherUser?.avatarUrl ?? undefined}
             name={title}
-            className="size-9"
-            avatarClassName={cn("text-xs", avatarColor(initialsText))}
+            className="size-8"
+            avatarClassName={cn("text-[11px]", avatarColor(initialsText))}
           />
         ) : (
           <div
             className={cn(
-              "size-9 rounded-full flex items-center justify-center text-xs font-medium",
+              "size-8 rounded-full flex items-center justify-center text-[11px] font-medium",
               avatarColor(initialsText),
             )}
           >
@@ -729,9 +730,14 @@ function ConversationPane({
   onConversationMutated: () => void
 }) {
   const qc = useQueryClient()
+  const setView = useAppStore((s) => s.setView)
   const [renameOpen, setRenameOpen] = useState(false)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
+  // Set when a send is refused because the CLUB's storage is full (HTTP 507
+  // from the storage guard). Renders a persistent banner above the composer
+  // so the member sees exactly what to do — not just a fading toast.
+  const [storageFull, setStorageFull] = useState<string | null>(null)
 
   // Latest page (latest PAGE_SIZE messages).
   const latestQuery = useQuery<MessagesResponse>({
@@ -872,6 +878,7 @@ function ConversationPane({
         { method: "POST", json: { body } },
       ),
     onSuccess: (res) => {
+      setStorageFull(null)
       qc.setQueryData<MessagesResponse>(messagesKey(clubId, conversation.id), (old) => {
         if (!old) return { messages: [res.message], hasMore: false }
         // Append if not present.
@@ -883,8 +890,24 @@ function ConversationPane({
     },
     onError: (e: Error) => {
       toast.error(e.message)
+      if (/storage is full/i.test(e.message)) setStorageFull(e.message)
     },
   })
+
+  /** Async send used by the composer so it can keep the draft when the
+   *  server refuses it (storage full etc.) — the member's text is never
+   *  silently lost. */
+  const sendAsync = useCallback(
+    async (body: string): Promise<boolean> => {
+      try {
+        await sendMutation.mutateAsync(body)
+        return true
+      } catch {
+        return false
+      }
+    },
+    [sendMutation],
+  )
 
   // Edit mutation.
   const editMutation = useMutation({
@@ -1029,7 +1052,7 @@ function ConversationPane({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 md:px-4 py-3 border-b border-border">
+      <div className="flex items-center gap-2 px-3 md:px-4 py-2.5 border-b border-border">
         <Button
           size="icon"
           variant="ghost"
@@ -1131,7 +1154,7 @@ function ConversationPane({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-3 md:px-4 py-4 space-y-1"
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-3 md:px-4 py-2 space-y-1"
         aria-live="polite"
       >
         {loadingOlder && (
@@ -1194,7 +1217,7 @@ function ConversationPane({
             if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
             setShowJumpToBottom(false)
           }}
-          className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-card border border-border px-3 py-1.5 text-xs font-medium shadow-popover hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-2 duration-180"
+          className="absolute bottom-28 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 rounded-full bg-card border border-border px-3 py-1.5 text-xs font-medium shadow-popover hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-2 duration-180"
           aria-label="Jump to latest messages"
         >
           <ArrowDown className="h-3.5 w-3.5" />
@@ -1205,12 +1228,35 @@ function ConversationPane({
       {/* Typing indicator */}
       <TypingIndicator conversationId={conversation.id} myUserId={myUserId} />
 
+      {/* Storage-full banner — a refused send (club at 100% of its quota)
+          stays visible until it resolves, with the executive shortcut for
+          execs. The composer keeps the draft so nothing is lost. */}
+      {storageFull && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-center gap-2 border-t border-danger/30 bg-danger-subtle px-3 py-2 text-caption text-danger-foreground md:px-4"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">{storageFull}</span>
+          {isExec && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 border-danger/40 px-2.5 text-[11px] text-danger-foreground hover:bg-danger/10"
+              onClick={() => setView("storage")}
+            >
+              Open Storage
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Composer */}
       <MessageComposer
         clubId={clubId}
         conversationId={conversation.id}
         myUserId={myUserId}
-        onSend={(body) => sendMutation.mutate(body)}
+        onSend={sendAsync}
         disabled={sendMutation.isPending}
       />
 
@@ -1562,7 +1608,7 @@ function MessageList({
   let prevDayKey: string | null = null
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1.5">
       {grouped.map((group, gi) => {
         const first = group[0]
         const isMine = first.authorId === myUserId
@@ -1576,8 +1622,8 @@ function MessageList({
         return (
           <div key={gi}>
             {showDateSeparator && dateLabel && (
-              <div className="flex items-center justify-center my-3">
-                <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-3 py-1">
+              <div className="flex items-center justify-center my-1.5">
+                <span className="text-[11px] font-medium text-muted-foreground bg-muted rounded-full px-2.5 py-0.5">
                   {dateLabel}
                 </span>
               </div>
@@ -1597,12 +1643,19 @@ function MessageList({
               </div>
               <div className={cn("flex-1 min-w-0 flex flex-col gap-0.5", isMine ? "items-end" : "items-start")}>
                 {showAuthorHeader && (
-                  <div className="text-xs text-muted-foreground px-1">
-                    {first.author.name}
+                  <div className="flex items-baseline gap-1.5 text-xs px-1">
+                    <span className="font-medium text-muted-foreground">
+                      {first.author.name}
+                    </span>
+                    {/* The group's timestamp rides the header line — zero
+                        extra vertical cost, iMessage/Discord-style. */}
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums">
+                      {relativeTime(first.createdAt)}
+                    </span>
                   </div>
                 )}
-                <div className={cn("flex flex-col gap-1 w-full max-w-[78%]", isMine ? "items-end" : "items-start")}>
-                  {group.map((m) => (
+                <div className={cn("flex flex-col gap-0.5 w-full max-w-[80%]", isMine ? "items-end" : "items-start")}>
+                  {group.map((m, idx) => (
                     <AnimatedMessage key={m.id} entering={enteringIds.has(m.id)}>
                       <MessageBubble
                         message={m}
@@ -1610,6 +1663,13 @@ function MessageList({
                         canDelete={m.isMine || canManage}
                         canPin={canPin}
                         showActions={!m.deletedAt}
+                        /* Meta (time/edited/pinned) renders only on the LAST
+                           bubble of a group — or any bubble that was edited
+                           or pinned. Others' groups already carry the time in
+                           their header, so theirs stays clean. */
+                        showMeta={
+                          idx === group.length - 1 && !showAuthorHeader
+                        }
                         onEdit={(body) => onEdit(m.id, body)}
                         onDelete={() => onDelete(m.id)}
                         onReact={(emoji) => onReact(m.id, emoji)}
@@ -1660,6 +1720,7 @@ function MessageBubble({
   canDelete,
   canPin,
   showActions,
+  showMeta,
   onEdit,
   onDelete,
   onReact,
@@ -1670,6 +1731,10 @@ function MessageBubble({
   canDelete: boolean
   canPin: boolean
   showActions: boolean
+  /** Render the time/edited/pinned line under this bubble. Only the last
+   *  bubble of a group (or an edited/pinned one) gets it — keeps threads
+   * dense without hiding information. */
+  showMeta: boolean
   onEdit: (body: string) => void
   onDelete: () => void
   onReact: (emoji: string) => void
@@ -1678,11 +1743,14 @@ function MessageBubble({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.body)
   const isDeleted = !!message.deletedAt
+  // The meta line matters when it carries state (edited / pinned) or when
+  // it's the group's designated timestamp carrier.
+  const renderMeta = showMeta || !!message.editedAt || !!message.pinnedAt
 
   return (
     <div
       className={cn(
-        "group relative rounded-2xl px-3.5 py-2 max-w-full text-sm break-words",
+        "group relative rounded-2xl px-2.5 py-1 max-w-full text-[13px] leading-[1.3] break-words",
         isMine
           ? "bg-club-subtle text-foreground rounded-br-md"
           : "bg-muted/60 text-foreground rounded-bl-md",
@@ -1743,11 +1811,11 @@ function MessageBubble({
         <div className="whitespace-pre-wrap break-words">{linkify(message.body)}</div>
       )}
 
-      {!isDeleted && !editing && (
+      {!isDeleted && !editing && renderMeta && (
         <div
           className={cn(
-            "text-xs mt-1",
-            isMine ? "text-club-foreground/70" : "text-muted-foreground",
+            "text-[10px] leading-none mt-0.5 px-0.5",
+            isMine ? "text-club-foreground/70" : "text-muted-foreground/80",
           )}
         >
           {relativeTime(message.createdAt)}
@@ -1762,7 +1830,7 @@ function MessageBubble({
 
       {/* Reactions */}
       {!isDeleted && message.reactions.length > 0 && (
-        <div className={cn("flex flex-wrap gap-1 mt-1.5")}>
+        <div className={cn("flex flex-wrap gap-1 mt-0.5")}>
           {message.reactions.map((g) => (
             <ReactionBadge
               key={g.emoji}
@@ -2045,12 +2113,33 @@ function MessageComposer({
   clubId: string
   conversationId: string
   myUserId: string
-  onSend: (body: string) => void
+  /** Send the message; resolve false to KEEP the draft (e.g. the server
+   *  refused it because club storage is full — the member's text survives
+   * until the block clears). */
+  onSend: (body: string) => Promise<boolean> | boolean | void
   disabled: boolean
 }) {
   const [value, setValue] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const lastTypingAtRef = useRef<number>(0)
+
+  // § Keep typing after Enter-to-send — the composer briefly disables while
+  // a send is in flight (disabled = sendMutation.isPending), and disabling an
+  // element silently drops focus to <body>. If the textarea was focused when
+  // the send started (the Enter-to-send case), put focus straight back the
+  // moment the composer re-enables — no re-clicking the chat box. Users who
+  // deliberately clicked elsewhere (mouse-send, clicking away mid-flight)
+  // keep their focus where they left it. Refused sends keep the draft, so
+  // keyboard users land right back on their text.
+  const refocusRef = useRef(false)
+  useEffect(() => {
+    if (disabled) {
+      refocusRef.current = document.activeElement === textareaRef.current
+    } else if (refocusRef.current) {
+      refocusRef.current = false
+      textareaRef.current?.focus()
+    }
+  }, [disabled])
 
   // Load the club members list (cached) to power the @mention picker.
   const { data: membersData } = useQuery<MemberListResponse>({
@@ -2087,21 +2176,25 @@ function MessageComposer({
     }
   }
 
-  function submit() {
+  async function submit() {
     const body = value.trim()
     if (!body || disabled) return
-    onSend(body)
-    setValue("")
-    // Clear typing on send (so other clients stop showing "is typing" after
-    // the message arrives). We send a stop event so the indicator clears
-    // immediately rather than after the TTL expires.
-    try {
-      const socket = getRealtimeSocket()
-      if (socket.connected) {
-        socket.emit("typing:stop", { clubId, conversationId, userId: myUserId })
+    // Keep the draft until the server accepts it — a refused send (club
+    // storage full, network down…) never eats the member's message.
+    const accepted = await Promise.resolve(onSend(body))
+    if (accepted !== false) {
+      setValue("")
+      // Clear typing on send (so other clients stop showing "is typing"
+      // after the message arrives). We send a stop event so the indicator
+      // clears immediately rather than after the TTL expires.
+      try {
+        const socket = getRealtimeSocket()
+        if (socket.connected) {
+          socket.emit("typing:stop", { clubId, conversationId, userId: myUserId })
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
   }
 
@@ -2109,10 +2202,12 @@ function MessageComposer({
     // shrink-0: the composer footer must NEVER be crushed away by the flex
     // column on short viewports / landscape — the messages list above is
     // the flexible (min-h-0) element, this row keeps its natural height.
-    <div className="shrink-0 border-t border-border p-3 md:p-4 bg-background" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+    // Kept deliberately COMPACT (p-2.5 panel / h-9 input) — chat is a dense
+    // medium; the fixed-shape textarea keeps the iOS keyboard fix intact.
+    <div className="shrink-0 border-t border-border p-2.5 md:p-3 bg-background" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
       {/* Composer container — wraps textarea + send button in a substantial
           rounded panel, iMessage/Telegram-style. */}
-      <div className="rounded-xl border border-border bg-muted/40 p-2 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
+      <div className="rounded-xl border border-border bg-muted/40 p-1.5 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
         <div className="flex items-end gap-2">
           <MentionableTextarea
             ref={textareaRef}
@@ -2123,12 +2218,12 @@ function MessageComposer({
               maybeEmitTyping()
             }}
             placeholder="Type a message… use @ to mention someone"
-            className="flex-1 h-10 min-h-0 shrink-0 resize-none overflow-y-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="flex-1 h-9 min-h-0 shrink-0 resize-none overflow-y-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             rows={1}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
-                submit()
+                void submit()
               }
             }}
             aria-label="Message input"
@@ -2139,12 +2234,12 @@ function MessageComposer({
             variant="club"
             size="icon"
             className={cn(
-              "size-11 shrink-0 rounded-full transition-[color,background-color,border-color,transform,box-shadow]",
+              "size-10 shrink-0 rounded-full transition-[color,background-color,border-color,transform,box-shadow]",
               (disabled || !value.trim())
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:scale-105",
             )}
-            onClick={submit}
+            onClick={() => void submit()}
             disabled={disabled || !value.trim()}
             aria-label="Send message"
           >
@@ -2156,7 +2251,7 @@ function MessageComposer({
           </Button>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground/60 mt-1.5 px-1 hidden sm:block">
+      <p className="text-[11px] text-muted-foreground/60 mt-1 px-1 hidden sm:block">
         Press <kbd className="rounded border border-border px-1">Enter</kbd> to send,{" "}
         <kbd className="rounded border border-border px-1">Shift+Enter</kbd> for a new line.
         Type <kbd className="rounded border border-border px-1">@</kbd> to mention someone.

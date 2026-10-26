@@ -21,8 +21,8 @@ export function PageHeader({
   return (
     <div className={cn("flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between gap-y-2", className)}>
       <div className="min-w-0">
-        <h1 className="text-page-title truncate">{title}</h1>
-        {description && <p className="text-body text-muted-foreground mt-1">{description}</p>}
+        <h1 className="text-page-title truncate text-balance">{title}</h1>
+        {description && <p className="text-body text-muted-foreground mt-1.5 max-w-2xl">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
     </div>
@@ -117,22 +117,33 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center",
+        // Soft radial wash behind the content + hairline edge + a resting
+        // elevation so the empty state reads as a quiet stage, not a dashed
+        // placeholder box.
+        "relative flex flex-col items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-card px-6 py-14 text-center shadow-card",
         className
       )}
     >
-      {illustration ? (
-        illustration
-      ) : icon ? (
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          {icon}
-        </div>
-      ) : null}
-      <h3 className="text-card-title">{title}</h3>
-      {description && (
-        <p className="text-body text-muted-foreground mt-1.5 max-w-sm">{description}</p>
-      )}
-      {action && <div className="mt-5">{action}</div>}
+      {/* Ambient wash — a faint club-tinted radial glow above center that
+          fades into the card. Pointer-events-none, purely decorative. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--club-accent)_7%,transparent),transparent)] dark:bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--club-accent)_10%,transparent),transparent)]"
+      />
+      <div className="relative flex flex-col items-center">
+        {illustration ? (
+          <div className="mb-5 transition-transform duration-300 hover:scale-[1.04]">{illustration}</div>
+        ) : icon ? (
+          <div className="mb-5 flex size-12 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground shadow-[inset_0_1px_2px_rgba(15,18,22,0.05)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)] [&_svg]:size-5">
+            {icon}
+          </div>
+        ) : null}
+        <h3 className="text-card-title">{title}</h3>
+        {description && (
+          <p className="text-body text-muted-foreground mt-1.5 max-w-sm">{description}</p>
+        )}
+        {action && <div className="mt-6">{action}</div>}
+      </div>
     </div>
   )
 }

@@ -10,7 +10,7 @@ import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import {
   ArrowLeft, ArrowRight, Bell, CalendarDays, Camera, Check, CheckSquare, Clock,
-  Command, Loader2, Megaphone, MessageSquare, Palette, Rocket, ShieldCheck,
+  Command, Loader2, Megaphone, MessageSquare, Palette, Rocket, Search, ShieldCheck,
   Sparkles, Target, Trophy, Users, Wallet, Wand2, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -24,8 +24,10 @@ import {
   AMBIENT_PRESETS, THEME_COLOR_PRESETS, useCustomizationStore, type AmbientEffect,
 } from "@/lib/customization-store"
 import { useAppStore } from "@/lib/store"
+import { useSearchShortcutHint } from "@/hooks/use-platform"
 import { api, apiUpload } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
+import { AmbientPreviewMini } from "@/components/shared/ambient-preview-mini"
 
 /**
  * ============================================================================
@@ -39,7 +41,7 @@ import { cn } from "@/lib/utils"
  * the top of the page visible above it.
  *
  * Steps (same order for everyone — role only gates the club-goal section):
- *   1  Welcome        — ambient hero-loop video card + floating accents
+ *   1  Welcome        — decorated-avatar showcase + what this guide is
  *   2  Add your photo — upload → inline crop (react-easy-crop) → save to
  *                       /api/me/avatar, then pick a Discord-style outer
  *                       decoration (DecoratedAvatar previews, saved via
@@ -75,8 +77,8 @@ import { cn } from "@/lib/utils"
  *
  * Motion: entrances are fade + rise, step transitions cross-fade + slide
  * (AnimatePresence mode="wait", each phase ≤ 250ms). Under
- * prefers-reduced-motion every framer duration collapses to 0, CSS keyframe
- * accents freeze (globals.css), and the hero video does not autoplay.
+ * prefers-reduced-motion every framer duration collapses to 0 and CSS keyframe
+ * accents freeze (globals.css).
  * ============================================================================
  */
 
@@ -780,49 +782,83 @@ function StepHeader({
   )
 }
 
-/* ───────────────────────── Step 1: Welcome (video) ───────────────────────── */
+/* ─────────────── Step 1: Welcome (decoration showcase) ─────────────── */
+
+/** Sample members showing off avatar decorations — the star of the member
+ *  side of the app. One staggered entrance, then still (the decorations
+ *  themselves are the real product's ambient effects, so they keep gently
+ *  animating — that's the feature being previewed, not decoration). */
+const WELCOME_DECO: { id: DecorationId; name: string }[] = [
+  { id: "sparkles", name: "Ava" },
+  { id: "aura", name: "Maya" },
+  { id: "orbit", name: "Noah" },
+  { id: "halo", name: "Priya" },
+  { id: "petals", name: "Lena" },
+]
+
+function WelcomeDecorRow({ reduce }: { reduce: boolean }) {
+  const stagger = makeStagger(reduce)
+  return (
+    <motion.div
+      variants={makeFadeUp(reduce)}
+      initial="hidden"
+      animate="visible"
+      className="relative overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card"
+    >
+      {/* Backdrop — a faint dot grid fading out downward + one soft club
+          glow. Fully static, theme-aware through the CSS variables. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 0)",
+          backgroundSize: "15px 15px",
+          maskImage: "linear-gradient(to bottom, black 45%, transparent)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 45%, transparent)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(360px 170px at 50% -30%, color-mix(in srgb, var(--club) 12%, transparent), transparent 72%)",
+        }}
+      />
+
+      <motion.div
+        variants={stagger.container}
+        initial="hidden"
+        animate="visible"
+        className="relative flex items-center justify-center gap-3.5 px-8 pb-2 pt-7 sm:gap-4 sm:pt-8"
+      >
+        {WELCOME_DECO.map((d) => (
+          <motion.span key={d.id} variants={stagger.child} className="relative">
+            <DecoratedAvatar
+              decoration={d.id}
+              name={d.name}
+              className="h-11 w-11 sm:h-[3.25rem] sm:w-[3.25rem]"
+              avatarClassName="ring-2 ring-card shadow-card"
+            />
+          </motion.span>
+        ))}
+      </motion.div>
+
+      <div className="relative mt-3 border-t border-border/60 bg-muted/30 px-4 py-2.5 text-center">
+        <p className="text-xs text-muted-foreground">
+          Your photo and a decoration to match — that&apos;s step two.
+        </p>
+      </div>
+    </motion.div>
+  )
+}
 
 function StepWelcome({ reduce }: { reduce: boolean }) {
   const fadeUp = makeFadeUp(reduce)
   return (
     <div className={STEP_SHELL_CLS}>
-      {/* Ambient video card with soft floating accents around it */}
-      <div className="relative">
-        <span
-          aria-hidden
-          className="ch-tour-float pointer-events-none absolute -left-2 -top-3 h-9 w-9 rounded-full bg-club/15 sm:h-12 sm:w-12"
-        />
-        <span
-          aria-hidden
-          className="ch-tour-float-slow pointer-events-none absolute -right-2 top-10 h-6 w-6 rounded-full bg-club/25 sm:h-8 sm:w-8"
-        />
-        <span
-          aria-hidden
-          className="ch-tour-float pointer-events-none absolute -bottom-3 right-12 h-4 w-4 rounded-full bg-club/20"
-          style={{ animationDelay: "-3s" }}
-        />
-
-        <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-          className="relative overflow-hidden rounded-2xl border border-border/60 shadow-card"
-        >
-          <WelcomeVideo reduce={reduce} />
-          {/* Caption over a soft gradient so it reads in both themes */}
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 p-4">
-            <span
-              aria-hidden
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ background: "var(--club-accent)", boxShadow: "0 0 10px 1px var(--club-accent)" }}
-            />
-            <p className="text-xs font-medium text-white/90 drop-shadow-sm">
-              Your club, alive in one place — hours, chat, meetings, and more.
-            </p>
-          </div>
-        </motion.div>
-      </div>
+      <WelcomeDecorRow reduce={reduce} />
 
       <motion.h2
         variants={fadeUp}
@@ -861,35 +897,6 @@ function StepWelcome({ reduce }: { reduce: boolean }) {
         </span>
       </motion.div>
     </div>
-  )
-}
-
-/**
- * The ambient hero loop (public/landing/hero-loop.mp4 — 5s, muted, 2MB).
- * Under prefers-reduced-motion it does NOT autoplay: the poster frame
- * (real-hero.jpg) simply shows instead.
- */
-function WelcomeVideo({ reduce }: { reduce: boolean }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  // Belt-and-suspenders for Safari: the muted attribute must exist on the
-  // element before any autoplay attempt.
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = true
-  }, [])
-  return (
-    <video
-      ref={videoRef}
-      className="h-44 w-full object-cover sm:h-52"
-      autoPlay={!reduce}
-      muted
-      loop
-      playsInline
-      preload="metadata"
-      poster="/landing/real-hero.jpg"
-      aria-hidden="true"
-    >
-      <source src="/landing/hero-loop.mp4" type="video/mp4" />
-    </video>
   )
 }
 
@@ -937,7 +944,7 @@ function StepPhoto({
     <div className="mx-auto w-full max-w-xl px-5 py-6 sm:px-8 sm:py-8">
       <div className="flex items-start gap-5">
         <StepHeader eyebrow="Your profile" title="Add your photo." className="flex-1">
-          Crop it how you like, then dress it up with a little outer effect —
+          Crop it how you like, then dress it up with a little avatar effect —
           just like Discord.
         </StepHeader>
         <img
@@ -1050,7 +1057,7 @@ function StepPhoto({
         </button>
       </motion.section>
 
-      {/* ── Decoration picker (Discord-style outer effects) ── */}
+      {/* ── Decoration picker (avatar effects — the v8 set) ── */}
       <motion.section
         variants={fadeUp}
         initial="hidden"
@@ -1063,7 +1070,7 @@ function StepPhoto({
           <h3 className="text-sm font-semibold text-foreground">Dress it up</h3>
         </div>
         <p className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
-          Pick an outer effect for your avatar — it animates in chat, your
+          Pick an effect for your avatar — it animates in chat, your
           profile, and everywhere else. Change it anytime.
         </p>
         <div className="grid grid-cols-4 gap-2.5">
@@ -1501,114 +1508,6 @@ function StepCustomize({
   )
 }
 
-/** Mini preview tile for each ambient effect. A small (~h-12) canvas that
- *  mirrors the actual ambient-background.tsx rendering for each preset so
- *  the user can see what they're picking. */
-function AmbientPreviewMini({ effect, active }: { effect: AmbientEffect; active: boolean }) {
-  const baseColor = "var(--club-accent, #10b981)"
-  return (
-    <div
-      className={cn(
-        "relative h-12 w-full overflow-hidden rounded-md",
-        active && "ring-1 ring-club/30",
-      )}
-      style={{ background: "rgba(0,0,0,0.04)" }}
-    >
-      <div className="absolute inset-0" style={{ ["--amb" as string]: baseColor } as CSSProperties}>
-        {effect === "none" && (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground/50">
-            clean
-          </div>
-        )}
-        {effect === "aurora" && (
-          <div className="absolute inset-0">
-            <div
-              className="absolute left-0 top-0 h-full w-1/2 blur-md"
-              style={{ background: `linear-gradient(160deg, transparent, ${baseColor} 50%, transparent)` }}
-            />
-          </div>
-        )}
-        {effect === "blobs" && (
-          <div className="absolute inset-0">
-            <div className="absolute left-1 top-1 h-7 w-7 rounded-full blur-md" style={{ background: baseColor, opacity: 0.5 }} />
-            <div className="absolute bottom-1 right-1 h-7 w-7 rounded-full blur-md" style={{ background: baseColor, opacity: 0.4 }} />
-          </div>
-        )}
-        {effect === "bubbles" && (
-          <div className="absolute inset-0 flex items-end gap-0.5 px-1 pb-1">
-            {[0, 1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="rounded-full"
-                style={{
-                  width: 8 + (i % 2) * 4,
-                  height: 8 + (i % 2) * 4,
-                  background: `radial-gradient(circle at 40% 40%, ${baseColor}, transparent 65%)`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-        {effect === "mesh" && (
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `radial-gradient(ellipse 60% 50% at 30% 30%, ${baseColor} 0%, transparent 70%)`,
-              opacity: 0.5,
-            }}
-          />
-        )}
-        {effect === "waves" && (
-          <div className="absolute inset-0 flex items-end">
-            <div
-              className="absolute bottom-0 left-0 right-0 h-1/2"
-              style={{
-                background: `linear-gradient(to top, ${baseColor}, transparent)`,
-                borderRadius: "50% 50% 0 0 / 30% 30% 0 0",
-              }}
-            />
-          </div>
-        )}
-        {effect === "particles" && (
-          <div className="absolute inset-0">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: `${15 + i * 18}%`,
-                  top: `${20 + (i % 3) * 25}%`,
-                  width: 8,
-                  height: 8,
-                  background: `radial-gradient(circle, ${baseColor}, transparent 70%)`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-        {effect === "stardust" && (
-          <div className="absolute inset-0">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <div
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: `${10 + (i * 12) % 80}%`,
-                  top: `${15 + (i * 19) % 70}%`,
-                  width: 1.5,
-                  height: 1.5,
-                  background: baseColor,
-                  boxShadow: `0 0 3px ${baseColor}`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
 /* ───────────────────────── Step 6: You're ready ───────────────────────── */
 
 function StepReady({
@@ -1622,6 +1521,9 @@ function StepReady({
   reduce: boolean
   onViewDashboard: () => void
 }) {
+  // Platform-correct search hint: ⌘K on Mac/iPad, Ctrl K on Windows/Linux,
+  // plain words on touch phones (they have no modifier keys).
+  const searchHint = useSearchShortcutHint()
   const goalLabel =
     personalGoal > 0
       ? `${personalGoal}h goal set — see it on your dashboard`
@@ -1732,7 +1634,12 @@ function StepReady({
         className="mt-6 grid w-full max-w-md grid-cols-3 gap-x-4 gap-y-2 text-xs text-muted-foreground"
       >
         <div className="flex items-center justify-center gap-1.5">
-          <Command className="h-3.5 w-3.5" />⌘K search
+          {searchHint.isApple ? (
+            <Command className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <Search className="h-3.5 w-3.5" aria-hidden />
+          )}
+          {searchHint.kind === "touch" ? "Search anything" : `${searchHint.label} search`}
         </div>
         <div className="flex items-center justify-center gap-1.5">
           <Bell className="h-3.5 w-3.5" />Notifications

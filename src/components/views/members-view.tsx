@@ -1231,7 +1231,9 @@ function ClubCodeSection({
               {clubCode ?? "—"}
             </code>
           </div>
-          <div className="flex items-center gap-2">
+          {/* flex-wrap: on narrow phones the three actions stack instead of
+              pushing "Customize code" off the edge of the screen. */}
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={copyCode} disabled={!clubCode}>
               <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy code
             </Button>
@@ -1283,7 +1285,7 @@ function ClubCodeSection({
               )}
             </Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"

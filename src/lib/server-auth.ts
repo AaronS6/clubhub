@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/authOptions"
 import { db } from "@/lib/db"
+import { maybeRunStorageSweeper } from "@/lib/storage-sweeper"
 
 export interface ClubContext {
   user: { id: string; name: string; email: string; avatarUrl?: string; avatarDecoration?: string }
@@ -30,6 +31,10 @@ export async function getSessionUser() {
     where: { id: session.user.id },
     select: { id: true, name: true, email: true, avatarUrl: true, avatarDecoration: true },
   })
+  // Piggyback throttled DB maintenance (expired sessions + chat-tombstone
+  // backfill) on the hottest authenticated path. Fire-and-forget: it never
+  // throws into callers and self-throttles to once per 24h per process.
+  if (user) maybeRunStorageSweeper()
   return user
 }
 

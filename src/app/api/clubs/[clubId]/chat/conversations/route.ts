@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { logActivity } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
 
@@ -30,7 +31,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ clubId: string
           messages: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            where: { deletedAt: null },
+            // deletedAt:null excludes soft-deleted; body:not:"" excludes
+            // tombstones (pre-sweep legacy rows) from the last-message preview.
+            where: { deletedAt: null, body: { not: "" } },
             select: {
               id: true,
               body: true,
@@ -169,6 +172,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const { clubId } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
+
+  // Storage pause: at 100% of the club quota new content is held until
+  // an executive clears room (deletes + edits stay open — that's the recovery path).
+  const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+  if (storageFull) return storageFull
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body !== "object") return error("Invalid input", 400)

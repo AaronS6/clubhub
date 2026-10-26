@@ -110,6 +110,10 @@ const NotificationsView = dynamic(
   () => import("@/components/views/notifications-view").then((m) => m.NotificationsView),
   { loading: () => <ViewLoader />, ssr: false },
 )
+const StorageView = dynamic(
+  () => import("@/components/views/storage-view").then((m) => m.StorageView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
 
 export default function Home() {
   const view = useAppStore((s) => s.view)
@@ -127,6 +131,7 @@ export default function Home() {
       {view === "chat" && <ChatView />}
       {view === "financials" && <FinancialsView />}
       {view === "notes" && <NotesView />}
+      {view === "storage" && <StorageView />}
       {view === "notifications" && <NotificationsView />}
     </AppShell>
   )

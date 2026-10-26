@@ -130,7 +130,7 @@ export function NotificationsView() {
   const total = data?.pages[0]?.total ?? 0
   const unread = data?.pages[0]?.unread ?? 0
 
-  // Local v7 release-notes notification — pinned to the top of the list,
+  // Local release-notes notification (v8.0 notes) — pinned to the top of the list,
   // always shown regardless of filters (it lives in localStorage, not the
   // server). Clicking it re-opens the What's New modal.
   const { notif: releaseNotif } = useWhatsNewNotif()
@@ -293,7 +293,7 @@ export function NotificationsView() {
       ) : (
         <div className="card-quiet p-0 overflow-hidden">
           <ul className="divide-y" aria-label="All notifications">
-            {/* Pinned local release-notes row (What's New in v7). */}
+            {/* Pinned local release-notes row (What's New). */}
             {releaseNotif && (
               <NotifListItem
                 n={releaseNotif}

@@ -18,6 +18,7 @@ import {
   Loader2,
   Lock,
   Globe,
+  Check,
   NotebookPen,
   Tag as TagIcon,
   ChevronDown,
@@ -38,7 +39,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -749,6 +749,11 @@ function NoteComposerDialog({
   const [newTagName, setNewTagName] = React.useState("")
   const [creatingTag, setCreatingTag] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
+  // § Who-can-see chooser — tracks whether the user explicitly picked the
+  // "Specific people" option (the picker below). Kept separate from
+  // sharedWith.length so the choice is visible even before any name is
+  // ticked; picking "Only me" collapses it again.
+  const [specificOpen, setSpecificOpen] = React.useState(false)
 
   const maxContent = caps?.maxContentChars ?? 5000
   const maxTitle = caps?.maxTitleChars ?? 120
@@ -757,8 +762,12 @@ function NoteComposerDialog({
   // make sure the create case starts fresh each time).
   React.useEffect(() => {
     if (open) {
-      setState(mode === "edit" && note ? stateFromNote(note) : emptyState())
+      const fresh = mode === "edit" && note ? stateFromNote(note) : emptyState()
+      setState(fresh)
       setNewTagName("")
+      // Editing an already-shared private note opens with "Specific people"
+      // selected so the current shares are visible and editable.
+      setSpecificOpen(fresh.sharedWith.length > 0)
     }
   }, [open, mode, note])
 
@@ -975,73 +984,178 @@ function NoteComposerDialog({
             </div>
           </div>
 
-          {/* Privacy */}
+          {/* Visibility — deliberately NOT a switch: a toggle labeled
+              "Private" reads as "Public: off", which confused people into
+              thinking they'd just turned visibility off entirely. Instead:
+              a plain status line + an explicit action button underneath.
+              Going private reveals a who-can-see chooser ("Only me" vs
+              picking specific people) — no guessing what the state means. */}
           <div className="space-y-2">
             <Label className="text-caption-medium">Visibility</Label>
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-card p-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-card-title">
-                  {state.isPrivate ? <Lock className="size-4" /> : <Globe className="size-4" />}
-                  {state.isPrivate ? "Private" : "Public"}
+            <div className="rounded-lg border border-border/80 bg-card p-3">
+              <div className="flex items-start gap-2.5">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-4">
+                  {state.isPrivate ? <Lock /> : <Globe />}
                 </div>
-                <p className="text-caption text-muted-foreground mt-0.5">
-                  {state.isPrivate
-                    ? "Only you + the members you choose can see this note."
-                    : "All active members of this club can see this note."}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-card-title">
+                    {state.isPrivate ? "Private note" : "Public note"}
+                  </p>
+                  <p className="text-caption text-muted-foreground mt-0.5">
+                    {state.isPrivate
+                      ? state.sharedWith.length > 0
+                        ? `Only you and the ${state.sharedWith.length === 1 ? "member" : `${state.sharedWith.length} members`} you picked can see this note.`
+                        : "Only you can see this note."
+                      : "All active members of this club can see this note."}
+                  </p>
+                </div>
               </div>
-              <Switch
-                checked={state.isPrivate}
-                onCheckedChange={(checked) => setState((s) => ({ ...s, isPrivate: checked }))}
-                aria-label="Toggle private note"
-              />
+              <Button
+                type="button"
+                variant={state.isPrivate ? "outline" : "secondary"}
+                size="sm"
+                className="mt-3"
+                onClick={() =>
+                  setState((s) => ({
+                    ...s,
+                    // Returning to public resets the share list — it only
+                    // ever applied while the note was private.
+                    isPrivate: !s.isPrivate,
+                    sharedWith: s.isPrivate ? [] : s.sharedWith,
+                  }))
+                }
+              >
+                {state.isPrivate ? (
+                  <>
+                    <Globe className="size-3.5" /> Make public
+                  </>
+                ) : (
+                  <>
+                    <Lock className="size-3.5" /> Make private
+                  </>
+                )}
+              </Button>
             </div>
 
-            {/* Member picker — only when private */}
+            {/* Who can see it — only while private. "Only me" and "Specific
+                people" are explicit choices instead of an implied default. */}
             {state.isPrivate && (
               <div className="space-y-1.5">
-                <Label className="text-caption-medium">Share with (optional)</Label>
-                {!membersLoaded ? (
-                  <div className="flex items-center gap-2 text-caption text-muted-foreground">
-                    <Loader2 className="size-3 animate-spin" />
-                    Loading members…
-                  </div>
-                ) : membersCache.length === 0 ? (
-                  <p className="text-caption text-muted-foreground">No other members to share with.</p>
-                ) : (
-                  <div className="max-h-44 overflow-y-auto scrollbar-thin rounded-lg border border-border/80 bg-card p-2 space-y-1">
-                    {membersCache.map((m) => {
-                      const checked = state.sharedWith.includes(m.id)
-                      return (
-                        <label
-                          key={m.id}
-                          className={cn(
-                            "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors min-h-[36px]",
-                            checked ? "bg-club-muted" : "hover:bg-muted",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) =>
-                              setState((s) => ({
-                                ...s,
-                                sharedWith: e.target.checked
-                                  ? [...s.sharedWith, m.id]
-                                  : s.sharedWith.filter((x) => x !== m.id),
-                              }))
-                            }
-                            className="size-4 accent-[var(--club-accent)]"
-                          />
-                          <Avatar className="size-6">
-                            {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.name} />}
-                            <AvatarFallback className="text-xs">{initials(m.name)}</AvatarFallback>
-                          </Avatar>
-                          <span className="truncate">{m.name}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
+                <Label className="text-caption-medium">Who can see this note?</Label>
+                <div className="grid gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={!specificOpen}
+                    onClick={() => {
+                      setSpecificOpen(false)
+                      setState((s) => ({ ...s, sharedWith: [] }))
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      !specificOpen
+                        ? "border-club bg-club-muted/40"
+                        : "border-border/80 bg-card hover:bg-muted/50",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                        !specificOpen ? "border-club bg-club" : "border-muted-foreground/40",
+                      )}
+                    >
+                      {!specificOpen && (
+                        <Check className="size-2.5 text-club-foreground" strokeWidth={3.5} />
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium leading-tight">Only me</span>
+                      <span className="block text-caption text-muted-foreground mt-0.5">
+                        Just you — nobody else can open it.
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={specificOpen}
+                    onClick={() => setSpecificOpen(true)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      specificOpen
+                        ? "border-club bg-club-muted/40"
+                        : "border-border/80 bg-card hover:bg-muted/50",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                        specificOpen ? "border-club bg-club" : "border-muted-foreground/40",
+                      )}
+                    >
+                      {specificOpen && (
+                        <Check className="size-2.5 text-club-foreground" strokeWidth={3.5} />
+                      )}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium leading-tight">Specific people</span>
+                      <span className="block text-caption text-muted-foreground mt-0.5">
+                        You choose exactly who — pick below.
+                      </span>
+                    </span>
+                  </button>
+                </div>
+
+                {/* Member picker — shown once "Specific people" is chosen;
+                    ticking names is the act of choosing them. */}
+                {specificOpen && (
+                  <>
+                    {!membersLoaded ? (
+                      <div className="flex items-center gap-2 text-caption text-muted-foreground">
+                        <Loader2 className="size-3 animate-spin" />
+                        Loading members…
+                      </div>
+                    ) : membersCache.length === 0 ? (
+                      <p className="text-caption text-muted-foreground">No other members to share with.</p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto scrollbar-thin rounded-lg border border-border/80 bg-card p-2 space-y-1">
+                        {membersCache.map((m) => {
+                          const checked = state.sharedWith.includes(m.id)
+                          return (
+                            <label
+                              key={m.id}
+                              className={cn(
+                                "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors min-h-[36px]",
+                                checked ? "bg-club-muted" : "hover:bg-muted",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) =>
+                                  setState((s) => ({
+                                    ...s,
+                                    sharedWith: e.target.checked
+                                      ? [...s.sharedWith, m.id]
+                                      : s.sharedWith.filter((x) => x !== m.id),
+                                  }))
+                                }
+                                className="size-4 accent-[var(--club-accent)]"
+                              />
+                              <Avatar className="size-6">
+                                {m.avatarUrl && <AvatarImage src={m.avatarUrl} alt={m.name} />}
+                                <AvatarFallback className="text-xs">{initials(m.name)}</AvatarFallback>
+                              </Avatar>
+                              <span className="truncate">{m.name}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {state.sharedWith.length === 0 && (
+                      <p className="text-caption text-muted-foreground px-0.5">
+                        Until you tick a name, the note stays visible to you only.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}

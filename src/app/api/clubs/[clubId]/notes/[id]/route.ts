@@ -129,9 +129,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/clubs/[clubId]/notes/[id] — soft-delete (author OR exec)
-//   Soft-delete sets deletedAt; the note becomes invisible everywhere. The
-//   cleanup script (out of scope) can hard-delete notes with deletedAt set
+// DELETE /api/clubs/[clubId]/notes/[id] — soft-delete + TOMBSTONE (author OR exec)
+//   Blanked title+content = a zero-content tombstone: the note's bytes stop
+//   counting toward club storage immediately (the storage meter counts live
+//   content only). deletedAt is stamped too — every read path (list, PATCH,
+//   export, counters) already filters on it, so the note stays invisible
+//   everywhere. A cleanup script (out of scope) can hard-delete blank rows
 //   after a retention window.
 // ---------------------------------------------------------------------------
 
@@ -147,7 +150,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: str
   if (!isAuthor && !isExec)
     return error("You can only delete your own notes (execs can delete any)", 403)
 
-  await db.clubNote.update({ where: { id: note.id }, data: { deletedAt: new Date() } })
+  await db.clubNote.update({
+    where: { id: note.id },
+    data: { title: "", content: "", deletedAt: new Date() },
+  })
 
   await emitClubEvent(clubId, "note_deleted", { noteId: note.id })
 

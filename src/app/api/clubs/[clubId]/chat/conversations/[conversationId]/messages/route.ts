@@ -1,7 +1,8 @@
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { emitClubEvent } from "@/lib/realtime-server"
-import { logActivity, notify } from "@/lib/activity"
+import { notify } from "@/lib/activity"
 import { rateLimit } from "@/lib/rate-limit"
 
 const PAGE_SIZE = 50
@@ -111,19 +112,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string;
   const before = url.searchParams.get("before")
   const after = url.searchParams.get("after")
 
+  // Tombstoned messages (body = "" — the delete handler blanks them) are
+  // invisible on every read path: they are filtered out of list reads, page
+  // counts and delta polls alike so deleted messages disappear entirely.
+  const liveOnly = { body: { not: "" } } as const
+
   if (before) {
     const cursor = await db.message.findUnique({ where: { id: before }, select: { createdAt: true } })
     if (!cursor) return json({ messages: [], hasMore: false })
     // Fetch messages + hasMore count in parallel.
     const [messages, olderCount] = await Promise.all([
       db.message.findMany({
-        where: { conversationId, createdAt: { lt: cursor.createdAt } },
+        where: { conversationId, createdAt: { lt: cursor.createdAt }, ...liveOnly },
         orderBy: { createdAt: "desc" },
         take: PAGE_SIZE,
         include: messageIncludes,
       }),
       db.message.count({
-        where: { conversationId, createdAt: { lt: cursor.createdAt } },
+        where: { conversationId, createdAt: { lt: cursor.createdAt }, ...liveOnly },
       }),
     ])
     messages.reverse()
@@ -138,7 +144,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string;
     // Fetch messages + mark-as-read in parallel.
     const [messages] = await Promise.all([
       db.message.findMany({
-        where: { conversationId, createdAt: { gt: cursor.createdAt } },
+        where: { conversationId, createdAt: { gt: cursor.createdAt }, ...liveOnly },
         orderBy: { createdAt: "asc" },
         take: PAGE_SIZE * 2,
         include: messageIncludes,
@@ -154,12 +160,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string;
   // No cursor — latest PAGE_SIZE messages + hasMore count + mark-as-read, all parallel.
   const [messages, olderCount] = await Promise.all([
     db.message.findMany({
-      where: { conversationId },
+      where: { conversationId, ...liveOnly },
       orderBy: { createdAt: "desc" },
       take: PAGE_SIZE,
       include: messageIncludes,
     }),
-    db.message.count({ where: { conversationId } }),
+    db.message.count({ where: { conversationId, ...liveOnly } }),
     db.conversationMember.update({
       where: { conversationId_userId: { conversationId, userId: c.user.id } },
       data: { lastReadAt: new Date() },
@@ -177,6 +183,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const { clubId, conversationId } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
+
+  // Storage pause: at 100% of the club quota new content is held until
+  // an executive clears room (deletes + edits stay open — that's the recovery path).
+  const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+  if (storageFull) return storageFull
 
   // Fetch conv + membership in parallel.
   const [conv, membership] = await Promise.all([
@@ -225,7 +236,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   ])
 
   const mentionedUserIds = parseMentions(trimmed, clubMembers)
-  const preview = trimmed.length > 80 ? trimmed.slice(0, 80) + "…" : trimmed
+  // § Storage: the notification preview is the longest per-recipient string
+  // we write on every send — 60 chars is plenty to recognize the message and
+  // keeps each fan-out row lean.
+  const preview = trimmed.length > 60 ? trimmed.slice(0, 60) + "…" : trimmed
   const notifyPayload = (recipientId: string) => ({
     userId: recipientId,
     clubId,
@@ -270,20 +284,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     )
   }
 
-  // Fire all notifications + activity log + realtime emit in parallel.
+  // Fire notifications + realtime emit in parallel.
+  // § Storage: NO activity-log row per message — "Alex sent a message in
+  // club chat" entries were pure overhead (~230 bytes against the club quota
+  // per message, i.e. ~60% of a short message's footprint) and noise in the
+  // feed. Chat is its own record; the activity log stays for real club
+  // events (approvals, announcements, new members…).
   await Promise.all([
     Promise.all(notifyTasks),
-    logActivity({
-      clubId,
-      actorUserId: c.user.id,
-      actionType: "chat_message_sent",
-      targetType: "message",
-      targetId: created.id,
-      description:
-        conv.type === "direct"
-          ? `${c.user.name} sent a direct message`
-          : `${c.user.name} sent a message in ${conv.name ?? "club chat"}`,
-    }),
     emitClubEvent(clubId, "chat_message", { conversationId }),
   ])
 

@@ -151,7 +151,7 @@ const META: Record<string, NotifMeta> = {
     view: "dashboard",
     tone: "rejected",
   },
-  // Local-only (client-synthesized, never stored in DB): the v7 release
+  // Local-only (client-synthesized, never stored in DB): the release
   // notes notification that lives in the bell after the What's New modal is
   // closed. Clicking it re-opens the modal instead of navigating.
   release_notes: {

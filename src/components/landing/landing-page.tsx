@@ -467,7 +467,7 @@ export function LandingPage() {
                 <button
                   type="button"
                   onClick={() => router.push("/")}
-                  className={cn(PILL_BASE, "h-11 px-5 text-sm text-[#07130b] bg-[#22c55e] shadow-[0_8px_22px_-10px_rgba(34,197,94,0.5)] hover:bg-[#4ade80]")}
+                  className={cn(PILL_BASE, "pill-sheen h-11 px-5 text-sm text-[#07130b] bg-[#22c55e] shadow-[0_8px_22px_-10px_rgba(34,197,94,0.5)] hover:bg-[#4ade80]")}
                 >
                   Open the app
                   <ArrowRight className="h-4 w-4" aria-hidden />
@@ -487,7 +487,7 @@ export function LandingPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/?auth=signup")}
-                    className={cn(PILL_BASE, "h-11 px-5 text-sm text-[#07130b] bg-[#22c55e] shadow-[0_8px_22px_-10px_rgba(34,197,94,0.5)] hover:bg-[#4ade80]")}
+                    className={cn(PILL_BASE, "pill-sheen h-11 px-5 text-sm text-[#07130b] bg-[#22c55e] shadow-[0_8px_22px_-10px_rgba(34,197,94,0.5)] hover:bg-[#4ade80]")}
                   >
                     Sign up
                   </button>
@@ -537,6 +537,18 @@ export function LandingPage() {
                   "linear-gradient(100deg, rgba(23,19,16,0.92) 0%, rgba(23,19,16,0.6) 42%, rgba(23,19,16,0.1) 78%, rgba(23,19,16,0) 100%)",
               }}
             />
+            {/* Aurora — a slow-drifting multi-radial tint (the page's own
+                weather) + a vignette that fades the hero's edges into the
+                espresso so the headline stays dominant. */}
+            <div
+              aria-hidden
+              className="landing-aurora"
+              style={{
+                background:
+                  "radial-gradient(36% 42% at 22% 26%, rgba(34,197,94,0.14), transparent 70%), radial-gradient(28% 34% at 74% 18%, rgba(56,189,248,0.08), transparent 70%), radial-gradient(32% 38% at 62% 76%, rgba(167,139,250,0.07), transparent 70%)",
+              }}
+            />
+            <div aria-hidden className="landing-vignette" style={{ background: "radial-gradient(120% 90% at 50% 30%, transparent 52%, rgba(23,19,16,0.92) 100%)" }} />
 
             {/* PHONE — the photos live IN the background behind the text,
                 faded with a deep espresso wash so the words stay perfectly
@@ -941,20 +953,27 @@ export function LandingPage() {
                 {FEATURES.map((f, i) => (
                   <Reveal key={f.title} delay={(i % 4) * 0.05} className="h-full">
                     <div
+                      onPointerMove={(e) => {
+                        // Cursor spotlight — feed the pointer position to the
+                        // CSS card-spotlight gradient as element-local %.
+                        const r = e.currentTarget.getBoundingClientRect()
+                        e.currentTarget.style.setProperty("--spotlight-x", `${((e.clientX - r.left) / r.width) * 100}%`)
+                        e.currentTarget.style.setProperty("--spotlight-y", `${((e.clientY - r.top) / r.height) * 100}%`)
+                      }}
                       className={cn(
                         CARD,
                         CARD_HOVER,
-                        "group h-full rounded-3xl p-5",
+                        "card-spotlight group h-full rounded-3xl p-5",
                         // Hover: a faint green edge-light joins the usual lift,
                         // and the icon tile wakes up under the cursor.
                         "hover:shadow-[0_2px_8px_rgba(0,0,0,0.25),0_22px_48px_-18px_rgba(74,222,128,0.22)]",
                       )}
                     >
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#4ade80]/[0.12] text-[#4ade80] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">
+                      <span className="relative z-[1] grid h-10 w-10 place-items-center rounded-xl bg-[#4ade80]/[0.12] text-[#4ade80] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110">
                         <f.icon className="h-[18px] w-[18px]" aria-hidden />
                       </span>
-                      <p className="mt-4 text-[15px] font-semibold text-[#f0ebe0]">{f.title}</p>
-                      <p className="mt-1.5 text-sm leading-relaxed text-[#f0ebe0]/60">{f.body}</p>
+                      <p className="relative z-[1] mt-4 text-[15px] font-semibold text-[#f0ebe0]">{f.title}</p>
+                      <p className="relative z-[1] mt-1.5 text-sm leading-relaxed text-[#f0ebe0]/60">{f.body}</p>
                     </div>
                   </Reveal>
                 ))}
@@ -981,9 +1000,6 @@ export function LandingPage() {
                       aria-hidden
                       className="absolute inset-0 bg-gradient-to-t from-[#171310]/80 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-[#221d15]/70"
                     />
-                    <p className="absolute bottom-4 left-5 font-serif text-sm italic text-[#f0ebe0]/85 drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
-                      workshops that (mostly) run themselves
-                    </p>
                   </div>
 
                   <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-12">
@@ -1366,9 +1382,6 @@ function FaqSection() {
             >
               Questions, answered.
             </h2>
-            <p className="mt-4 text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
-              The stuff people actually ask us, answered plainly.
-            </p>
           </div>
         </Reveal>
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import sharp from "sharp"
 import { db } from "@/lib/db"
 import { getClubContext, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { saveImage, deleteImage, publicUrl } from "@/lib/image-store"
 
 /** 5MB upload cap for club logos. */
@@ -24,6 +25,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
     const { clubId } = await ctx.params
     const c = await getClubContext(clubId)
     if (!c) return error("Not a member of this club", 403)
+
+    // Storage pause: at 100% of the club quota new content is held until
+    // an executive clears room (deletes + edits stay open — that's the recovery path).
+    const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+    if (storageFull) return storageFull
     if (c.membership.role !== "executive") return error("Executives only", 403)
 
     const form = await req.formData().catch(() => null)

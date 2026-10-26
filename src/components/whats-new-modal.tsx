@@ -14,22 +14,22 @@ import { APP_VERSION } from "@/lib/version"
 
 /**
  * ============================================================================
- * WhatsNewModal — "v7.5 — the biggest update in ClubHub history"
+ * WhatsNewModal — "v8.0 — storage, guides & a glow-up"
  * ============================================================================
  *
- * The whole v7 wave (7.0 through 7.5) shipped to the school as ONE giant
- * release, so this announcement recaps the entire wave in three sections:
+ * The v8 wave, in one announcement:
  *
- *   v7.0          the redesign (landing page, Explore Clubs, join modes,
- *                 banners, avatar outer effects)
- *   v7.1 → v7.4   the polish rounds (iOS keyboard fix, shortcuts, stats +
- *                 FAQ, shimmer, greeting, share cards)
- *   v7.5          the photo overhaul (landing runs on student photos)
+ *   v8.0   real club storage — a live quota meter, a pause at 100% with a
+ *          clear recovery loop, ranked safe-cleanup suggestions, and a
+ *          capacity request path; the executive introduction guide (with
+ *          the resume pill); a chat diet (denser messages, Enter-to-send
+ *          keeps focus, ~60% less storage per message); the redesigned
+ *          avatar-effect set; the notes "Make private" flow; visible
+ *          ambient backgrounds; and a pile of mobile fixes.
  *
- * The DISPLAYED version is APP_VERSION ("7.5") — whats-new.ts's
- * WHATS_NEW_VERSION ("7.5.1") is only the localStorage ack key; the .1
- * re-armed the once-per-visitor cycle when these notes were expanded, so
- * people who already closed the shorter v7.5 notes see these exactly once.
+ * The DISPLAYED version is APP_VERSION ("8.0") — whats-new.ts's
+ * WHATS_NEW_VERSION ("8.0") is the localStorage ack key; it moved from
+ * "7.5.1" so everyone who closed the v7.5 notes sees these exactly once.
  *
  * Shown ONCE to returning visitors, centered on a blurred backdrop — never
  * full-screen. Always in the ClubHub editorial dark palette (#16130e /
@@ -72,7 +72,7 @@ export function WhatsNewModal() {
   }, [])
 
   // "Pick your effect" — acknowledge the release AND hand the user straight
-  // to Settings → Profile, where the outer-effect picker lives (same
+  // to Settings → Profile, where the avatar-effect picker lives (same
   // open-settings CustomEvent the bell/other surfaces use; the app shell
   // routes it to the dialog on the requested tab).
   const openEffectsInSettings = useCallback(() => {
@@ -141,7 +141,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  v{APP_VERSION} — the biggest update in ClubHub history.
+                  v{APP_VERSION} — storage, guides &amp; a glow-up.
                 </h2>
               </div>
               <button
@@ -157,44 +157,88 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                Everything from v7.0 through v7.5 landed in one wave — a
-                redesigned app, a brand-new public home for your clubs, and a
-                landing page that runs on your school&apos;s own photos. This is,
-                hands down, the biggest release ClubHub has ever shipped.
+                ClubHub took a big step toward running itself this release:
+                storage you can actually see and manage, introduction guides
+                that never get lost, a leaner chat, and a full redesign of
+                every avatar effect.
               </p>
 
-              {/* ── v7.0 — the redesign ─────────────────────────────────── */}
-              <SectionLabel version="v7.0" label="The redesign" />
+              {/* ── v8.0 — storage becomes real ─────────────────────────── */}
+              <SectionLabel version="v8.0" label="Storage becomes real" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="🌐" title="A brand-new landing page">
-                  A new public home for ClubHub — what it is, how it works, and
-                  where to start, whether you&apos;re brand-new or already here.
+                <ReleaseNote emoji="📊" title="Your club's storage, visible">
+                  A live meter of everything your club keeps — chat,
+                  announcements, tasks, images and more — against its 15 MB
+                  quota, with per-category breakdowns.
                 </ReleaseNote>
-                <ReleaseNote emoji="🔎" title="Explore Clubs">
-                  Browse every public club — descriptions, banners, and more —
-                  and find your people before ever creating an account.
+                <ReleaseNote emoji="⏸️" title="A full pause, not a crash">
+                  If storage ever hits 100%, new content pauses club-wide
+                  until an executive clears some room. Nothing is lost, and
+                  everyone is told exactly what&apos;s going on.
                 </ReleaseNote>
-                <ReleaseNote emoji="🤝" title="A better way to join clubs">
-                  Clubs choose how students join: the classic club code, or a
-                  request that executives approve.
+                <ReleaseNote emoji="🧹" title="Cleanup that doesn't hurt">
+                  Ranked suggestions tell you what&apos;s safe to clear first —
+                  old chat and the activity feed, never your financial
+                  records. Deleting frees space on the spot.
                 </ReleaseNote>
-                <ReleaseNote emoji="🎨" title="Custom club banners">
-                  Every club gets its own look and identity — upload a banner
-                  and make the space yours.
+                <ReleaseNote emoji="📬" title="Need more room?">
+                  An &ldquo;Increase storage capacity&rdquo; action reaches the
+                  ClubHub team directly from the Storage page.
                 </ReleaseNote>
-                {/* Outer effects — gets its own card + a direct CTA into
-                    Settings → Profile so people actually find the picker. */}
-                <div className="py-3.5 last:pb-1">
+              </div>
+
+              {/* ── v8.0 — the guides ───────────────────────────────────── */}
+              <SectionLabel version="v8.0" label="Guides that never get lost" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="🛡️" title="The executive guide">
+                  New executives get an eight-stop tour of every admin power —
+                  branding, invites, approvals, records — with animated demo
+                  previews and one-tap jumps into the real thing.
+                </ReleaseNote>
+                <ReleaseNote emoji="📍" title="Pause it, resume anytime">
+                  Leave the guide mid-tour and it parks into a small pill at
+                  the top of the app — click it later and you&apos;re back on
+                  the exact step. Replay it anytime from Settings → Security.
+                </ReleaseNote>
+              </div>
+
+              {/* ── v8.0 — chat diet ────────────────────────────────────── */}
+              <SectionLabel version="v8.0" label="A leaner chat" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="💬" title="More messages on screen">
+                  Tighter bubbles and spacing — conversations read denser and
+                  scroll lighter, without losing timestamps or reactions.
+                </ReleaseNote>
+                <ReleaseNote emoji="⌨️" title="Keep typing after Enter">
+                  Sending with Enter now leaves your cursor right in the
+                  message box — no more clicking the chat box after every
+                  message.
+                </ReleaseNote>
+                <ReleaseNote emoji="🪶" title="Chat weighs ~60% less">
+                  Every message used to quietly log extra rows in the
+                  background. Those are gone — old ones cleaned up too — so
+                  conversations cost far less of your club&apos;s storage.
+                </ReleaseNote>
+              </div>
+
+              {/* ── v8.0 — avatar effects, redesigned ───────────────────── */}
+              <div className="mt-7">
+                <SectionLabel version="v8.0" label="Avatar effects, redesigned" />
+              </div>
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <div className="py-3.5 first:pt-1 last:pb-1">
                   <div className="flex items-baseline gap-2">
                     <span aria-hidden className="text-sm leading-none">💫</span>
                     <h3 className="text-sm font-bold tracking-tight">
-                      Avatar outer effects
+                      All nine effects, rebuilt
                     </h3>
                   </div>
                   <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
-                    Make your avatar stand out with animated outer effects —
-                    rings, glows, and more, visible in chat, announcements, and
-                    the members list.
+                    An accent ring in your club&apos;s color with a metallic
+                    sheen, a soft glow, starlight, a comet with a visible
+                    track, blossom petals, a neon glitch, sunset, aurora, and
+                    a gold halo — all bigger and clearer in the picker, so you
+                    can actually tell what you&apos;re choosing.
                   </p>
                   <button
                     type="button"
@@ -207,40 +251,22 @@ export function WhatsNewModal() {
                 </div>
               </div>
 
-              {/* ── v7.1 → v7.4 — the polish rounds ─────────────────────── */}
-              <SectionLabel version="v7.1 → v7.4" label="The polish rounds" />
+              {/* ── v8.0 — and the rest ─────────────────────────────────── */}
+              <SectionLabel version="v8.0" label="And the rest" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="⌨️" title="Keyboard shortcuts">
-                  Press <Kbd>g</Kbd> then <Kbd>c</Kbd> to jump straight to
-                  chat (<Kbd>d</Kbd> dashboard, <Kbd>t</Kbd> tasks…), and{" "}
-                  <Kbd>?</Kbd> brings up the full cheat sheet.
+                <ReleaseNote emoji="🔒" title="Private notes, plainly">
+                  A clear &ldquo;Make private&rdquo; button with a
+                  who-can-see chooser — only you, or specific people. No more
+                  guessing what the toggle did.
                 </ReleaseNote>
-                <ReleaseNote emoji="📱" title="iOS keyboard fix">
-                  The chat composer now stays exactly where it should when you
-                  type on iPhone — no more sliding around.
+                <ReleaseNote emoji="🌌" title="Backgrounds that show up">
+                  Ambient backgrounds were rebuilt to be genuinely visible,
+                  with live preview tiles in Settings → Appearance.
                 </ReleaseNote>
-                <ReleaseNote emoji="📊" title="Landing stats + FAQ">
-                  Live club and member counts on the landing page, plus answers
-                  to the questions we hear most.
-                </ReleaseNote>
-                <ReleaseNote emoji="✨" title="Finishing touches">
-                  A time-based dashboard greeting, shimmer loading skeletons,
-                  and proper share cards when you send ClubHub to a friend.
-                </ReleaseNote>
-              </div>
-
-              {/* ── v7.5 — your school, your photos ─────────────────────── */}
-              <SectionLabel version="v7.5" label="Your school, your photos" />
-              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="📸" title="Your photos, front and center">
-                  The landing page now runs on photos taken at North by
-                  students — club fairs, sign-up tables, snack socials, cake
-                  decorating, and more.
-                </ReleaseNote>
-                <ReleaseNote emoji="🖼️" title="A cleaner, calmer landing">
-                  The whole team anchors the hero over the gym&apos;s NORTH wall,
-                  and the how-it-works steps show real moments instead of
-                  stock illustrations.
+                <ReleaseNote emoji="📱" title="Mobile, smoothed out">
+                  Buttons that overflowed on small screens fixed, the
+                  keyboard behaves, and the whole app leans a little more
+                  polished.
                 </ReleaseNote>
               </div>
 
@@ -249,15 +275,11 @@ export function WhatsNewModal() {
                   Our goal
                 </p>
                 <p className="mt-2 text-sm text-[#f0ebe0]/80 leading-relaxed">
-                  We want ClubHub to be more than just a place where executives
-                  post announcements or manage tasks. We want it to be a place
-                  where students can discover new interests, find communities,
-                  get involved, and keep their club activities organized in one
-                  place.
-                </p>
-                <p className="mt-2 text-sm text-[#f0ebe0]/60 leading-relaxed">
-                  This update is a giant step toward that vision, and
-                  there&apos;s still plenty more we&apos;d love to build.
+                  We want ClubHub to be more than a place where executives
+                  post announcements — somewhere students find their people,
+                  get involved, and keep everything organized in one place.
+                  v8.0 is another big step toward the club that (actually)
+                  runs itself.
                 </p>
               </div>
 
@@ -317,21 +339,12 @@ function ReleaseNote({
   )
 }
 
-/** Section label for one wave of the v7 story — e.g. "v7.0 · The redesign". */
+/** Section label for one wave of the release story — e.g. "v8.0 · Storage". */
 function SectionLabel({ version, label }: { version: string; label: string }) {
   return (
     <p className="mt-7 text-xs font-bold tracking-[0.18em] uppercase">
       <span className="text-club">{version}</span>
       <span className="text-[#f0ebe0]/45">{" · "}{label}</span>
     </p>
-  )
-}
-
-/** Tiny key cap — inline <kbd> styling for shortcut mentions in note copy. */
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="mx-0.5 inline-flex h-[1.25rem] min-w-[1.25rem] translate-y-[-1px] items-center justify-center rounded border border-[#f0ebe0]/20 bg-[#f0ebe0]/[0.08] px-1 font-mono text-[0.7rem] font-semibold text-[#f0ebe0]/85">
-      {children}
-    </kbd>
   )
 }

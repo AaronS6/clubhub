@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import { getClubContext, json, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { emitClubEvent } from "@/lib/realtime-server"
 
 // Storage caps — enforced at the API layer (DB schema stays SQLite-portable).
@@ -101,14 +102,18 @@ export function shapeNote(n: any, currentUserId: string): NoteShape {
   }
 }
 
-/** DB-level note filter: all non-deleted notes for the club. Viewer-level
- *  visibility (public OR author OR sharedWith) is applied afterwards in JS
- *  via noteVisibleTo() — see the comment there for why. */
+/** DB-level note filter: all non-deleted notes for the club. deletedAt:null
+ *  covers tombstones (delete blanks title+content AND stamps deletedAt);
+ *  content<>'' is belt-and-braces so a blank row can never leak into a read
+ *  path even if it somehow lost its deletedAt stamp. Viewer-level visibility
+ *  (public OR author OR sharedWith) is applied afterwards in JS via
+ *  noteVisibleTo() — see the comment there for why. */
 export function buildVisibilityFilter(clubId: string, userId: string) {
   void userId // kept for API compatibility; visibility is JS-side now
   return {
     clubId,
     deletedAt: null,
+    content: { not: "" },
   } as any
 }
 
@@ -209,6 +214,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const { clubId } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
+
+  // Storage pause: at 100% of the club quota new content is held until
+  // an executive clears room (deletes + edits stay open — that's the recovery path).
+  const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+  if (storageFull) return storageFull
   // Any active member can create notes — Discord forum style.
 
   const body = await req.json().catch(() => null)

@@ -54,11 +54,12 @@ import {
   ShieldCheck, UserCog, Sparkles, Moon, Sun, Loader2, Search as SearchIcon,
   MessageSquare, CheckCheck, Check, ChevronRight, AlertTriangle, X, RefreshCw,
   Upload, Trash2, Palette, NotebookPen, KeyRound, Compass, UserCheck,
-  BookOpen, BookOpenCheck, Keyboard,
+  BookOpen, BookOpenCheck, Keyboard, Database, GraduationCap, PlayCircle,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useSearchShortcutHint } from "@/hooks/use-platform"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
@@ -84,12 +85,14 @@ import {
   notifMeta, notifToneClasses, targetViewFor,
 } from "@/lib/notif-meta"
 import { useCustomizationStore, AMBIENT_PRESETS, THEME_COLOR_PRESETS } from "@/lib/customization-store"
+import { AmbientPreviewMini } from "@/components/shared/ambient-preview-mini"
 import { useWhatsNewNotif, openWhatsNew } from "@/lib/whats-new"
 // APP_VERSION (not whats-new's ack key "7.5.1") — the bell section label
 // displays the real user-facing version.
 import { APP_VERSION } from "@/lib/version"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import { ExecHandbookModal } from "@/components/exec-handbook-modal"
+import { AdminTour } from "@/components/admin-tour"
 import { KeyboardShortcuts, OPEN_KEYBOARD_SHORTCUTS_EVENT } from "@/components/shared/keyboard-shortcuts"
 
 interface MeResponse {
@@ -174,6 +177,7 @@ const NAV_TIERS: NavTier[] = [
       { view: "financials", label: "Financials", icon: Wallet },
       { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
       { view: "activity", label: "Activity Log", icon: ScrollText, execOnly: true },
+      { view: "storage", label: "Storage", icon: Database, execOnly: true },
     ],
   },
 ]
@@ -397,10 +401,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Fire-and-forget on purpose: the handbook confirm triggers a SECOND
   // render (the memberships refetch) whose effect cleanup would otherwise
   // cancel the pending dispatch.
+  //
+  // EXECUTIVES get the dedicated EXECUTIVE guide instead (admin-tour.tsx):
+  // it opens itself ~1.1s after the handbook is acknowledged for the club,
+  // so the member tour is deliberately skipped here — the two guides never
+  // race. Regular members keep getting the onboarding tour below.
   useEffect(() => {
     if (!tourArmedRef.current) return
     if (handbookDue) return // wait for the handbook modal to be confirmed
     tourArmedRef.current = false
+    if (useAppStore.getState().currentClub?.role === "executive") return
     setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 600)
   }, [clubs, handbookDue])
 
@@ -779,10 +789,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {topBar}
       <div className="flex flex-1 min-h-0 p-3 gap-3">
         {/* Sidebar surface — one card formula with everything else in the app:
-            rounded-xl (12px), 1px border, quiet card shadow. Club-switcher
-            card pinned at the top, nav in the scrollable middle, theme toggle
-            at the bottom. */}
-        <aside className="hidden md:flex md:w-[240px] flex-col rounded-xl border border-border/80 bg-card overflow-hidden shrink-0 shadow-card">
+            rounded-xl (12px), 1px border, quiet card shadow. "Glassier nav":
+            a translucent card body + backdrop saturation so the sidebar reads
+            as frosted glass floating over the ambient background (the sidebar
+            is only 240px wide, so the blur cost that disqualified the top bar
+            doesn't apply). A lit top edge (inset 1px highlight) carries the
+            physical elevation language. Club-switcher card pinned at the top,
+            nav in the scrollable middle, theme toggle at the bottom. */}
+        <aside className="hidden md:flex md:w-[240px] flex-col rounded-xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
           {/* Club switcher — bordered card at the top: accent logo, name,
               role, chevron. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
@@ -863,6 +877,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Onboarding tour — auto-opens on first club join, or replayable from
           the account menu via the `open-onboarding-tour` window event. */}
       <OnboardingTour />
+      {/* Executive introduction guide — the dedicated admin walkthrough
+          (branding, invites, approvals, oversight…). Auto-opens once per
+          executive club per browser (after the handbook is acknowledged,
+          which also covers club creation and mid-session promotions), and
+          replayable anytime via the `open-admin-tour` window event from
+          Settings → Security. Executives only. */}
+      <AdminTour />
       {/* Executive Admin Handbook — the one-time acknowledgment popup for
           clubs the viewer runs that haven't confirmed it yet (typically the
           club they just created). Non-dismissible until confirmed. In REVIEW
@@ -934,19 +955,17 @@ function InstallHint() {
 /** Platform-aware ⌘K / Ctrl K hint for the desktop search trigger.
  *  Own component (its own hook) so AppShell's conditional branches don't
  *  have to care. The trigger only renders in the authenticated, client-side
- *  branch — never in SSR HTML — so there is no hydration mismatch. */
+ *  branch — never in SSR HTML — so there is no hydration mismatch. The label
+ *  comes from the shared platform helper (Mac → ⌘K, Windows/Linux → Ctrl K,
+ *  touch phones never see this trigger — it's desktop-only). */
 function SearchShortcutHint() {
-  const [label] = useState(() => {
-    if (typeof navigator === "undefined") return "⌘K"
-    const platform = `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`.toLowerCase()
-    return platform.includes("mac") ? "⌘K" : "Ctrl K"
-  })
+  const { label } = useSearchShortcutHint()
   return (
     <kbd
       aria-hidden
       className="ml-1 shrink-0 rounded border border-border/80 bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-muted-foreground"
     >
-      {label}
+      {label ?? "Ctrl K"}
     </kbd>
   )
 }
@@ -2446,13 +2465,15 @@ function SettingsDialog({
                     PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
                   </p>
                 </div>
-                {/* Outer effect — same Discord-style decoration picker as the
-                    onboarding tour, now reachable anytime from settings.
-                    Tiles preview the effect on the user's real avatar; the
-                    selection saves instantly (no "Save profile" needed). */}
+                {/* Avatar effect — same decoration picker as the onboarding
+                    tour, reachable anytime from settings. Tiles preview the
+                    effect on the user's real avatar at a size where the
+                    effect actually reads (the v7 tiles were so small the
+                    effect was invisible — "barely useable"); the selection
+                    saves instantly (no "Save profile" needed). */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>Outer effect</Label>
+                    <Label>Avatar effect</Label>
                     {decoSaving && (
                       <span className="flex items-center gap-1 text-caption text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -2461,21 +2482,26 @@ function SettingsDialog({
                     )}
                   </div>
                   <div className="rounded-lg border border-border bg-card/60 p-3 sm:p-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3.5">
                       {/* key on decoration → the soft pop replays on change */}
                       <DecoratedAvatar
                         key={decoration}
                         decoration={decoration}
                         src={avatarUrl || null}
                         name={name || session?.user?.name || "You"}
-                        className="ch-tour-pop h-14 w-14 shrink-0"
+                        className="ch-tour-pop h-16 w-16 shrink-0"
                         avatarClassName="border-2 border-card shadow-card"
                       />
-                      <p className="text-caption leading-relaxed text-muted-foreground">
-                        An animated effect around your avatar, visible in chat,
-                        announcements, the members list, and your profile.
-                        Applies instantly.
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-tight text-foreground">
+                          {DECORATION_LABELS[decoration]}
+                        </p>
+                        <p className="text-caption leading-relaxed text-muted-foreground mt-0.5">
+                          An animated effect that frames your avatar everywhere you
+                          show up — chat, announcements, the members list, your
+                          profile. Tap a tile to apply it instantly.
+                        </p>
+                      </div>
                     </div>
                     <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
                       {DECORATION_IDS.map((id) => {
@@ -2485,17 +2511,18 @@ function SettingsDialog({
                             key={id}
                             type="button"
                             aria-pressed={active}
+                            aria-label={`Avatar effect: ${DECORATION_LABELS[id]}`}
                             disabled={decoSaving}
                             onClick={() => selectDecoration(id)}
                             className={cn(
-                              "relative flex flex-col items-center gap-1 rounded-xl border p-1.5 sm:p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                              "relative flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-[border-color,background-color,box-shadow] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
                               active
-                                ? "border-club bg-club-muted/30"
-                                : "border-transparent hover:bg-accent"
+                                ? "border-club bg-club-muted/40 shadow-card ring-1 ring-club/30"
+                                : "border-border/70 bg-card hover:border-club/30 hover:shadow-card",
                             )}
                           >
                             {active && (
-                              <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-club text-club-foreground">
+                              <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-club text-club-foreground">
                                 <Check className="h-2.5 w-2.5" strokeWidth={3} />
                               </span>
                             )}
@@ -2503,10 +2530,10 @@ function SettingsDialog({
                               decoration={id}
                               src={avatarUrl || null}
                               name={name || session?.user?.name || "You"}
-                              className="h-11 w-11 sm:h-12 sm:w-12"
+                              className="h-14 w-14"
                               avatarClassName="border-2 border-card"
                             />
-                            <span className="text-center text-[0.625rem] font-medium leading-tight text-foreground/80">
+                            <span className="text-center text-[0.6875rem] font-medium leading-tight text-foreground/80">
                               {DECORATION_LABELS[id]}
                             </span>
                           </button>
@@ -2579,6 +2606,46 @@ function SettingsDialog({
                     >
                       <BookOpen className="h-4 w-4" />
                       View guide
+                    </Button>
+                  </div>
+                )}
+                {/* ── Executive introduction guide (execs of this club only) ──
+                    The full admin walkthrough — branding, invites, approvals,
+                    day-to-day running, records, oversight — each shown as a
+                    fast demo preview with sample data and a "try it now"
+                    jump. Finishing hands off to the member guide (avatar,
+                    decorations, profile). It auto-shows once per club; this
+                    is the "do the introduction again" button. Same
+                    close-settings hand-off as the handbook. */}
+                {isExec && (
+                  <div className="rounded-xl border border-club/25 bg-club-muted/30 p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-club-muted text-club">
+                        <GraduationCap className="h-5 w-5" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-tight">Executive introduction guide</p>
+                        <p className="mt-1 text-caption leading-relaxed text-muted-foreground">
+                          Every admin power in eight short stops — quick demo
+                          previews (sample data) and one-tap jumps to try each
+                          one for real. Leave mid-tour and it waits in a
+                          floating pill up top. Ends with your member guide.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="mt-3 w-full border-club/30 hover:border-club/50 hover:bg-club-subtle"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent("close-settings"))
+                        setTimeout(
+                          () => window.dispatchEvent(new CustomEvent("open-admin-tour")),
+                          50
+                        )
+                      }}
+                    >
+                      <PlayCircle className="h-4 w-4" />
+                      Replay executive guide
                     </Button>
                   </div>
                 )}
@@ -2710,19 +2777,23 @@ function AppearanceTab() {
       {/* Ambient background effect */}
       <div className="space-y-2">
         <Label>Background effect</Label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {AMBIENT_PRESETS.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setAmbient(p.id)}
+              aria-pressed={ambient === p.id}
               className={cn(
-                "group relative flex flex-col items-center gap-1.5 rounded-lg border p-2.5 text-center transition-all",
+                "group relative flex flex-col gap-1.5 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                 ambient === p.id
-                  ? "border-club bg-club-muted ring-2 ring-club/30"
-                  : "border-border bg-card hover:bg-accent/40"
+                  ? "border-club bg-club-muted ring-1 ring-club/30 shadow-card"
+                  : "border-border/70 bg-card hover:border-club/25 hover:shadow-card",
               )}
             >
+              {/* Live mini preview — the same tile the onboarding tour uses,
+                  so you SEE the effect you're picking, not just its name. */}
+              <AmbientPreviewMini effect={p.id} active={ambient === p.id} />
               <span className={cn("text-caption-medium font-medium", ambient === p.id ? "text-club-ink" : "text-foreground")}>
                 {p.label}
               </span>
@@ -2992,7 +3063,7 @@ function NotificationBell() {
   const [markingAll, setMarkingAll] = useState(false)
   const [clearingAll, setClearingAll] = useState(false)
   const setView = useAppStore((s) => s.setView)
-  // Local v7 release-notes notification (filed when the What's New modal is
+  // Local release-notes notification (filed when the What's New modal is
   // closed). Clicking it re-opens the modal instead of navigating.
   const { notif: releaseNotif, dismiss: dismissReleaseNotif } = useWhatsNewNotif()
 

@@ -15,7 +15,7 @@ import {
   EmptyState, StatCardSkeleton, initials, relativeTime, avatarColor,
 } from "@/components/shared/page-header"
 import { toast } from "sonner"
-import { format, isPast, isToday, parseISO } from "date-fns"
+import { format, isPast, isToday } from "date-fns"
 import {
   Trophy, Clock, CheckCircle2, CalendarDays, Megaphone, ListChecks,
   Users, TrendingUp, Pin, MapPin, ChevronRight, ShieldCheck,
@@ -25,9 +25,21 @@ import {
   Camera,
 } from "lucide-react"
 import { BannerEditDialog } from "@/components/views/dashboard/banner-edit-dialog"
-import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from "recharts"
+import dynamic from "next/dynamic"
+
+// The banner's 30-day hours trend is the only recharts consumer left, so it
+// is code-split: anonymous landing visitors never download recharts (+ the
+// lodash it drags in), and authed users get the banner text/stats painted
+// first with the chart streaming in ~instantly after. The fallback is a
+// same-bounds skeleton (the chart sits in fixed h-16 / h-28 lg:h-32 boxes)
+// so the stream-in causes zero layout shift.
+const BannerTrendChart = dynamic(
+  () => import("./dashboard/banner-trend-chart").then((m) => m.BannerTrendChart),
+  {
+    ssr: false,
+    loading: () => <div className="h-full w-full min-w-0 skeleton-shimmer rounded" aria-hidden />,
+  },
+)
 
 // §41 — Hours milestone celebration. Round numbers we celebrate when the
 // viewer's approved hours cross them.
@@ -1468,97 +1480,8 @@ function BannerRolePill({ role }: { role: "member" | "executive" }) {
   )
 }
 
-/** The 30-day approved-hours trend as a clean banner chart: thin accent
- *  line, soft gradient fill, subtle vertical gridlines, muted date labels
- *  and an endpoint marker. Same recharts library + data as before — now
- *  rendered as part of the banner card instead of a nested tile.
- *  `compact` trims the chart for the mobile banner: fewer axis labels,
- *  smaller margins. */
-function BannerTrendChart({
-  data,
-  compact,
-}: {
-  data: { date: string; hours: number }[]
-  compact?: boolean
-}) {
-  const interval = compact
-    ? Math.max(0, Math.floor(data.length / 3))
-    : Math.max(0, Math.floor(data.length / 5))
-  const lastIndex = data.length - 1
-  return (
-    <div
-      className="h-full w-full min-w-0"
-      aria-label="Approved hours trend, last 30 days"
-    >
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={data}
-          margin={compact ? { top: 4, right: 10, left: 0, bottom: 0 } : { top: 8, right: 14, left: 0, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="bannerHoursFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--club-accent)" stopOpacity={0.22} />
-              <stop offset="100%" stopColor="var(--club-accent)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            vertical
-            horizontal={false}
-            stroke="hsl(var(--border))"
-            strokeOpacity={0.6}
-          />
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 10, fill: "currentColor" }}
-            tickFormatter={(d) => format(parseISO(d), "MMM d")}
-            interval={interval}
-            axisLine={false}
-            tickLine={false}
-            dy={4}
-            className="text-muted-foreground"
-          />
-          <Tooltip
-            contentStyle={{
-              borderRadius: 8,
-              border: "1px solid hsl(var(--border, 220 13% 91%))",
-              background: "hsl(var(--popover, 0 0% 100%))",
-              color: "hsl(var(--popover-foreground, 0 0% 0%))",
-              fontSize: 12,
-            }}
-            labelFormatter={(d) => format(parseISO(String(d)), "MMM d, yyyy")}
-            formatter={(value: number) => [`${fmtHours(value)}h`, "Approved hours"]}
-          />
-          <Area
-            type="monotone"
-            dataKey="hours"
-            stroke="var(--club-accent)"
-            strokeWidth={2}
-            fill="url(#bannerHoursFill)"
-            activeDot={{ r: 3.5 }}
-            dot={
-              // Endpoint marker on the last data point only. Typed loosely —
-              // recharts' AreaDot signature wants a ReactElement (not null),
-              // but returning null for non-endpoint dots is the documented
-              // pattern; the cast keeps tsc happy without changing behavior.
-              ((props: { cx?: number; cy?: number; index?: number }) =>
-                props.index === lastIndex ? (
-                  <circle
-                    key={`banner-endpoint-${props.index}`}
-                    cx={props.cx}
-                    cy={props.cy}
-                    r={3}
-                    fill="var(--club-accent)"
-                    stroke="var(--card)"
-                    strokeWidth={2}
-                  />
-                ) : null) as any
-            }
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
+/** The 30-day approved-hours trend chart — now a lazily-loaded component in
+ *  ./dashboard/banner-trend-chart.tsx (see the dynamic import up top). */
 
 function ApprovedHoursPanel({
   className,

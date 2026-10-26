@@ -11,9 +11,11 @@
  * shortcuts, shimmer skeletons, landing stats + FAQ) shipped together.
  * 7.5: landing photo overhaul — the page now runs on student-submitted
  * photos (club life wall, photo step cards, new hero).
- * 7.5 stays "7.5" (no display bump) when the release notes were expanded to
- * recap the entire v7.0 → 7.5 wave as "the biggest update in ClubHub
- * history" — only whats-new.ts's ACK KEY moved to "7.5.1" so the expanded
- * modal re-arms once for people who already closed the shorter notes.
+ * 8.0: the "runs itself" wave — real club storage (live quota meter, 100%
+ * write-pause with recovery, safe cleanup suggestions, capacity requests),
+ * the executive introduction guide with a resume pill, a chat diet (denser
+ * messages, Enter-to-send keeps focus, ~60% less storage per message), the
+ * redesigned v8 avatar-effect set, the notes "Make private" flow, visible
+ * ambient backgrounds, and a pile of mobile fixes.
  */
-export const APP_VERSION = "7.5"
+export const APP_VERSION = "8.0"

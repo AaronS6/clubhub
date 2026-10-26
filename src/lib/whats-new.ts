@@ -5,40 +5,37 @@ import type { NotifItem } from "@/components/views/notifications-view"
 
 /**
  * ============================================================================
- * What's New (release notes) — v7.5 · “the biggest update in ClubHub
- * history”
+ * What's New (release notes) — v8.0 · “storage, guides & a glow-up”
  * ============================================================================
  *
  * A one-time, client-side announcement system:
  *
  *   1. A RETURNING visitor (anyone who has opened ClubHub before — flag in
- *      localStorage) sees the "What's new in v7.5" modal once, centered
+ *      localStorage) sees the "What's new in v8.0" modal once, centered
  *      with a blurred backdrop.
  *   2. When they close it, a persistent local notification ("What's new in
- *      v7.5") appears in the notification bell + Notifications view.
+ *      v8.0") appears in the notification bell + Notifications view.
  *   3. Clicking that notification re-opens the modal — anytime, forever.
  *
  * Everything lives in localStorage — no DB rows, no API calls, no cost on
  * the free tier. The notification row is synthesized client-side with type
- * "release_notes" (see notif-meta.ts) and never stored server-side.
+ *      "release_notes" (see notif-meta.ts) and never stored server-side.
  *
  * Version bump: when the next release ships, bump WHATS_NEW_VERSION here
- * (and APP_VERSION) and the whole cycle repeats automatically for returning
- * visitors. Since v7.4 the key carries the full minor ("7.5"), so anyone who
- * acked an older key (e.g. "7" or "7.4") sees the new notes exactly once.
+ *      (and APP_VERSION) and the whole cycle repeats automatically for
+ *      returning visitors — anyone holding an older ack key sees the new
+ *      notes exactly once.
  *
- * NOTE: WHATS_NEW_VERSION is the ACK KEY, not the display version. It sits at
- * "7.5.1" because the v7.5 notes were EXPANDED to recap the entire v7.0 →
- * v7.5 wave ("the biggest update in ClubHub history") — the .1 re-arms the
- * once-per-visitor cycle so everyone who already acked plain "7.5" sees the
- * expanded notes exactly once. Everything USER-FACING displays APP_VERSION
- * ("7.5") from lib/version — never this key.
+ * NOTE: WHATS_NEW_VERSION is the ACK KEY, not the display version. It moved
+ *      to "8.0" so everyone who closed the v7.5 notes sees the v8.0 notes
+ *      exactly once. Everything USER-FACING displays APP_VERSION ("8.0")
+ *      from lib/version — never this key.
  * ============================================================================
  */
 
 /** The release this announcement covers — the localStorage ack-key version.
- * "7.5.1" ≠ the display version; see the note above. */
-export const WHATS_NEW_VERSION = "7.5.1"
+ * "8.0" ≠ a display version you'll see anywhere else; see the note above. */
+export const WHATS_NEW_VERSION = "8.0"
 
 const VISITED_KEY = "clubhub-visited"
 /** Marks the CURRENT browsing session so reloads (login/signup do a full
@@ -122,13 +119,13 @@ export function setWhatsNewNotif(on: boolean) {
 
 // ── Synthetic notification item (shared shape with server rows) ────────────
 
-export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v7-5"
+export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v8-0"
 
 export function buildReleaseNotesNotif(): NotifItem {
   return {
     id: RELEASE_NOTES_NOTIF_ID,
     type: "release_notes",
-    message: "ClubHub v7.5 — the biggest update yet. Tap to see what's new",
+    message: "ClubHub v8.0 — storage, guides & a glow-up. Tap to see what's new",
     linkUrl: null,
     isRead: true,
     createdAt: new Date().toISOString(),

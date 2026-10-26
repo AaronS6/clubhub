@@ -131,7 +131,7 @@ export default function RootLayout({
             </CustomizationProvider>
           </ClubAccentProvider>
         </Providers>
-        {/* v7 release-notes modal — mounted globally so it shows on every
+        {/* Release-notes modal — mounted globally so it shows on every
             surface (landing, auth, public profiles, the app). Auto-opens once
             for returning visitors; after closing, it lives in the
             notification bell as a "What's new" row. Client-side only (all

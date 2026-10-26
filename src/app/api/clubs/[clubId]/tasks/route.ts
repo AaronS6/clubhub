@@ -1,5 +1,6 @@
 import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
+import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { logActivity, notify } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
 
@@ -102,6 +103,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const { clubId } = await ctx.params
   const c = await getClubContext(clubId)
   if (!c) return error("Not a member of this club", 403)
+
+  // Storage pause: at 100% of the club quota new content is held until
+  // an executive clears room (deletes + edits stay open — that's the recovery path).
+  const storageFull = await clubStorageFullResponse(clubId, c.membership.role)
+  if (storageFull) return storageFull
   // Any club member can create tasks (not just executives).
 
   const body = await req.json().catch(() => null)

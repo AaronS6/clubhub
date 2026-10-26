@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { Search } from "lucide-react"
 import { useAppStore, type View } from "@/lib/store"
 import { toast } from "sonner"
+import { useSearchShortcutHint } from "@/hooks/use-platform"
 import {
   Dialog,
   DialogContent,
@@ -85,7 +87,8 @@ function anyOverlayOpen(): boolean {
   )
 }
 
-/** One key cap — the app's <kbd> language (matches the ⌘K hint in the top bar). */
+/** One key cap — the app's <kbd> language (matches the platform-aware
+ *  ⌘K / Ctrl K hint in the top bar). */
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="inline-flex min-w-[1.5rem] justify-center items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground shadow-sm">
@@ -96,6 +99,10 @@ function Kbd({ children }: { children: React.ReactNode }) {
 
 export function KeyboardShortcuts() {
   const [sheetOpen, setSheetOpen] = useState(false)
+  /** Platform-correct modifier for the search row: ⌘ on Mac/iPad, Ctrl on
+   *  Windows/Linux; touch phones have no modifier keys, so they get a
+   *  tap-the-icon row instead of a fake key combo. */
+  const searchHint = useSearchShortcutHint()
   /** Timer for the pending first `g` of a chord (timeout id), null = idle. */
   const pendingGRef = useRef<number | null>(null)
 
@@ -199,16 +206,38 @@ export function KeyboardShortcuts() {
                 <Kbd>?</Kbd>
                 <span className="text-body text-muted-foreground text-right">Open this cheat sheet</span>
               </li>
+              {searchHint.kind === "touch" ? (
+                <li className="flex items-center justify-between gap-4 py-0.5">
+                  <span
+                    className="flex items-center gap-1"
+                    aria-label="Search — tap the search icon in the top bar"
+                  >
+                    <Kbd>
+                      <Search className="h-3 w-3" aria-hidden />
+                    </Kbd>
+                  </span>
+                  <span className="text-body text-muted-foreground text-right">
+                    Tap the search icon in the top bar
+                  </span>
+                </li>
+              ) : (
+                <>
+                  <li className="flex items-center justify-between gap-4 py-0.5">
+                    <span className="flex items-center gap-1" aria-label={searchHint.ariaLabel}>
+                      <Kbd>{searchHint.isApple ? "⌘" : "Ctrl"}</Kbd>
+                      <Kbd>K</Kbd>
+                    </span>
+                    <span className="text-body text-muted-foreground text-right">Search this club</span>
+                  </li>
+                  <li className="flex items-center justify-between gap-4 py-0.5">
+                    <Kbd>/</Kbd>
+                    <span className="text-body text-muted-foreground text-right">Open search — any keyboard</span>
+                  </li>
+                </>
+              )}
               <li className="flex items-center justify-between gap-4 py-0.5">
                 <Kbd>Esc</Kbd>
                 <span className="text-body text-muted-foreground text-right">Close dialogs and menus</span>
-              </li>
-              <li className="flex items-center justify-between gap-4 py-0.5">
-                <span className="flex items-center gap-1" aria-label="Command K — search this club">
-                  <Kbd>⌘</Kbd>
-                  <Kbd>K</Kbd>
-                </span>
-                <span className="text-body text-muted-foreground text-right">Search this club</span>
               </li>
             </ul>
           </div>

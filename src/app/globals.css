@@ -359,12 +359,18 @@
   }
 
   /* Status chips — soft tinted background (not saturated fills),
-     12px medium text. See DESIGN.md. */
-  .chip-pending   { background: var(--warning-subtle);  color: var(--warning-foreground); }
-  .chip-approved  { background: var(--success-subtle);  color: var(--success-foreground); }
-  .chip-rejected  { background: var(--danger-subtle);   color: var(--danger-foreground); }
-  .chip-progress  { background: var(--info-subtle);     color: var(--info-foreground); }
-  .chip-neutral   { background: var(--muted);           color: var(--muted-foreground); }
+     12px medium text, plus a 1px top edge-light so the chip reads as a
+     physical inset tile. See DESIGN.md. */
+  .chip-pending   { background: var(--warning-subtle);  color: var(--warning-foreground);  box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .chip-approved  { background: var(--success-subtle);  color: var(--success-foreground);  box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .chip-rejected  { background: var(--danger-subtle);   color: var(--danger-foreground);   box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .chip-progress  { background: var(--info-subtle);     color: var(--info-foreground);     box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .chip-neutral   { background: var(--muted);           color: var(--muted-foreground);    box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); }
+  .dark .chip-pending   { box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  .dark .chip-approved  { box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  .dark .chip-rejected  { box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  .dark .chip-progress  { box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
+  .dark .chip-neutral   { box-shadow: inset 0 1px 0 rgba(255,255,255,0.05); }
 
   /* Card — 1px hairline border, no resting shadow. The shadow scale lives
      as CSS vars so surfaces can opt into a subtle hover lift without
@@ -384,6 +390,16 @@
     --shadow-hero:
       0 1px 2px rgba(15, 18, 22, 0.05),
       0 6px 16px rgba(15, 18, 22, 0.06);
+    /* "Physical" button body — 1px inner highlight + key + an ambient glow
+       tinted by the club accent, so the CTA reads as its own light source. */
+    --shadow-button:
+      inset 0 1px 0 rgba(255, 255, 255, 0.20),
+      0 1px 2px rgba(15, 18, 22, 0.12),
+      0 2px 10px color-mix(in oklab, var(--club-accent, var(--primary)) 30%, transparent);
+    --shadow-button-hover:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 1px 2px rgba(15, 18, 22, 0.14),
+      0 4px 16px color-mix(in oklab, var(--club-accent, var(--primary)) 42%, transparent);
   }
   .dark {
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.30);
@@ -399,6 +415,14 @@
     --shadow-hero:
       0 1px 2px rgba(0, 0, 0, 0.36),
       0 6px 16px rgba(0, 0, 0, 0.40);
+    --shadow-button:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.40),
+      0 2px 12px color-mix(in oklab, var(--club-accent, var(--primary)) 35%, transparent);
+    --shadow-button-hover:
+      inset 0 1px 0 rgba(255, 255, 255, 0.10),
+      0 1px 2px rgba(0, 0, 0, 0.45),
+      0 4px 18px color-mix(in oklab, var(--club-accent, var(--primary)) 48%, transparent);
   }
   .card-quiet {
     @apply border border-border/80 bg-card rounded-xl;
@@ -588,6 +612,89 @@
 @utility shadow-popover { box-shadow: var(--shadow-popover); }
 @utility shadow-dialog { box-shadow: var(--shadow-dialog); }
 @utility shadow-hero { box-shadow: var(--shadow-hero); }
+@utility shadow-button { box-shadow: var(--shadow-button); }
+@utility shadow-button-hover { box-shadow: var(--shadow-button-hover); }
+
+/* ═══ Premium visual pass — landing atmosphere + physical details ═══════════
+   Aurora: a slow-drifting multi-radial tint behind the landing hero —
+   the page's own "weather". Vignette: fades hero edges into the background
+   so the type stays dominant. Pill sheen: a light sweep across gradient
+   pills on hover. Card spotlight: a cursor-following radial highlight
+   (position fed by --spotlight-x/--spotlight-y from a mousemove handler). */
+@layer components {
+  @keyframes landing-aurora-drift {
+    0%   { transform: translate3d(-5%, -3%, 0) rotate(-2deg) scale(1); }
+    50%  { transform: translate3d(4%, 3%, 0) rotate(1.5deg) scale(1.07); }
+    100% { transform: translate3d(-5%, -3%, 0) rotate(-2deg) scale(1); }
+  }
+  .landing-aurora {
+    position: absolute;
+    inset: -22%;
+    pointer-events: none;
+    background:
+      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #0B8A5F) 15%, transparent), transparent 70%),
+      radial-gradient(28% 34% at 74% 18%, rgba(56, 189, 248, 0.10), transparent 70%),
+      radial-gradient(32% 38% at 62% 76%, rgba(167, 139, 250, 0.10), transparent 70%);
+    filter: blur(28px);
+    animation: landing-aurora-drift 26s var(--motion-ease) infinite;
+  }
+  .dark .landing-aurora {
+    background:
+      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #34d399) 12%, transparent), transparent 70%),
+      radial-gradient(28% 34% at 74% 18%, rgba(56, 189, 248, 0.08), transparent 70%),
+      radial-gradient(32% 38% at 62% 76%, rgba(167, 139, 250, 0.08), transparent 70%);
+  }
+  .landing-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      120% 90% at 50% 30%,
+      transparent 52%,
+      color-mix(in oklab, var(--background) 92%, transparent) 100%
+    );
+  }
+  .pill-sheen { position: relative; overflow: hidden; }
+  .pill-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      105deg,
+      transparent 38%,
+      rgba(255, 255, 255, 0.30) 50%,
+      transparent 62%
+    );
+    transform: translateX(-130%);
+    transition: transform 700ms var(--motion-ease);
+    pointer-events: none;
+  }
+  .pill-sheen:hover::after { transform: translateX(130%); }
+  @media (prefers-reduced-motion: reduce) {
+    .pill-sheen::after { display: none; }
+    .landing-aurora { animation: none; }
+  }
+  .card-spotlight { position: relative; }
+  .card-spotlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      340px circle at var(--spotlight-x, 50%) var(--spotlight-y, 50%),
+      color-mix(in oklab, var(--club-accent, var(--primary)) 7%, transparent),
+      transparent 65%
+    );
+    opacity: 0;
+    transition: opacity 300ms var(--motion-ease);
+    pointer-events: none;
+  }
+  .card-spotlight:hover::before { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .card-spotlight::before { display: none; }
+  }
+}
 
 /* ═══ Motion system — CSS variables ════════════════════════════════════════
    Durations and easing used everywhere. Under prefers-reduced-motion,
@@ -613,219 +720,55 @@
   }
 }
 
-/* ═══ Avatar decorations (DecoratedAvatar — Discord-style frames) ════════
-   PREMIUM set: layered jewel gradients, crisp masked rings with soft outer
-   glows, star sparkles, a comet orbit, an aurora ring, and a gold halo.
-   All effects animate ONLY transform/opacity (compositor-friendly — no
-   repaints; keeps chat scrolling and sheets smooth on mobile) and freeze
-   under prefers-reduced-motion. Layers sit in the negative inset space
-   around the avatar; .ch-deco itself is a positioned, non-interactive
-   shell whose size tracks the wrapper. */
+/* ═══ Avatar decorations (DecoratedAvatar — SVG effect engine, v8.2) ═════
+   The visual language lives in decorated-avatar.tsx (inline SVG); this
+   section only positions the effect shells and supplies the shared
+   keyframes.
+
+   Shells: each effect is one or more <svg viewBox="0 0 100 100"> layers
+   stacked absolutely around the avatar (top/left -18% → a 136% box, so
+   effects can breathe past the photo edge without touching layout). The
+   orbit's front half lives in a .ch-deco-front div (z above the avatar)
+   so the ring + comet can pass IN FRONT of the photo.
+
+   Motion rules (unchanged from v8):
+     - animations are transform/opacity ONLY (compositor-friendly);
+     - everything freezes under prefers-reduced-motion (below);
+     - everything pauses while modal overlays are open (PERF section);
+     - whole-svg animations rotate around the CSS box center (= avatar
+       center); per-part animations run on inner <g> elements using
+       transform-box: fill-box (.ch-fx / .ch-fx-sway). */
 .ch-deco {
   position: absolute;
-  inset: -14%;
-  border-radius: 9999px;
+  top: -18%;
+  left: -18%;
+  width: 136%;
+  height: 136%;
   pointer-events: none;
+  overflow: visible;
 }
 
-/* — ring: rotating jewel-gradient ring (emerald → gold → rose → violet
-     → teal) with a soft matching glow bleeding off the mask edge — */
-.ch-deco-ring {
-  background: conic-gradient(
-    from 0deg,
-    #10b981,
-    #34d399,
-    #fbbf24,
-    #fb7185,
-    #c084fc,
-    #2dd4bf,
-    #10b981
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(91% - 3px), #000 calc(91% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(91% - 3px), #000 calc(91% - 2px));
-  filter: drop-shadow(0 0 5px rgba(52, 211, 153, 0.4));
+/* The front (over-the-avatar) layer — used by the Saturn orbit. */
+.ch-deco-front {
+  z-index: 2;
 }
-
-/* — mask ring: static thin background-colored gap so decorations read as a
-     frame even when the avatar is a plain circle (ring + sunset + halo) — */
-.ch-deco-mask {
-  inset: -7%;
-  background: var(--background);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(88% - 3px), #000 calc(88% - 2.5px));
-  mask: radial-gradient(farthest-side, transparent calc(88% - 3px), #000 calc(88% - 2.5px));
-  z-index: 0;
-  animation: none !important;
-}
-
-/* — aura: breathing layered glow behind the avatar — a bright club-tinted
-     core with a warm outer halo — */
-.ch-deco-aura {
-  inset: -9%;
-  background:
-    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.4) 0%, transparent 40%),
-    radial-gradient(circle, var(--club, #10b981) 0%, transparent 70%);
-  opacity: 0.6;
-  filter: blur(5px);
-}
-.ch-deco-aura-2 {
-  inset: -20%;
-  background: radial-gradient(
-    circle,
-    color-mix(in oklab, var(--club, #10b981) 55%, #fbbf24) 0%,
-    transparent 72%
-  );
-  opacity: 0.35;
-  filter: blur(12px);
-}
-
-/* — sparkles: four twinkling gold STARS (concave 4-point, not plain dots)
-     riding a shared slowly-rotating ring — */
-.ch-deco-orbit {
-  inset: -12%;
-  animation-timing-function: linear;
-}
-.ch-deco-sparkle {
+.ch-deco-front > svg {
   position: absolute;
-  width: 18%;
-  height: 18%;
-  min-width: 5px;
-  min-height: 5px;
-  background: linear-gradient(135deg, #fef3c7 8%, #fbbf24 55%, #f59e0b 100%);
-  clip-path: polygon(
-    50% 0%, 61% 39%, 100% 50%, 61% 61%,
-    50% 100%, 39% 61%, 0% 50%, 39% 39%
-  );
-  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.85));
-}
-.ch-deco-sparkle-1 { top: -3%; left: 49%; }
-.ch-deco-sparkle-2 { top: 46%; right: -3%; }
-.ch-deco-sparkle-3 { bottom: -3%; left: 49%; }
-.ch-deco-sparkle-4 { top: 46%; left: -3%; }
-
-/* — orbit: a comet — the ring itself is a masked conic arc (bright head
-     fading into a tail) and the glowing dot rides the head; a tiny trailing
-     echo (::after) sweeps behind it — */
-.ch-deco-orbit-ring {
-  inset: -11%;
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in oklab, var(--club, #10b981) 95%, white) 0%,
-    color-mix(in oklab, var(--club, #10b981) 70%, transparent) 10%,
-    color-mix(in oklab, var(--club, #10b981) 28%, transparent) 26%,
-    color-mix(in oklab, var(--club, #10b981) 8%, transparent) 40%,
-    transparent 48%
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(93% - 2.5px), #000 calc(93% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(93% - 2.5px), #000 calc(93% - 2px));
-}
-.ch-deco-orbit-dot {
-  position: absolute;
-  top: -8%;
-  left: 46.5%;
-  width: 14%;
-  height: 14%;
-  min-width: 4px;
-  min-height: 4px;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 35% 35%, #ffffff 0%, var(--club, #10b981) 45%, color-mix(in oklab, var(--club, #10b981) 70%, black) 100%);
-  box-shadow:
-    0 0 6px 1px color-mix(in oklab, var(--club, #10b981) 75%, transparent),
-    0 0 14px 3px color-mix(in oklab, var(--club, #10b981) 35%, transparent);
-}
-.ch-deco-orbit-dot::after {
-  content: "";
-  position: absolute;
-  top: 55%;
-  left: 42%;
-  width: 55%;
-  height: 55%;
-  border-radius: 9999px;
-  background: var(--club, #10b981);
-  opacity: 0.5;
-  filter: blur(1px);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
-/* — petals: three glossy leaves slowly circling, each with a soft glow — */
-.ch-deco-petal {
-  position: absolute;
-  width: 26%;
-  height: 12%;
-  min-width: 5px;
-  min-height: 3px;
-  border-radius: 9999px 9999px 9999px 0;
-  background: linear-gradient(90deg, #a7f3d0, #34d399 60%, #059669);
-  box-shadow: 0 0 5px rgba(52, 211, 153, 0.55);
-  opacity: 0.95;
+/* Per-part animation shells (stars, petals, flares) — scale/rotate around
+   the part's own center so placement never drifts. */
+.ch-fx {
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.ch-deco-petal-1 { top: -4%; left: 42%; transform: rotate(24deg); }
-.ch-deco-petal-2 { top: 60%; right: -6%; transform: rotate(140deg); }
-.ch-deco-petal-3 { bottom: -4%; left: 30%; transform: rotate(250deg); }
-
-/* — glitch: two offset jewel echoes (teal + rose) flickering behind — */
-.ch-deco-glitch {
-  inset: -6%;
-  background: #2dd4bf;
-  opacity: 0.4;
-  filter: blur(1.5px);
-}
-.ch-deco-glitch-teal { transform: translate(-9%, -4%); }
-.ch-deco-glitch-warm { background: #fb7185; transform: translate(9%, 4%); }
-
-/* — sunset: warm jewel halo — amber → rose → violet ring breathing
-     softly with a matching glow — */
-.ch-deco-sunset {
-  inset: -10%;
-  background: conic-gradient(from 240deg, #fde68a, #fb923c, #f43f5e, #c084fc, #fde68a);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(90% - 4px), #000 calc(90% - 3.5px));
-  mask: radial-gradient(farthest-side, transparent calc(90% - 4px), #000 calc(90% - 3.5px));
-  filter: drop-shadow(0 0 6px rgba(251, 146, 60, 0.45));
-}
-
-/* — aurora: a flowing multi-hue ring (emerald → teal → violet → pink
-     → gold) slowly rotating over a breathing aurora wash — */
-.ch-deco-aurora {
-  inset: -12%;
-  background: conic-gradient(
-    from 0deg,
-    #34d399,
-    #2dd4bf,
-    #c084fc,
-    #f472b6,
-    #fbbf24,
-    #34d399
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(92% - 3px), #000 calc(92% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(92% - 3px), #000 calc(92% - 2px));
-  filter: drop-shadow(0 0 6px rgba(192, 132, 252, 0.35));
-}
-.ch-deco-aurora-glow {
-  inset: -19%;
-  background: radial-gradient(
-    circle,
-    rgba(45, 212, 191, 0.26) 0%,
-    rgba(192, 132, 252, 0.16) 45%,
-    rgba(244, 114, 182, 0.08) 62%,
-    transparent 72%
-  );
-  filter: blur(6px);
-}
-
-/* — halo: a radiant gold halo — crisp champagne-gold ring breathing over
-     a warm light wash — */
-.ch-deco-halo {
-  inset: -12%;
-  background: conic-gradient(
-    from 0deg,
-    #fef9c3,
-    #fde68a,
-    #f59e0b,
-    #fbbf24,
-    #fde68a,
-    #fef9c3
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(93% - 2.5px), #000 calc(93% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(93% - 2.5px), #000 calc(93% - 2px));
-  filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.55));
+.ch-fx-sway {
+  transform-box: fill-box;
+  transform-origin: 50% 88%;
 }
 
 /* — shared keyframes (transform/opacity ONLY) — */
@@ -833,17 +776,51 @@
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+@keyframes ch-deco-spin-rev {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
 @keyframes ch-deco-breathe {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50%      { transform: scale(1.1); opacity: 0.85; }
+  0%, 100% { transform: scale(1); opacity: 0.82; }
+  50%      { transform: scale(1.045); opacity: 1; }
+}
+@keyframes ch-deco-breathe-soft {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.018); }
 }
 @keyframes ch-deco-twinkle {
-  0%, 100% { opacity: 0.15; transform: scale(0.55) rotate(0deg); }
-  50%      { opacity: 1; transform: scale(1.15) rotate(20deg); }
+  0%, 100% { transform: scale(0.55) rotate(0deg); opacity: 0.25; }
+  50%      { transform: scale(1.06) rotate(22deg); opacity: 1; }
 }
-@keyframes ch-deco-flicker {
-  0%, 100% { opacity: 0.12; }
-  50%      { opacity: 0.5; }
+@keyframes ch-deco-sway {
+  0%, 100% { transform: rotate(-6deg); }
+  50%      { transform: rotate(6deg); }
+}
+@keyframes ch-deco-pulse-ring {
+  0%   { transform: scale(1); opacity: 0.55; }
+  80%  { transform: scale(1.13); opacity: 0; }
+  100% { transform: scale(1.13); opacity: 0; }
+}
+@keyframes ch-deco-flare {
+  0%, 100% { transform: scale(0.92); opacity: 0.8; }
+  50%      { transform: scale(1.14); opacity: 1; }
+}
+/* glitch echoes: mostly still, one sharp multi-jump burst per 3s cycle.
+   steps(1, end) (set inline) turns each keyframe segment into a hard
+   hold — digital snap, never a smooth slide. */
+@keyframes ch-deco-glitch-a {
+  0%, 68%, 100% { transform: translate(0, 0); opacity: 0.7; }
+  72%           { transform: translate(1.6%, -1%); opacity: 0.95; }
+  76%           { transform: translate(-1.3%, 0.8%); opacity: 0.45; }
+  80%           { transform: translate(1.8%, 1.1%); opacity: 0.9; }
+  84%           { transform: translate(0.6%, -0.5%); opacity: 0.7; }
+}
+@keyframes ch-deco-glitch-b {
+  0%, 68%, 100% { transform: translate(0, 0); opacity: 0.7; }
+  71%           { transform: translate(-1.5%, 1%); opacity: 0.9; }
+  75%           { transform: translate(1.2%, -0.9%); opacity: 0.4; }
+  79%           { transform: translate(-1.8%, -1.2%); opacity: 0.95; }
+  83%           { transform: translate(-0.5%, 0.6%); opacity: 0.7; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -976,25 +953,8 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
   will-change: transform, opacity;
 }
 
-/* Gentle float for the accent dots drifting around the welcome video card.
-   Two speeds + a negative delay so the dots never move in lockstep. */
-@keyframes ch-tour-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-10px); }
-}
-.ch-tour-float {
-  animation: ch-tour-float 6s ease-in-out infinite;
-  will-change: transform;
-}
-.ch-tour-float-slow {
-  animation: ch-tour-float 9s ease-in-out infinite;
-  will-change: transform;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ch-tour-pop,
-  .ch-tour-float,
-  .ch-tour-float-slow {
+  .ch-tour-pop {
     animation: none;
   }
 }

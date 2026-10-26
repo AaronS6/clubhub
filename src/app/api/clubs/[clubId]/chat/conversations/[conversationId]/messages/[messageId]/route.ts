@@ -107,7 +107,11 @@ function groupReactions(
 }
 
 // DELETE /api/clubs/[clubId]/chat/conversations/[conversationId]/messages/[messageId]
-// Author OR conversation owner OR executive. Soft-deletes (deletedAt=now).
+// Author OR conversation owner OR executive. TOMBSTONES the row: the body is
+// blanked (its bytes stop counting toward club storage immediately — the
+// storage meter only counts live content) + deletedAt is stamped (drives the
+// "[message deleted]" placeholder + the deletedAt:null read filters) + its
+// reactions are purged. The row itself is kept as a zero-content tombstone.
 export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: string; conversationId: string; messageId: string }> }) {
   const { clubId, conversationId, messageId } = await ctx.params
   const c = await getClubContext(clubId)
@@ -135,7 +139,12 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ clubId: str
     return error("Only the author, conversation owner, or an executive can delete", 403)
   }
 
-  await db.message.update({ where: { id: messageId }, data: { deletedAt: new Date() } })
+  // Blank the body (tombstone) + stamp deletedAt + purge reactions. The two
+  // writes touch different tables and are independent — fan them out.
+  await Promise.all([
+    db.message.update({ where: { id: messageId }, data: { body: "", deletedAt: new Date() } }),
+    db.messageReaction.deleteMany({ where: { messageId } }),
+  ])
 
   // logActivity + emitClubEvent are independent best-effort side effects — fan them out in parallel.
   await Promise.all([

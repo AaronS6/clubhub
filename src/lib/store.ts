@@ -16,6 +16,7 @@ export type View =
   | "chat"
   | "financials"
   | "notes"
+  | "storage"
   | "notifications"
   | "settings"
 
