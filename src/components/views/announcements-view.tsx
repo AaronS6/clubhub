@@ -71,8 +71,13 @@ import {
   SmilePlus,
   AlertTriangle,
   X,
+  BarChart3,
+  Check,
+  ListChecks,
+  Trash,
   type LucideIcon,
 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 
 // Reaction feature data — fixed set of emojis for the picker.
 const REACTION_EMOJIS = ["\uD83D\uDC4D", "\u2764\uFE0F", "\uD83C\uDF89", "\uD83D\uDC4F", "\uD83D\uDE02"]
@@ -115,6 +120,22 @@ interface AnnouncementItem {
   reactions: ReactionSummary[]
   myReaction: string | null
   commentCount: number
+  poll: PollSummary | null
+}
+
+/** Poll shape returned by the announcements API (list/create/vote). */
+interface PollOptionSummary {
+  id: string
+  text: string
+  voteCount: number
+}
+interface PollSummary {
+  id: string
+  allowMultiple: boolean
+  options: PollOptionSummary[]
+  totalVotes: number
+  voterCount: number
+  myOptionIds: string[]
 }
 
 interface CommentItem {
@@ -571,6 +592,15 @@ function AnnouncementCard({
           </button>
         )}
 
+        {/* Poll — voting UI when you haven't voted, live results after */}
+        {announcement.poll && (
+          <PollBlock
+            clubId={clubId}
+            announcementId={announcement.id}
+            poll={announcement.poll}
+          />
+        )}
+
         {/* Reaction bar */}
         <ReactionBar
           announcement={announcement}
@@ -795,6 +825,186 @@ function ReactionBar({
           </div>
         </PopoverContent>
       </Popover>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PollBlock — the announcement poll card. Before you vote: option rows to
+// tap. After: live result bars (percentage + count) with your choice(s)
+// checkmarked — and you can still switch / toggle choices at any time.
+// Single-choice re-clicks switch the vote; multi-choice toggles in place.
+// Optimistic update + rollback on failure, so taps feel instant.
+// ---------------------------------------------------------------------------
+
+function PollBlock({
+  clubId,
+  announcementId,
+  poll: serverPoll,
+}: {
+  clubId: string
+  announcementId: string
+  poll: PollSummary
+}) {
+  const [optimistic, setOptimistic] = useState<PollSummary | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  // Multi-choice pre-vote draft (which boxes are ticked before "Vote").
+  const [draft, setDraft] = useState<string[]>([])
+  const poll = optimistic ?? serverPoll
+  const voted = poll.myOptionIds.length > 0
+
+  async function vote(optionIds: string[]) {
+    if (submitting) return
+    setSubmitting(true)
+    // Optimistic: recompute counts from the SERVER state + the new set.
+    const prev = serverPoll
+    const counts = new Map<string, number>()
+    prev.options.forEach((o) => counts.set(o.id, o.voteCount))
+    prev.myOptionIds.forEach((id) =>
+      counts.set(id, Math.max(0, (counts.get(id) ?? 0) - 1)),
+    )
+    optionIds.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1))
+    const voterDelta =
+      (prev.myOptionIds.length > 0 ? -1 : 0) + (optionIds.length > 0 ? 1 : 0)
+    setOptimistic({
+      ...prev,
+      options: prev.options.map((o) => ({
+        ...o,
+        voteCount: counts.get(o.id) ?? 0,
+      })),
+      totalVotes: [...counts.values()].reduce((a, b) => a + b, 0),
+      voterCount: Math.max(0, prev.voterCount + voterDelta),
+      myOptionIds: optionIds,
+    })
+    try {
+      const res = await api<{ poll: PollSummary }>(
+        `/api/clubs/${clubId}/announcements/${announcementId}/poll/vote`,
+        { method: "POST", json: { optionIds } },
+      )
+      setOptimistic(res.poll ?? null)
+      setDraft([])
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't record your vote")
+      setOptimistic(null) // rollback
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function handleOptionClick(optionId: string) {
+    if (submitting) return
+    if (poll.allowMultiple) {
+      if (voted) {
+        // Toggle one option of the existing vote set in place.
+        const next = poll.myOptionIds.includes(optionId)
+          ? poll.myOptionIds.filter((id) => id !== optionId)
+          : [...poll.myOptionIds, optionId]
+        void vote(next)
+      } else {
+        setDraft((d) =>
+          d.includes(optionId)
+            ? d.filter((x) => x !== optionId)
+            : [...d, optionId],
+        )
+      }
+    } else {
+      void vote([optionId])
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border/80 bg-muted/30 p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Poll
+        </span>
+        <span className="text-caption text-muted-foreground">
+          {poll.voterCount} {poll.voterCount === 1 ? "voter" : "voters"}
+          {poll.allowMultiple ? " · multiple answers" : ""}
+        </span>
+      </div>
+      <div className="mt-2.5 space-y-1.5">
+        {poll.options.map((opt) => {
+          const mine = poll.myOptionIds.includes(opt.id)
+          const pct =
+            poll.totalVotes > 0
+              ? Math.round((opt.voteCount / poll.totalVotes) * 100)
+              : 0
+          const selected = !voted && draft.includes(opt.id)
+          const shape = poll.allowMultiple ? "rounded-[4px]" : "rounded-full"
+          if (!voted) {
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handleOptionClick(opt.id)}
+                disabled={submitting}
+                className={cn(
+                  "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:opacity-70",
+                  selected
+                    ? "border-club bg-club-subtle text-club-ink"
+                    : "border-border bg-background hover:border-club/50 hover:bg-club-subtle/40",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center border",
+                    shape,
+                    selected ? "border-club bg-club text-club-foreground" : "border-border",
+                  )}
+                >
+                  {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <span className="min-w-0 flex-1">{opt.text}</span>
+              </button>
+            )
+          }
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => handleOptionClick(opt.id)}
+              disabled={submitting}
+              className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-lg border border-border/70 bg-background px-3 py-2 text-left text-sm transition-colors disabled:opacity-70"
+              aria-label={`${opt.text}: ${opt.voteCount} of ${poll.totalVotes} votes${mine ? ", your vote" : ""}`}
+            >
+              <span
+                aria-hidden
+                className="absolute inset-y-0 left-0 bg-club/15 dark:bg-club/20"
+                style={{ width: `${pct}%` }}
+              />
+              <span
+                aria-hidden
+                className={cn(
+                  "relative flex h-4 w-4 shrink-0 items-center justify-center border",
+                  shape,
+                  mine ? "border-club bg-club text-club-foreground" : "border-border/70",
+                )}
+              >
+                {mine && <Check className="h-3 w-3" strokeWidth={3} />}
+              </span>
+              <span className="relative min-w-0 flex-1 truncate">{opt.text}</span>
+              <span className="relative shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
+                {pct}% · {opt.voteCount}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      {poll.allowMultiple && !voted && (
+        <Button
+          type="button"
+          variant="club"
+          size="sm"
+          className="mt-2.5 w-full"
+          disabled={submitting || draft.length === 0}
+          onClick={() => vote(draft)}
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Vote{draft.length > 0 ? ` (${draft.length})` : ""}
+        </Button>
+      )}
     </div>
   )
 }
@@ -1254,7 +1464,18 @@ function ComposeAnnouncementDialog({
   const [tag, setTag] = useState<string | null>(null)
   const [titleError, setTitleError] = useState<string | null>(null)
   const [bodyError, setBodyError] = useState<string | null>(null)
+  const [pollError, setPollError] = useState<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+
+  // ── Poll builder state ── starts with two blank options; the author
+  // fills them in and can add up to 10 total. Empty trailing options are
+  // stripped on submit.
+  const [pollEnabled, setPollEnabled] = useState(false)
+  const [pollOptions, setPollOptions] = useState<string[]>(["", ""])
+  const [allowMultiple, setAllowMultiple] = useState(false)
+
+  const validPollOptions = pollOptions.map((o) => o.trim()).filter(Boolean)
+  const pollReady = validPollOptions.length >= 2
 
   // Reset the customization state whenever the dialog closes
   function handleOpenChange(v: boolean) {
@@ -1269,7 +1490,17 @@ function ComposeAnnouncementDialog({
     mutationFn: () =>
       api(`/api/clubs/${clubId}/announcements`, {
         method: "POST",
-        json: { title: title.trim(), body: body.trim(), isPinned, isUrgent, accent, tag },
+        json: {
+          title: title.trim(),
+          body: body.trim(),
+          isPinned,
+          isUrgent,
+          accent,
+          tag,
+          ...(pollEnabled
+            ? { poll: { options: validPollOptions, allowMultiple } }
+            : {}),
+        },
       }),
     onSuccess: () => {
       toast.success("Posted")
@@ -1279,8 +1510,12 @@ function ComposeAnnouncementDialog({
       setIsUrgent(false)
       setAccent(null)
       setTag(null)
+      setPollEnabled(false)
+      setPollOptions(["", ""])
+      setAllowMultiple(false)
       setTitleError(null)
       setBodyError(null)
+      setPollError(null)
       onCreated()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1297,6 +1532,10 @@ function ComposeAnnouncementDialog({
       setBodyError("Body is required")
       bad = true
     } else setBodyError(null)
+    if (pollEnabled && !pollReady) {
+      setPollError("A poll needs at least 2 filled-in options")
+      bad = true
+    } else setPollError(null)
     if (bad) return
     mutation.mutate()
   }
@@ -1396,11 +1635,89 @@ function ComposeAnnouncementDialog({
                   active={isUrgent}
                   onClick={() => setIsUrgent((v) => !v)}
                 />
+                <ToggleChip
+                  icon={BarChart3}
+                  label="Add poll"
+                  active={pollEnabled}
+                  onClick={() => setPollEnabled((v) => !v)}
+                />
               </div>
               {isUrgent && (
                 <p className="text-xs text-muted-foreground">Banners the app for everyone until dismissed.</p>
               )}
             </div>
+
+            {/* ── Poll builder — shown when the Add-poll chip is on ── */}
+            {pollEnabled && (
+              <div className="space-y-2.5 rounded-xl border border-border bg-muted/30 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <ListChecks className="h-3.5 w-3.5" aria-hidden /> Poll options
+                  </span>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <Switch
+                      checked={allowMultiple}
+                      onCheckedChange={setAllowMultiple}
+                      aria-label="Allow multiple answers"
+                    />
+                    Multiple answers
+                  </label>
+                </div>
+                <div className="space-y-1.5">
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "flex h-4 w-4 shrink-0 items-center justify-center border",
+                          allowMultiple ? "rounded-[4px]" : "rounded-full",
+                          "border-border",
+                        )}
+                      />
+                      <Input
+                        value={opt}
+                        onChange={(e) => {
+                          const next = [...pollOptions]
+                          next[i] = e.target.value.slice(0, 80)
+                          setPollOptions(next)
+                          if (pollError) setPollError(null)
+                        }}
+                        placeholder={`Option ${i + 1}${i < 2 ? " (required)" : ""}`}
+                        maxLength={80}
+                        aria-label={`Poll option ${i + 1}`}
+                        className="h-9"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPollOptions(pollOptions.filter((_, idx) => idx !== i))
+                          }
+                          aria-label={`Remove option ${i + 1}`}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-danger-subtle hover:text-danger-foreground"
+                        >
+                          <Trash className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {pollOptions.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={() => setPollOptions([...pollOptions, ""])}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-club hover:underline"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add option
+                  </button>
+                )}
+                {pollError && <p className="text-xs text-danger">{pollError}</p>}
+                <p className="text-xs text-muted-foreground">
+                  2–10 options. Members vote right on the announcement;
+                  results show as bars after voting.
+                </p>
+              </div>
+            )}
           </div>
           {/* Floating Post button — always visible at the bottom-right
               corner with a soft blur, so it stays reachable even when the

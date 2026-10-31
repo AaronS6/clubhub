@@ -156,6 +156,7 @@ export function useRealtimeSync(): ConnectionState {
         case "announcement_comment":
         case "new_comment":
         case "new_reaction":
+        case "announcement_poll_vote":
           apply([["announcements", cid], ["comments", cid]])
           break
         case "meeting_created":

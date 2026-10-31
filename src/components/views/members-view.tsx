@@ -99,6 +99,7 @@ import {
   XCircle,
   Target,
   NotebookPen,
+  PenLine,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -246,6 +247,9 @@ export function MembersView() {
 
       {/* Club logo section — exec only */}
       {isExec && <ClubLogoSection clubId={clubId} />}
+
+      {/* Club name — exec only (renames the club everywhere instantly). */}
+      {isExec && <ClubNameSection clubId={clubId} />}
 
       {/* Club description — exec only (public profile + Explore copy). */}
       {isExec && <ClubDescriptionSection clubId={clubId} />}
@@ -639,6 +643,99 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
       </div>
       <p className="text-caption text-muted-foreground mt-3">
         PNG, JPG, or WebP. We&apos;ll resize it to 256×256.
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Club name (exec only) — renames the club. The club name appears in a LOT
+// of places (sidebar switcher, page titles, search pill, public profile,
+// Explore directory, emails), so on save we: (1) PATCH the server, (2) patch
+// the zustand store (currentClub + the clubs list, which persists to
+// localStorage), and (3) invalidate the public-profile/Explore queries.
+// ---------------------------------------------------------------------------
+
+function ClubNameSection({ clubId }: { clubId: string }) {
+  const qc = useQueryClient()
+  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "")
+  const patchCurrentClub = useAppStore((s) => s.patchCurrentClub)
+  // null = not edited yet → mirrors the server value (re-syncs after save).
+  const [value, setValue] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const shown = value ?? clubName
+  const trimmed = shown.trim()
+  const dirty = trimmed !== clubName && trimmed.length >= 1
+
+  async function save() {
+    if (!dirty || saving) return
+    if (trimmed.length > 80) {
+      toast.error("Club name must be 80 characters or fewer")
+      return
+    }
+    setSaving(true)
+    try {
+      await api(`/api/clubs/${clubId}`, { method: "PATCH", json: { name: trimmed } })
+      toast.success(`Club renamed to “${trimmed}”`)
+      patchCurrentClub({ clubName: trimmed })
+      setValue(null)
+      // Everything downstream that renders the name.
+      await qc.invalidateQueries({ queryKey: ["club-description", clubId] })
+      await qc.invalidateQueries({ queryKey: ["club-goal", clubId] })
+      await qc.invalidateQueries({ queryKey: ["public-club"] })
+      await qc.invalidateQueries({ queryKey: ["public-clubs"] })
+      await qc.invalidateQueries({ queryKey: ["members", clubId] })
+    } catch (err: any) {
+      toast.error(err?.message || "Couldn't rename the club")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card-quiet p-5">
+      <h3 className="text-section-title flex items-center gap-2">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+        Club name
+      </h3>
+      <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
+        Renames “{clubName}” everywhere — sidebar, titles, the public profile,
+        and Explore. The club code stays the same.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Input
+          value={shown}
+          onChange={(e) => setValue(e.target.value.slice(0, 80))}
+          disabled={saving}
+          maxLength={80}
+          placeholder="Club name"
+          aria-label="Club name"
+          className="sm:max-w-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              void save()
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="club"
+          size="sm"
+          onClick={() => void save()}
+          disabled={!dirty || saving}
+          className="shrink-0"
+        >
+          {saving ? (
+            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+          )}
+          Save name
+        </Button>
+      </div>
+      <p className="text-caption text-muted-foreground/70 mt-2 tabular-nums" aria-live="polite">
+        {shown.length}/80
       </p>
     </div>
   )

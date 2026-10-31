@@ -62,6 +62,7 @@ model User {
   createdTransactions ClubTransaction[]
   notes             ClubNote[]
   noteHearts        NoteHeart[]
+  pollVotes         AnnouncementPollVote[]
 }
 
 model Session {
@@ -251,8 +252,53 @@ model Announcement {
   author     User                    @relation(fields: [authorId], references: [id], onDelete: Cascade)
   reactions  AnnouncementReaction[]
   comments   AnnouncementComment[]
+  poll       AnnouncementPoll?
 
   @@index([clubId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Announcement polls — an optional poll attached to an announcement.
+// Options are ordered rows (position); votes are one row per (option, user).
+// allowMultiple=false → the vote endpoint enforces exactly one option
+// (re-voting swaps the choice). allowMultiple=true → any subset, toggled.
+// ---------------------------------------------------------------------------
+
+model AnnouncementPoll {
+  id             String   @id @default(cuid())
+  announcementId String   @unique
+  allowMultiple  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  options      AnnouncementPollOption[]
+
+  @@index([announcementId])
+}
+
+model AnnouncementPollOption {
+  id       String @id @default(cuid())
+  pollId   String
+  text     String
+  position Int
+
+  poll  AnnouncementPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes AnnouncementPollVote[]
+
+  @@index([pollId])
+}
+
+model AnnouncementPollVote {
+  id        String   @id @default(cuid())
+  optionId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  option AnnouncementPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, userId]) // one vote per user per option
+  @@index([userId])
 }
 
 model AnnouncementReaction {

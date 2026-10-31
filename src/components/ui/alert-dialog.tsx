@@ -77,7 +77,9 @@ function AlertDialogContent({
         )}
         {...(bare ? { "aria-describedby": undefined } : {})}
         {...props}
-      />
+      >
+        {children}
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   )
 }

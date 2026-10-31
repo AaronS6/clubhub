@@ -1198,3 +1198,24 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
     animation: none;
   }
 }
+
+/* Hide scrollbars entirely (emoji-picker category tabs, chip rows) —
+   content is still scrollable, just without a visible bar. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Chat deep-link highlight — the message you jumped to from global search
+   gets a soft emerald wash that fades out (~2.6s). Applies to the
+   AnimatedMessage wrapper div (data-message-id). */
+@keyframes chat-msg-flash {
+  0%, 55% { background-color: rgb(16 185 129 / 0.18); }
+  100% { background-color: transparent; }
+}
+.chat-msg-highlight {
+  border-radius: 0.5rem;
+  animation: chat-msg-flash 2.6s ease-out forwards;
+}

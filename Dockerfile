@@ -55,6 +55,11 @@ COPY --from=base /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=base /app/node_modules/@img ./node_modules/@img
 COPY --from=base /app/node_modules/sharp ./node_modules/sharp
 
+# nodemailer (SMTP email transport for password resets + notifications) is
+# pure JS and normally included in the standalone trace, but like Prisma/sharp
+# we copy it explicitly so SMTP email can't 500 on a missing module.
+COPY --from=base /app/node_modules/nodemailer ./node_modules/nodemailer
+
 # Prisma schema (kept for reference / manual `prisma db push` sessions; the
 # pooler doesn't support it so tables are created via the Supabase SQL editor).
 COPY --from=base /app/prisma ./prisma

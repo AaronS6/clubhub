@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 import { usePollingFallback } from "@/lib/realtime-store"
 import { toast } from "sonner"
 import { getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
+import { consumePendingChatTarget, onOpenChatAt, type ChatTarget } from "@/lib/chat-deep-link"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DecoratedAvatar } from "@/components/shared/decorated-avatar"
 import { Button } from "@/components/ui/button"
@@ -20,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MentionableTextarea, type MentionableMember } from "@/components/ui/mentionable-textarea"
+import { EmojiPicker } from "@/components/ui/emoji-picker"
 import {
   Dialog,
   DialogContent,
@@ -71,6 +73,7 @@ import {
   Plus,
   Search,
   Send,
+  Smile,
   SmilePlus,
   Trash2,
   Users,
@@ -283,6 +286,24 @@ function ChatPane({ clubId }: { clubId: string }) {
   const [newGroupOpen, setNewGroupOpen] = useState(false)
   const [newDmOpen, setNewDmOpen] = useState(false)
   const [isMobileShowingMessages, setIsMobileShowingMessages] = useState(false)
+  // Deep-link highlight (global search → "jump to this message"). Set when a
+  // target arrives, cleared once the highlight animation finishes so the
+  // same target can be re-triggered later.
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+
+  // Deep links: consume any target that fired while this pane wasn't mounted
+  // (e.g. search from another view switched us to Chat), and subscribe to
+  // live ones for when we're already here.
+  useEffect(() => {
+    const apply = (t: ChatTarget) => {
+      setActiveId(t.conversationId)
+      setIsMobileShowingMessages(true)
+      setHighlightId(t.messageId ?? null)
+    }
+    const pending = consumePendingChatTarget()
+    if (pending) apply(pending)
+    return onOpenChatAt(apply)
+  }, [])
 
   // iOS keyboard handling (mobile only). Safari doesn't resize the layout
   // viewport when the soft keyboard opens — `100dvh` doesn't shrink, so the
@@ -394,6 +415,8 @@ function ChatPane({ clubId }: { clubId: string }) {
               onConversationMutated={() =>
                 conversationsQuery.refetch()
               }
+              highlightMessageId={highlightId}
+              onHighlightDone={() => setHighlightId(null)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center p-6">
@@ -719,6 +742,8 @@ function ConversationPane({
   online,
   onBack,
   onConversationMutated,
+  highlightMessageId,
+  onHighlightDone,
 }: {
   clubId: string
   conversation: ConversationItem
@@ -727,6 +752,9 @@ function ConversationPane({
   online: Set<string>
   onBack: () => void
   onConversationMutated: () => void
+  /** Message to scroll to + flash (deep link from global search). */
+  highlightMessageId: string | null
+  onHighlightDone: () => void
 }) {
   const qc = useQueryClient()
   const setView = useAppStore((s) => s.setView)
@@ -808,6 +836,41 @@ function ConversationPane({
       prevScrollHeightRef.current = 0
     }
   }, [olderPages])
+
+  // Deep-link highlight: once the thread has rendered, center the target
+  // message and flash it. Best-effort — if the message is older than the
+  // loaded window we simply open the conversation at the bottom (the normal
+  // switch behavior).
+  useEffect(() => {
+    if (!highlightMessageId) return
+    if (latestQuery.isLoading) return
+    const timer = setTimeout(() => {
+      const container = scrollContainerRef.current
+      const el = container?.querySelector<HTMLElement>(
+        `[data-message-id="${CSS.escape(highlightMessageId)}"]`,
+      )
+      if (container && el) {
+        const cRect = container.getBoundingClientRect()
+        const eRect = el.getBoundingClientRect()
+        container.scrollTo({
+          top:
+            container.scrollTop +
+            (eRect.top - cRect.top) -
+            container.clientHeight / 2 +
+            eRect.height / 2,
+          behavior: "smooth",
+        })
+        el.classList.add("chat-msg-highlight")
+        setTimeout(() => {
+          el.classList.remove("chat-msg-highlight")
+          onHighlightDone()
+        }, 2600)
+      } else {
+        onHighlightDone()
+      }
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [highlightMessageId, latestQuery.isLoading, latestQuery.data, onHighlightDone])
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current
@@ -1654,7 +1717,7 @@ function MessageList({
                 )}
                 <div className={cn("flex flex-col gap-0.5 w-full max-w-[80%]", isMine ? "items-end" : "items-start")}>
                   {group.map((m, idx) => (
-                    <AnimatedMessage key={m.id} entering={enteringIds.has(m.id)}>
+                    <AnimatedMessage key={m.id} entering={enteringIds.has(m.id)} messageId={m.id}>
                       <MessageBubble
                         message={m}
                         isMine={isMine}
@@ -1694,15 +1757,19 @@ function MessageList({
  * so we gate on useReducedMotion directly). */
 function AnimatedMessage({
   entering,
+  messageId,
   children,
 }: {
   entering: boolean
+  /** Stamped as data-message-id — the deep-link highlight targets it. */
+  messageId?: string
   children: ReactNode
 }) {
   const reduceMotion = useReducedMotion()
   const active = entering && !reduceMotion
   return (
     <motion.div
+      data-message-id={messageId}
       initial={active ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
@@ -2120,6 +2187,65 @@ function MessageComposer({
   const [value, setValue] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const lastTypingAtRef = useRef<number>(0)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const emojiWrapRef = useRef<HTMLDivElement | null>(null)
+
+  // ── Auto-grow (the #1 composer complaint: “so small”). The textarea now
+  // starts at a comfortable ~46px and grows with the draft up to 6 lines
+  // (~150px), then scrolls internally — Telegram/WhatsApp behavior. The old
+  // fixed-height note worried about iOS caret-reveal jolts, but the chat pane
+  // is a fixed-height flex column: growing the composer SHRINKS the message
+  // list, it never scrolls the page, so the caret stays put. Height only
+  // changes at line boundaries (not per keystroke), so there's no jitter.
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = "auto" // reset to measure natural content height
+    el.style.height = `${Math.min(el.scrollHeight, 150)}px`
+  }, [value, conversationId])
+
+  // ── Emoji picker: light-dismiss on outside click / Escape ──
+  useEffect(() => {
+    if (!emojiOpen) return
+    function onPointer(e: PointerEvent) {
+      if (
+        emojiWrapRef.current &&
+        !emojiWrapRef.current.contains(e.target as Node)
+      ) {
+        setEmojiOpen(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setEmojiOpen(false)
+    }
+    window.addEventListener("pointerdown", onPointer)
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("pointerdown", onPointer)
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [emojiOpen])
+
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current
+    // Insert at the caret (or append when unfocused) and keep the caret
+    // positioned right after the inserted glyph.
+    const text = value
+    if (el && document.activeElement === el) {
+      const start = el.selectionStart ?? text.length
+      const end = el.selectionEnd ?? text.length
+      const next = text.slice(0, start) + emoji + text.slice(end)
+      setValue(next)
+      requestAnimationFrame(() => {
+        el.focus()
+        const caret = start + emoji.length
+        el.setSelectionRange(caret, caret)
+      })
+    } else {
+      setValue(text + emoji)
+      requestAnimationFrame(() => el?.focus())
+    }
+  }
 
   // § Keep typing after Enter-to-send — the composer briefly disables while
   // a send is in flight (disabled = sendMutation.isPending), and disabling an
@@ -2153,10 +2279,11 @@ function MessageComposer({
       avatarUrl: m.user.avatarUrl ?? null,
     }))
 
-  // NOTE: no auto-grow here by design (iOS Safari keyboard fix). A
-  // height-changing textarea makes iOS caret-reveal rescroll the page on
-  // every keystroke, which visibly jolted the composer. The textarea is a
-  // FIXED-height (h-10) input with internal scrolling for long drafts.
+  // NOTE: the composer now auto-grows (see the effect below) — the old
+  // fixed-height workaround for iOS caret-reveal jolts is obsolete because
+  // the chat pane is a fixed-height flex column: composer growth shrinks
+  // the messages list instead of scrolling the page, so the caret never
+  // moves. Growth only happens at line boundaries, not per keystroke.
 
   // Emit a typing event (debounced). We throttle to one event per
   // TYPING_DEBOUNCE_MS so the server isn't spammed on every keystroke.
@@ -2182,6 +2309,7 @@ function MessageComposer({
     const accepted = await Promise.resolve(onSend(body))
     if (accepted !== false) {
       setValue("")
+      setEmojiOpen(false)
       // Clear typing on send (so other clients stop showing "is typing"
       // after the message arrives). We send a stop event so the indicator
       // clears immediately rather than after the TTL expires.
@@ -2200,13 +2328,14 @@ function MessageComposer({
     // shrink-0: the composer footer must NEVER be crushed away by the flex
     // column on short viewports / landscape — the messages list above is
     // the flexible (min-h-0) element, this row keeps its natural height.
-    // Kept deliberately COMPACT (p-2.5 panel / h-9 input) — chat is a dense
-    // medium; the fixed-shape textarea keeps the iOS keyboard fix intact.
-    <div className="shrink-0 border-t border-border p-2.5 md:p-3 bg-background" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
-      {/* Composer container — wraps textarea + send button in a substantial
-          rounded panel, iMessage/Telegram-style. */}
-      <div className="rounded-xl border border-border bg-muted/40 p-1.5 focus-within:ring-2 focus-within:ring-club/30 transition-shadow">
-        <div className="flex items-end gap-2">
+    // Overhauled for comfort: a roomier auto-growing textarea (min ~46px,
+    // up to 6 lines), 15px type, generous padding, and an emoji button
+    // next to send — reads as a first-class messaging surface on mobile
+    // AND desktop instead of the old cramped single-line strip.
+    <div className="shrink-0 border-t border-border p-2 md:p-3 bg-background" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+      {/* Composer panel — emoji picker floats above it while open. */}
+      <div ref={emojiWrapRef} className="relative">
+        <div className="rounded-2xl border border-border bg-muted/40 focus-within:border-club/40 focus-within:ring-2 focus-within:ring-club/25 transition-[border-color,box-shadow]">
           <MentionableTextarea
             ref={textareaRef}
             value={value}
@@ -2215,9 +2344,9 @@ function MessageComposer({
               setValue(e.target.value)
               maybeEmitTyping()
             }}
-            placeholder="Type a message…"
-            className="flex-1 h-9 min-h-0 shrink-0 resize-none overflow-y-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-            rows={1}
+            placeholder="Message…"
+            className="flex-1 w-full min-h-[46px] max-h-[150px] resize-none overflow-y-auto bg-transparent border-0 px-3.5 py-2.5 text-[15px] leading-6 focus-visible:ring-0 focus-visible:ring-offset-0 scrollbar-thin"
+            rows={2}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
@@ -2228,28 +2357,69 @@ function MessageComposer({
             disabled={disabled}
             listLabel="Mention a club member"
           />
-          <Button
-            variant="club"
-            size="icon"
-            className={cn(
-              "size-10 shrink-0 rounded-full transition-[color,background-color,border-color,transform,box-shadow]",
-              (disabled || !value.trim())
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:scale-105",
-            )}
-            onClick={() => void submit()}
-            disabled={disabled || !value.trim()}
-            aria-label="Send message"
-          >
-            {disabled ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+          {/* Action row — emoji toggle left, send right, inside the panel so
+              both read as part of one input surface. */}
+          <div className="flex items-center justify-between gap-2 px-2 pb-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "size-9 rounded-full text-muted-foreground hover:text-foreground",
+                emojiOpen && "bg-accent text-foreground",
+              )}
+              onClick={() => setEmojiOpen((v) => !v)}
+              aria-label="Insert emoji"
+              aria-expanded={emojiOpen}
+              aria-haspopup="dialog"
+              disabled={disabled}
+            >
+              <Smile className="h-5 w-5" />
+            </Button>
+            <span className="flex-1 truncate text-[11px] text-muted-foreground/70 pl-1">
+              <ShiftHint />
+            </span>
+            <Button
+              variant="club"
+              size="icon"
+              className={cn(
+                "size-10 shrink-0 rounded-full transition-[color,background-color,border-color,transform,box-shadow]",
+                (disabled || !value.trim())
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:scale-105",
+              )}
+              onClick={() => void submit()}
+              disabled={disabled || !value.trim()}
+              aria-label="Send message"
+            >
+              {disabled ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
+
+        {/* Emoji picker — anchored to the panel's bottom-left, floating
+            above the composer. Rendered only while open (nothing to lazy-load
+            — the whole picker is a few KB of glyphs). */}
+        {emojiOpen && (
+          <div className="absolute bottom-full left-0 z-30 mb-2">
+            <EmojiPicker onPick={insertEmoji} />
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+/** Quiet "Enter sends · Shift+Enter = new line" caption (desktop only). */
+function ShiftHint() {
+  return (
+    <span aria-hidden className="hidden md:inline">
+      Enter to send · Shift+Enter for a new line
+    </span>
   )
 }
 

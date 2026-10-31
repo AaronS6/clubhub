@@ -1137,3 +1137,102 @@ Fixes:
 User guidance delivered with the fix (checklist): (1) same account on both devices (top-right avatar → email), (2) same club selected (laptop: left-sidebar club switcher), (3) Announcements view vs Dashboard preview (dashboard shows 3 recent + pinned by design — click "All →"), (4) >20 announcements load via "Load more", (5) if announcements were deleted by an exec the API supports exec recovery (?includeDeleted=true + /restore) but no UI exists yet.
 
 Result: The one real cross-device staleness bug (no refetch on window focus) is fixed; the remaining candidates are per-device state (account / selected club / dashboard-preview vs full view), all covered by the checklist above.
+
+---
+
+## Task ID: 23
+Date: 2026-10-31
+
+Task: User report — "the delete club and leave club showcase is broken, it just shows a blank black rectangle."
+
+Root cause (one line): src/components/ui/alert-dialog.tsx's AlertDialogContent destructured `children` out of props but never rendered them — the Radix Content element was self-closing (`<AlertDialogPrimitive.Content {...props} />`), so EVERY AlertDialog in the app opened as an empty styled box (bg-background ≈ near-black in dark mode → "blank black rectangle", ~50px tall, no title/buttons). dialog.tsx/sheet.tsx render {children} correctly, which is why only alert-style dialogs broke.
+
+Fix: render {children} inside AlertDialogPrimitive.Content — same pattern as dialog.tsx:88.
+
+Blast radius (all healed by the one-line fix): DangerZoneSection leave/delete confirmations (app-shell.tsx) plus AlertDialog usages in members-view, activity-view, meetings-view, notes-view, tasks-view, chat-view, teams-view (delete task/note/meeting/message confirmations, member removals, etc.).
+
+Verification (agent-browser, alex@clubhub.example):
+- Leave dialog: role=alertdialog in DOM with childCount>0, title "Leave this club?" + description + Cancel/[Leave club] visible; VLM screenshot review OK (light mode), then toggled dark mode and re-verified — readable white-on-dark, NOT a black rectangle.
+- Delete dialog: title 'Delete "Robotics Club"?', password input, Cancel/Delete club all render.
+- Radix console errors ("requires AlertDialogTitle/Description") gone once children render.
+
+## Task ID: 24
+Date: 2026-10-31
+
+Task: User question — "is there any way for the user to reset their passwords using their emails if we only have the domain of https://clubhub-0rir.onrender.com/?"
+
+Answer: YES. The full flow was already built (Forgot? → /api/auth/forgot-password → emailed single-use 1h token → /?reset=TOKEN → ResetPasswordScreen → /api/auth/reset-password, anti-enumeration ok:true, rate-limited, single-use tokens in VerificationToken). The reset LINK points at the existing Render URL (NEXTAUTH_URL) — no custom domain needed for that. What WAS missing: an email transport that doesn't require owning a domain (Resend needs a verified custom domain to deliver to arbitrary inboxes; its sandbox sender only reaches the Resend account owner's own address).
+
+Fix — added a second transport to src/lib/email.ts: SMTP via nodemailer. Transport selection: SMTP (SMTP_HOST+SMTP_USER+SMTP_PASS) wins, else Resend (RESEND_API_KEY), else graceful no-op. Port 465 → implicit TLS, 587/other → STARTTLS (SMTP_SECURE=true override). EMAIL_FROM default per transport (SMTP → ClubHub <SMTP_USER>). isEmailConfigured() now true if either is set. Never throws — best-effort {ok,reason} like before.
+
+The zero-domain recipe for Render (documented in new .env.example): create a Gmail account → enable 2-Step Verification → create an App Password → set SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_USER=<that gmail>, SMTP_PASS=<16-char app password> on Render → redeploy. Gmail allows ~500 recipients/day — plenty for password resets. (Alternatively verify a real domain in Resend and use RESEND_API_KEY.)
+
+Also:
+- Dockerfile: explicit COPY of node_modules/nodemailer into the runner (insurance alongside Prisma/sharp — the standalone trace normally includes it).
+- ForgotPasswordDialog dev-fallback hint now mentions SMTP vars (not just RESEND_API_KEY).
+- bun.lock updated (nodemailer@10.3.1 + @types/nodemailer).
+
+Verification (agent-browser): logged out → Forgot? → alex@clubhub.example → "Check your inbox" + dev fallback "Open reset link" (dev exposes resetUrl without an email provider; production never does) → set new password → auto-redirect → logged in with the NEW password → restored original demo password via Settings→Security (PUT /api/me 200) → re-verified login with ClubHub2026!. Reused-token negative test: POST /api/auth/reset-password with the consumed token → 400 "Invalid or expired reset token" (single-use enforced). SMTP wiring smoke test (fake host): isEmailConfigured()=true, from=ClubHub <SMTP_USER>, sendEmail returns {ok:false,reason:ENOTFOUND} instead of throwing. tsc --noEmit clean, lint clean, dev.log clean.
+
+---
+
+## Task ID: 25
+Date: 2026-10-31
+
+Task: "Add poll features for the announcements" + four sibling requests in the same session (emoji/chat composer overhaul, club rename, search overhaul, Render-free email). This entry covers POLLS.
+
+Backend:
+- Prisma: new models AnnouncementPoll (1:1 on Announcement, allowMultiple) / AnnouncementPollOption (ordered rows) / AnnouncementPollVote (unique per option+user). db:push applied; User got the pollVotes back-relation.
+- src/lib/announcement-poll.ts: shared getPollSummary() (counts + voterCount + myOptionIds) + parsePollInput() (2–10 options, ≤80 chars each).
+- announcements route: GET includes poll summaries per item; POST accepts `poll:{options, allowMultiple}` (400 when present-but-malformed); response items carry `poll`.
+- New POST /api/clubs/[clubId]/announcements/[id]/poll/vote — Telegram semantics: single-choice re-vote swaps, multi-choice replaces the set, empty array retracts; validates optionIds belong to the poll; rate-limited 60/min/user; emits `announcement_poll_vote` realtime event (added to use-realtime-sync invalidations).
+
+Frontend (announcements-view.tsx):
+- ComposeAnnouncementDialog: "Add poll" ToggleChip → builder panel (option inputs with add/remove 2–10, Multiple-answers Switch, validation error line). Poll rides the existing POST.
+- AnnouncementCard renders PollBlock: pre-vote = tappable option rows (radio/circle for single, checkboxes for multi + "Vote (n)" button); post-vote = result bars (% + count + your-choice checkmark), still switchable by tapping. Optimistic recompute + rollback on failure.
+- Verified E2E (agent-browser): posted "Team social event?" with 3 options; voted Pizza (1/1, bar 100%); switched to Bowling (vote moved, VLM confirmed bars + checkmark); API tests: multi-choice records 2 options; single-choice rejects 2 options ("This poll only allows one choice"). Test data cleaned up.
+
+## Task ID: 26
+Date: 2026-10-31
+
+Task: "add emoji button for chat messaging and goddamn overhaul the typing area why is it so goddamn small and ugly on mobile and computer?"
+
+- New src/components/ui/emoji-picker.tsx: dependency-free picker — ~360 curated glyphs in 8 category tabs + Recent row (24, localStorage). Plain-text buttons, 36px cells, light-dismiss + Escape. (.scrollbar-none utility added to globals.css.)
+- MessageComposer (chat-view.tsx) rebuilt: rounded-2xl panel with focus ring; textarea min-h 46px growing to 150px (auto-grow at line boundaries — safe because the chat pane is a fixed-height flex column, growth shrinks the message list, never scrolls the page; replaced the old fixed-h-9 iOS workaround); 15px type; action row inside the panel = emoji toggle (Smile) left, "Enter to send · Shift+Enter for a new line" hint center (desktop), round send right. Emoji inserts at the caret and refocuses; picker closes on send.
+- Verified E2E: picker opens on desktop + mobile (288px panel fits 390px viewport), Gestures→🙌 inserted at caret, sent, rendered in thread. Measured mobile: textarea 348×46 on 390px screen, emoji 36×36, send 40×40. VLM: "comfortable and spacious… modern". Draft cleanup after tests.
+
+## Task ID: 27
+Date: 2026-10-31
+
+Task: "add a feature to change your club name!"
+
+- Backend already existed (PATCH /api/clubs/[clubId] accepts name, exec-gated) — no API changes needed.
+- New ClubNameSection (members-view.tsx, exec-only, sits between Club logo and Club description): input + Save name, 1–80 chars, Enter submits. On save: PATCH → toast → patchCurrentClub (updates sidebar switcher, search pill, page titles — zustand persist covers reload) → invalidates club-description/club-goal/public-club/public-clubs/members.
+- Verified E2E: renamed "Robotics Club" → "Robotics Club (2026)" — toast confirmed, search pill + sidebar switcher updated INSTANTLY (no reload); renamed back, both surfaces followed. No reload needed anywhere.
+
+## Task ID: 28
+Date: 2026-10-31
+
+Task: "the search bar is useless… command K is perfect… if I search settings, settings should show up and I could just press enter… searching hours should find messages in the chats and show them all."
+
+Root cause of the "useless" feeling: the palette only returned server hits (members/tasks/announcements/meetings) — typing "settings" or "service hours" matched NOTHING, and chat messages were unsearchable entirely.
+
+Overhaul (global-search.tsx + search API + chat deep-link):
+- GET /api/clubs/[clubId]/search now also returns `messages` (≤8, newest first, scoped to conversations the REQUESTER belongs to — DMs never leak). Each hit: body, author, conversation id/type/name (direct→other member, club_wide→"Club chat", group→name), createdAt.
+- New src/lib/chat-deep-link.ts (pending-target + CustomEvent pattern): openChatAt(conversationId, messageId). ChatPane consumes it on mount and subscribes live; ConversationPane centers the target message and flashes it (.chat-msg-highlight, 2.6s emerald wash — CSS in globals.css; AnimatedMessage now stamps data-message-id).
+- GlobalSearch: new GO TO group — 17 instant client-side nav targets with aliases (settings/password/theme/dark mode, hours/service/volunteer, money/budget/treasurer, messages/dm, etc.); settings items dispatch the existing open-settings event (tab-aware: Profile / Security & password / Appearance & theme). New CHAT MESSAGES group with context snippets around the bolded match + conversation/sender/time; selecting jumps into chat and highlights the message.
+- Natural-language queries: cmdk's default filter requires EVERY word to match, so "how to get service hours" returned nothing. Added a custom `filter` (new `commandProps` passthrough on CommandDialog): stop-word stripping + any-token matching + phrase-match ranking.
+- Footer now shows the platform-correct shortcut ("⌘K" Mac / "Ctrl K" Windows-Linux) next to ↵ open / esc close — the Windows combo is also what the header keycap shows (use-platform hook already handled this; now surfaced inside the palette too). Both modifiers always work in code.
+- Verified E2E: "settings"→Account settings→Enter opens the dialog ✓; "hours"→Service Hours ✓; "how to get service hours"→Service Hours top hit→Enter navigates ✓; "notebook"→GO TO Notes + CHAT MESSAGES ("Club chat · Emma Wilson — Thanks Alex! …Notebook…") + Tasks → Enter on the message jumped into chat scrolled TO that message (VLM: "scrolled near that message, not at the very bottom") ✓; "password"→Security & password→Enter opens Security pane ✓; header pill opens the palette ✓; Ctrl+K footer label ✓.
+
+## Task ID: 29
+Date: 2026-10-31
+
+Task: "Render's free plan blocks Gmail SMTP — since September 26, 2025 outbound 25/465/587 is blocked on free web services, so port 465 won't work."
+
+- email.ts now has FOUR transports, first-configured-wins: SendGrid HTTPS API (SENDGRID_API_KEY; 100/day free; single-sender verification, no custom domain) → Brevo HTTPS API (BREVO_API_KEY; 300/day free; same zero-domain story) → SMTP (kept for paid plans/self-hosted; documented as unusable on Render free) → Resend. API transports are plain HTTPS (443) so no host can block them; both are bare fetch() calls — zero new dependencies, no Dockerfile changes needed.
+- getFromAddress(): EMAIL_FROM is now effectively REQUIRED for SendGrid/Brevo (their APIs need the verified sender); placeholder fails loudly at send time otherwise. parseFromAddress() splits "Name <addr>".
+- .env.example rewritten with the Render-free warning + step-by-step SendGrid and Brevo setup recipes (verify a single sender email → create API key → set on Render → redeploy). Forgot-password dev-fallback hint updated to mention the API keys.
+- Smoke-tested the SendGrid path with a fake key: isEmailConfigured()=true, real HTTPS call → 401 → graceful {ok:false, reason:"SendGrid error 401"}, never throws. Brevo path is structurally identical.
+
+Verification across the session: lint clean, tsc --noEmit clean, dev.log clean after a dev-server restart (Turbopack had cached a transient duplicate-import compile error from a half-applied edit — fixed on disk, restart cleared it; all routes then 200). Announcements feed + urgent banner still render; no console errors on final pass.

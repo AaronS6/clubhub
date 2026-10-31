@@ -544,8 +544,9 @@ function ForgotPasswordDialog({
                   Email not configured on this install
                 </p>
                 <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1 leading-relaxed">
-                  Add RESEND_API_KEY in .env to send real emails. For now, use
-                  the link directly:
+                  Set SENDGRID_API_KEY (or BREVO_API_KEY) + EMAIL_FROM in the
+                  environment to send real emails. For now, use the link
+                  directly:
                 </p>
                 <Button
                   type="button"

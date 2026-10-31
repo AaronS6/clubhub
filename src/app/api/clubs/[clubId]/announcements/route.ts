@@ -5,6 +5,7 @@ import { logActivity, notifyClub } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
 import { rateLimit } from "@/lib/rate-limit"
 import { isAccentKey, MAX_ANNOUNCEMENT_TAG_LENGTH } from "@/lib/announcement-style"
+import { getPollSummary, parsePollInput } from "@/lib/announcement-poll"
 
 const PAGE_SIZE = 20
 
@@ -51,14 +52,21 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
           },
         },
         _count: { select: { comments: { where: { deletedAt: null } } } },
+        poll: { select: { id: true } },
       },
     }),
   ])
 
+  // Poll summaries — one bounded round-trip per page (≤20 announcements);
+  // keeps the wire shape flat (counts + my votes, not per-option vote rows).
+  const pollSummaries = await Promise.all(
+    rows.map((a) => (a.poll ? getPollSummary(a.id, c.user.id) : Promise.resolve(null))),
+  )
+
   type ReactionUser = { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
 
-  const items = rows.map((a) => {
+  const items = rows.map((a, idx) => {
     const groups: Record<string, ReactionGroup> = {}
     let myReaction: string | null = null
     for (const r of a.reactions) {
@@ -106,6 +114,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
       reactions: Object.values(groups),
       myReaction,
       commentCount: a._count.comments,
+      poll: pollSummaries[idx] ?? null,
     }
   })
 
@@ -156,6 +165,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   if (!text) return error("Body is required", 400)
   if (text.length > 8000) return error("Body must be 8000 characters or fewer", 400)
 
+  // Optional poll: { options: string[], allowMultiple?: boolean }. Rejected
+  // outright (400) when present-but-malformed so a half-sent poll never
+  // silently posts as a plain announcement.
+  const hasPoll = body.poll != null
+  const pollInput = hasPoll ? parsePollInput(body.poll) : null
+  if (hasPoll && !pollInput) {
+    return error("Poll needs 2–10 non-empty options (max 80 chars each)", 400)
+  }
+
   const created = await db.announcement.create({
     data: {
       clubId,
@@ -166,6 +184,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       isUrgent,
       accent,
       tag,
+      ...(pollInput
+        ? {
+            poll: {
+              create: {
+                allowMultiple: pollInput.allowMultiple,
+                options: {
+                  create: pollInput.options.map((text, position) => ({
+                    text,
+                    position,
+                  })),
+                },
+              },
+            },
+          }
+        : {}),
     },
     include: {
       author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
@@ -177,6 +210,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
         },
       },
       _count: { select: { comments: { where: { deletedAt: null } } } },
+      poll: { select: { id: true } },
     },
   })
 
@@ -200,6 +234,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   })
 
   await emitClubEvent(clubId, "announcement_created", { announcementId: created.id })
+
+  // Poll summary for the just-created announcement (null when none).
+  const createdPoll = created.poll
+    ? await getPollSummary(created.id, c.user.id)
+    : null
 
   type ReactionUser = { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   type ReactionGroup = { emoji: string; count: number; users: ReactionUser[] }
@@ -239,6 +278,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       reactions: Object.values(groups),
       myReaction: null,
       commentCount: created._count.comments,
+      poll: createdPoll,
     },
   }, 201)
 }
