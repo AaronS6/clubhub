@@ -179,33 +179,38 @@ link in the dialog).
 
 ---
 
-## STEP 5: Database Schema — run `supabase_sync.sql` (2 min, once per deploy)
+## STEP 5: Database Schema — synced AUTOMATICALLY on every deploy
 
-**The app does NOT auto-create tables.** `prisma db push` can't run against
-the Supabase pooler (prepared statements aren't supported), so the schema is
-managed by hand-written SQL. After the FIRST deploy (and after any deploy
-where `prisma/schema.prisma` changed), bring the database in line:
+**The app now heals its own schema.** `prisma db push` can't run against
+the Supabase pooler (prepared statements aren't supported), so previous
+deploys required pasting `supabase_sync.sql` into the SQL Editor by hand —
+a step that was easy to skip and caused the `AnnouncementPoll` P2021
+outage (every announcement-feed request 500ing). Since the schema-sync
+deploy, this is automated:
 
-1. Open the Supabase dashboard → **SQL Editor** → **New query**
-2. Paste the entire contents of **`supabase_sync.sql`** (repo root)
-3. Click **Run**
+- On **every server boot**, `src/instrumentation.ts` runs
+  `src/lib/schema-sync.ts`, which executes the idempotent DDL from
+  `src/lib/schema-sync-statements.ts` (generated from `supabase_sync.sql`:
+  `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, guarded
+  indexes + foreign keys) through a pooler-safe connection.
+- A database that is already in sync costs a sub-second catalog check; a
+drifted database heals itself **before the first request is served**.
+- Watch for the boot log line:
+  `[schema-sync] ✓ schema synced — 315 idempotent statements applied …, 35 tables present in 'public'`
+- Opt out with the `CLUBHUB_DISABLE_SCHEMA_SYNC=1` env var (not recommended).
 
-The script is 100% idempotent — it creates any missing feature tables
-(`JoinRequest`, `ClubTransaction`, `Badge`, `MemberBadge`, notes tables,
-`StoredImage`), adds every missing column with the right defaults, creates
-missing indexes and foreign keys, and enables Row-Level Security everywhere.
-Re-running it
-never errors and never touches your data.
+**When you change `prisma/schema.prisma`:**
+1. Update **`supabase_sync.sql`** (new table / column / index / FK blocks)
+2. Regenerate the embedded statement list: `bun run scripts/gen-schema-sync.ts`
+3. Commit both files together — the next deploy syncs the database.
 
-> **If you skip this step**, the app boots but every request that touches a
-> drifted table 500s with `P2022: The column … does not exist` (this is
-> exactly what `User.avatarDecoration` missing looked like: session
-> callbacks + half the API failing).
-
-> **Historical scripts** (`supabase_schema.sql`, `supabase_badges.sql`,
-> `supabase_notes_schema.sql`, `supabase_rls_fix.sql`) are superseded by
-> `supabase_sync.sql` on existing deployments — don't re-run them (the
-> badges one DROPs its tables first!). They're kept for reference only.
+**Manual fallback** (only if the boot sync logs a failure — e.g. the database
+was unreachable at boot): open the Supabase dashboard → **SQL Editor** →
+paste `supabase_sync.sql` → **Run**. It is 100% idempotent — re-running it
+never errors and never touches your data. The manual script additionally
+enables Row-Level Security on every table (defense-in-depth against anon-key
+browser access); the automatic sync intentionally skips that section because
+blindly forcing RLS at boot could lock the app out of its own tables.
 
 If you ever need to wipe and reset the database (⚠️ deletes all data):
 1. Drop every table in the public schema (SQL Editor)
@@ -450,9 +455,9 @@ indexing.
 | Problem | Solution |
 |---------|----------|
 | **Build fails** | Check Render build logs. Verify all 5 env vars are set. |
-| **500s + `P2022: The column … does not exist`** | Production schema has drifted behind the code (e.g. `Announcement.accent`, `User.avatarDecoration`). Run the full **`supabase_sync.sql`** in the Supabase SQL Editor — see STEP 5. One run fixes every missing column/table at once. **No redeploy needed** — the errors clear on the next request. |
-| **`P2021: The table … does not exist`** (e.g. `StoredImage`, `[club-images]`/`[avatars]` GET failed) | Same fix — a whole table is missing. Run **`supabase_sync.sql`** (STEP 5); it `CREATE TABLE IF NOT EXISTS`es everything, then verify with the `SELECT count(*) AS table_count` query at the bottom of the script (should be 35). |
-| **`P2021: The table public.AnnouncementPoll does not exist`** (every announcement/feed request 500s) | The polls feature shipped before its tables were created in the database. Run the full **`supabase_sync.sql`** (STEP 5) — it now creates `AnnouncementPoll`, `AnnouncementPollOption`, and `AnnouncementPollVote` plus their indexes and foreign keys, idempotently. **No redeploy needed** — the feed recovers on the next request. Verify afterwards: `SELECT count(*) FROM pg_tables WHERE schemaname='public';` → **35**. |
+| **500s + `P2022: The column … does not exist`** | Production schema has drifted behind the code (e.g. `Announcement.accent`, `User.avatarDecoration`). The automatic boot schema sync heals this on the next **redeploy** (watch for `[schema-sync] ✓ …` in the boot logs). Immediate fix without redeploying: run the full **`supabase_sync.sql`** in the Supabase SQL Editor — see STEP 5. One run fixes every missing column/table at once — the errors clear on the next request. |
+| **`P2021: The table … does not exist`** (e.g. `StoredImage`, `[club-images]`/`[avatars]` GET failed) | Same fix — a whole table is missing. **Redeploy** (the boot sync creates everything automatically), or run **`supabase_sync.sql`** manually (STEP 5); it `CREATE TABLE IF NOT EXISTS`es everything, then verify with the `SELECT count(*) AS table_count` query at the bottom of the script (should be 35). |
+| **`P2021: The table public.AnnouncementPoll does not exist`** (every announcement/feed request 500s) | Fixed permanently by the automatic boot schema sync (`[schema-sync] ✓ …` in the boot logs) — a **redeploy clears it** with no manual steps. On an old deploy that predates the sync: run the full **`supabase_sync.sql`** (STEP 5 manual fallback); it creates `AnnouncementPoll`, `AnnouncementPollOption`, and `AnnouncementPollVote` plus their indexes and foreign keys, idempotently. **No redeploy needed** — the feed recovers on the next request. Verify afterwards: `SELECT count(*) FROM pg_tables WHERE schemaname='public';` → **35**. |
 | **`[auth] session callback error` in the logs** | Same root cause as above — the session callback reads `User` columns that don't exist yet. `supabase_sync.sql` fixes it. |
 | **Database connection error** | Verify `DATABASE_URL` has the password filled in and `?connection_limit=3&pool_timeout=10` at the end. Use port `6543` (pooler), not `5432`. |
 | **"Taking a moment to load" screen** | Supabase or Render is cold-starting. Click **Retry**. Set up UptimeRobot to prevent this. |
@@ -489,7 +494,7 @@ indexing.
 | 2 | Create Supabase database | 5 min |
 | 3 | Generate NextAuth secret | 1 min |
 | 4 | Deploy web service on Render | 5 min |
-| 5 | Run `supabase_sync.sql` in the SQL Editor | 2 min |
+| 5 | Schema sync (automatic on boot) | 0 min |
 | 6 | Verify everything works | 5 min |
 | **Total** | | **~25 min** |
 

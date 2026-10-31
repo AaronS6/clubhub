@@ -1236,3 +1236,19 @@ Task: "Render's free plan blocks Gmail SMTP — since September 26, 2025 outboun
 - Smoke-tested the SendGrid path with a fake key: isEmailConfigured()=true, real HTTPS call → 401 → graceful {ok:false, reason:"SendGrid error 401"}, never throws. Brevo path is structurally identical.
 
 Verification across the session: lint clean, tsc --noEmit clean, dev.log clean after a dev-server restart (Turbopack had cached a transient duplicate-import compile error from a half-applied edit — fixed on disk, restart cleared it; all routes then 200). Announcements feed + urgent banner still render; no console errors on final pass.
+
+## Task ID: 30
+Date: 2026-10-31
+
+Task: Production 500s on every announcement-feed request — `P2021: The table public.AnnouncementPoll does not exist in the current database` (repeated in Render logs). The polls code deployed, but the Supabase Postgres never got the three poll tables because `prisma db push` can't run through the Supabase pooler (prepared statements) and the manual "paste supabase_sync.sql into the SQL Editor" step was skipped.
+
+Root fix — the app now heals its own schema on every boot (no manual SQL ever again):
+- New src/lib/schema-sync.ts: on server boot (src/instrumentation.ts, node runtime), runs 315 idempotent DDL statements (CREATE TABLE IF NOT EXISTS × 13, ADD COLUMN IF NOT EXISTS healers × 247, CREATE INDEX IF NOT EXISTS × 54, guarded FK DO-block × 1) through a dedicated PrismaClient whose URL forces pgbouncer=true / connection_limit=1 / connect_timeout=10 — the pooler-safe protocol. SQLite dev is auto-skipped (db:push owns dev). Never crashes boot: failures retry 3× (5s apart) then log loudly with the manual fallback hint. Kill switch: CLUBHUB_DISABLE_SCHEMA_SYNC=1.
+- New src/lib/schema-sync-statements.ts: AUTO-GENERATED from supabase_sync.sql (sections 1-4) by the new scripts/gen-schema-sync.ts (comment/string/dollar-quote-aware SQL splitter). The RLS section is deliberately EXCLUDED from the runtime sync (forcing RLS could lock a non-BYPASSRLS owner out of its own tables — it stays in the manual script); verification SELECTs are replaced by a live table-count log line.
+- Bonus fix: instrumentation.ts imported runAutoseed but never CALLED it — the dev auto-reseed was silently dead. Now invoked, after the schema sync.
+- Dockerfile/DEPLOY.md updated: STEP 5 is now "synced AUTOMATICALLY on every deploy" (watch for `[schema-sync] ✓ … 35 tables present`); schema.prisma changes now require supabase_sync.sql edit + `bun run scripts/gen-schema-sync.ts` + commit both.
+
+Verified against a REAL embedded Postgres 18 (scratch rig, /tmp — not committed): canonical schema via db push → seeded 1 announcement → dropped the 4 incident tables (35→31) → the EXACT route query (announcement.findMany + author/reactions/_count/poll include) reproduced P2021 → ensureSchemaSynced() healed it (315 statements, 258ms, back to 35 tables, FKs intact) → same query returned the row with poll:null → full re-run: 0 failures (idempotent) → created a poll + 2 options + votes through Prisma → getPollSummary() correct (totalVotes 1, voterCount 1, myOptionIds tracked) → VerificationToken usable. The rig also caught and fixed a boot-crashing $queryRaw-vs-$queryRawUnsafe bug before it could ship.
+Also verified in-app (agent-browser): login → Announcements feed renders (incl. a live poll) → voted on an option → counts + "your vote" updated; lint + tsc --noEmit clean.
+
+For production NOW (before the next deploy): the fastest unblock is still running supabase_sync.sql once in the Supabase SQL Editor; the next deploy makes that permanently unnecessary.

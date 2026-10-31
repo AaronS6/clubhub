@@ -49,10 +49,14 @@ COPY --from=base /app/.next/standalone ./
 COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=base /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# sharp's platform binaries live in optional scoped packages (@img/*) — the
-# standalone trace normally grabs them, but like Prisma we copy explicitly so
-# avatar/banner processing can't 500 on a missing binary.
-COPY --from=base /app/node_modules/@img ./node_modules/@img
+# sharp's platform binaries live in optional scoped packages (@img/*). The
+# runtime is node:20-slim (Debian/glibc), so ONLY the linux-x64 variants are
+# ever loaded — copying the whole @img scope would ship the musl builds too
+# (~17MB dead weight per image pull). Selected copies keep avatar/banner
+# processing working while shrinking the layer.
+COPY --from=base /app/node_modules/@img/colour ./node_modules/@img/colour
+COPY --from=base /app/node_modules/@img/sharp-libvips-linux-x64 ./node_modules/@img/sharp-libvips-linux-x64
+COPY --from=base /app/node_modules/@img/sharp-linux-x64 ./node_modules/@img/sharp-linux-x64
 COPY --from=base /app/node_modules/sharp ./node_modules/sharp
 
 # nodemailer (SMTP email transport for password resets + notifications) is
@@ -60,8 +64,8 @@ COPY --from=base /app/node_modules/sharp ./node_modules/sharp
 # we copy it explicitly so SMTP email can't 500 on a missing module.
 COPY --from=base /app/node_modules/nodemailer ./node_modules/nodemailer
 
-# Prisma schema (kept for reference / manual `prisma db push` sessions; the
-# pooler doesn't support it so tables are created via the Supabase SQL editor).
+# Prisma schema (kept for reference; the runtime schema sync below reads the
+# embedded statement list from the compiled server bundle, not this file).
 COPY --from=base /app/prisma ./prisma
 
 EXPOSE 3000
@@ -79,6 +83,9 @@ ENV WEB_CONCURRENCY=1
 # up. See src/middleware.ts.
 ENV NODE_OPTIONS="--max-old-space-size=384 --max-http-header-size=65536"
 
-# Start the server immediately. Tables are created manually via Supabase SQL
-# Editor (the pooler doesn't support prisma db push's prepared statements).
+# Start the server. src/instrumentation.ts runs the idempotent schema sync
+# (src/lib/schema-sync.ts) on boot BEFORE serving traffic — it creates any
+# missing tables/columns directly through the Supabase pooler (pgbouncer-safe
+# raw DDL), replacing the old manual "run supabase_sync.sql in the SQL Editor"
+# step that was easy to skip and caused the AnnouncementPoll P2021 outage.
 CMD ["node", "server.js"]
