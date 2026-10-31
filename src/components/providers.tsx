@@ -15,7 +15,17 @@ export function Providers({ children }: { children: ReactNode }) {
           queries: {
             staleTime: 15_000,
             retry: 1,
-            refetchOnWindowFocus: false,
+            // §Fresh-on-focus: refetch stale queries when the window regains
+            // focus. staleTime (15s) gates this to data that is ACTUALLY
+            // stale, so the cost is a handful of deduped GETs — but it heals
+            // the "resumed from background shows an old snapshot" failure
+            // mode instantly (backgrounded tabs pause refetchInterval, and
+            // realtime sockets die silently in the background, so without
+            // this a tab that sat in the background can show announcements
+            // that were posted/deleted minutes or hours ago until its next
+            // poll tick — on one device but not the other, which reads as
+            // "some announcements disappear on my laptop/phone").
+            refetchOnWindowFocus: true,
             refetchIntervalInBackground: false,
           },
         },

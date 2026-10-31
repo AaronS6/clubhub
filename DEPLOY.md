@@ -191,9 +191,10 @@ where `prisma/schema.prisma` changed), bring the database in line:
 3. Click **Run**
 
 The script is 100% idempotent — it creates any missing feature tables
-(`JoinRequest`, `ClubTransaction`, `Badge`, `MemberBadge`, notes tables),
-adds every missing column with the right defaults, creates missing indexes
-and foreign keys, and enables Row-Level Security everywhere. Re-running it
+(`JoinRequest`, `ClubTransaction`, `Badge`, `MemberBadge`, notes tables,
+`StoredImage`), adds every missing column with the right defaults, creates
+missing indexes and foreign keys, and enables Row-Level Security everywhere.
+Re-running it
 never errors and never touches your data.
 
 > **If you skip this step**, the app boots but every request that touches a
@@ -449,7 +450,8 @@ indexing.
 | Problem | Solution |
 |---------|----------|
 | **Build fails** | Check Render build logs. Verify all 5 env vars are set. |
-| **500s + `P2022: The column … does not exist`** | Production schema has drifted behind the code (e.g. `User.avatarDecoration`). Run the full **`supabase_sync.sql`** in the Supabase SQL Editor — see STEP 5. One run fixes every missing column/table at once. |
+| **500s + `P2022: The column … does not exist`** | Production schema has drifted behind the code (e.g. `Announcement.accent`, `User.avatarDecoration`). Run the full **`supabase_sync.sql`** in the Supabase SQL Editor — see STEP 5. One run fixes every missing column/table at once. **No redeploy needed** — the errors clear on the next request. |
+| **`P2021: The table … does not exist`** (e.g. `StoredImage`, `[club-images]`/`[avatars]` GET failed) | Same fix — a whole table is missing. Run **`supabase_sync.sql`** (STEP 5); it `CREATE TABLE IF NOT EXISTS`es everything, then verify with the `SELECT count(*) AS table_count` query at the bottom of the script (should be 32). |
 | **`[auth] session callback error` in the logs** | Same root cause as above — the session callback reads `User` columns that don't exist yet. `supabase_sync.sql` fixes it. |
 | **Database connection error** | Verify `DATABASE_URL` has the password filled in and `?connection_limit=3&pool_timeout=10` at the end. Use port `6543` (pooler), not `5432`. |
 | **"Taking a moment to load" screen** | Supabase or Render is cold-starting. Click **Retry**. Set up UptimeRobot to prevent this. |

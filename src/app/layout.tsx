@@ -1,5 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+// SELF-HOSTED FONTS — zero network at build time.
+// Previously these came from next/font/google, which downloads font files
+// from fonts.googleapis.com DURING `next build`. In offline/restricted
+// build environments (Docker, CI, school networks) that fetch fails and the
+// generated CSS references font files that don't exist → the Docker build
+// died with module-not-found in geist_*.module.css. Now:
+//   · Geist + Geist Mono ship inside the `geist` npm package (Vercel's
+//     official self-hosted build, next/font/local under the hood — same CSS
+//     variable names as before: --font-geist-sans / --font-geist-mono).
+//   · Bricolage Grotesque is a variable woff2 checked into src/fonts/.
+// The build is now fully hermetic — no Google, no font CDN, ever.
+// Geist Sans — the body face — and Geist Mono — the code/numerals face —
+// come from the `geist` npm package (Vercel's official self-hosted build).
+// Both set the exact CSS variables the Tailwind stack already references:
+// --font-geist-sans and --font-geist-mono (see globals.css).
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Suspense } from "react";
@@ -10,26 +27,12 @@ import { getSiteUrl } from "@/lib/site";
 
 // Bricolage Grotesque — the display face. Used only for .text-page-title and
 // .text-numeral (the big hours number). 600/700 only — keeps the bundle small.
-const bricolage = Bricolage_Grotesque({
+// The checked-in woff2 is a VARIABLE font (weight axis 200..800), served as
+// the latin subset straight from Google's own files.
+const bricolage = localFont({
   variable: "--font-bricolage",
-  subsets: ["latin"],
-  weight: ["600", "700"],
-  display: "swap",
-});
-
-// Geist Sans — the body face. Everything else (labels, body, captions, tables).
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-  adjustFontFallback: true,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  weight: ["400"],
+  src: "../fonts/bricolage-grotesque-latin-var.woff2",
+  weight: "600 700",
   display: "swap",
 });
 
@@ -122,7 +125,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} font-sans antialiased text-foreground`}
+        className={`${bricolage.variable} ${GeistSans.variable} ${GeistMono.variable} font-sans antialiased text-foreground`}
       >
         <Providers>
           <ClubAccentProvider>

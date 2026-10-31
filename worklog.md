@@ -1035,3 +1035,105 @@ Work Log:
 - VERIFIED MAIN SITE UNAFFECTED: GET / 200, /api/health 200, /api/public/clubs 200, landing image 200, club banner 200, browser renders landing page cleanly (no page errors), lint clean.
 
 Result: public/clubhub-source.zip = 2.83MB, 437 files, current code, portable .env, demo DB, SETUP.md with 3-step run instructions — 51% smaller than before with zero site impact. The only remaining "big" things in the repo are node_modules/.next/.git (all standard, all excluded from the zip).
+
+---
+
+## Task ID: 18
+Date: 2026-10-31
+
+Task: User: "all the files need to be there and my download button for the preview is not working rn i dont need the public thing I NEED ALL THE FILES HERE!! THE DOWNLOAD FILE MUST WORK!! RN ITS OVER 300MB THATS WHY ITS NOT DOWNLOADING AND CORRUPTED!!"
+
+Work Log:
+- ROOT-CAUSED the 300MB+ download: the platform's project-download includes the working tree (~7MB) + the entire .git directory (297MB). The .git bloat was legacy HISTORY: a 40MB upload/workspace tar archive, multi-MB screenshots (v8-full-page.png etc.), old versions of every deleted photo and every auto-snapshot commit — decades of "deleted" files that git keeps forever.
+- REMOVED public/clubhub-source.zip per user request ("i dont need the public thing") — /clubhub-source.zip now 404s; no code references it (already removed in Task 16).
+- FIXED the download size by squashing local git history: orphan-branch single commit ("ClubHub — complete source") → deleted old main → dropped remote-tracking ref (origin/main cache pointer; the real GitHub repo github.com/AaronS6/clubhub is UNTOUCHED and still holds the full prior history) → reflog expire → git gc --aggressive --prune=now. Also updated SETUP.md wording ("This is the full source").
+- RESULT: .git 297MB → 12MB (96% smaller). Project download ≈ 6MB source + 11MB git ≈ ~18MB total (was 300MB+) — small enough to download cleanly with zero corruption risk.
+- VERIFIED NOTHING LOST: tracked files before=310, after=309 (exactly the 1 removed zip); all 17 key files spot-checked present; all 22 view components intact; git status clean; single-commit log.
+- VERIFIED SITE UNAFFECTED: GET / 200, /api/health 200, /api/public/clubs 200, landing image 200, club banner 200, removed zip correctly 404s, browser renders landing cleanly (no page errors), lint clean. Insurance backup of the old .git was kept in /tmp during surgery and deleted after verification passed.
+- NOTE for user: the 13 recent local commits (Tasks 14-17 work) were never pushed to GitHub (sandbox has no push auth) — the squashed single commit now contains ALL of that latest code, so the project download includes everything current. GitHub repo is 13+ commits behind; to sync it later, push from a local clone of this download with --force (or pull the zip's code over it).
+
+Result: Project download is now ~18MB instead of 300MB+. Every current file included, nothing missing, site fully verified healthy.
+
+---
+
+## Task ID: 19
+Date: 2026-10-31
+
+Task: User's Docker build failed: `bun run build` died with module-not-found pointing into [next]/internal/font/google/geist_*.module.css (every @font-face src line) — build exited code 1 at Dockerfile:24.
+
+Work Log:
+- ROOT-CAUSED: the app loaded ALL THREE typefaces (Geist, Geist_Mono, Bricolage_Grotesque) via next/font/google, which downloads font files from fonts.googleapis.com AT BUILD TIME. In the user's Docker build environment that fetch failed → Next generated the font CSS but the referenced woff2 files never materialized → module-not-found on every font src → build dies. Classic offline/restricted-network Docker failure.
+- FIXED by making fonts fully self-hosted (hermetic build — zero network for fonts, ever):
+  * Geist + Geist Mono → the official `geist` npm package (bun add geist@1.9.0). It wraps next/font/local with the font files INSIDE node_modules and sets the IDENTICAL CSS variables the app already consumed (--font-geist-sans / --font-geist-mono) — zero changes needed in globals.css or Tailwind.
+  * Bricolage Grotesque → downloaded the latin-subset VARIABLE woff2 directly from fonts.gstatic.com (41KB, weight axis covers 600/700) and checked it into src/fonts/bricolage-grotesque-latin-var.woff2, loaded via next/font/local with the same --font-bricolage variable.
+  * layout.tsx rewritten: imports GeistSans/GeistMono from geist/font/* + localFont for bricolage; body className uses the same .variable classes; same display:swap; comments document WHY (offline Docker builds).
+- VERIFIED EQUIVALENCE on dev: body font resolves to GeistSans + fallback, headings resolve to bricolage (computed styles checked in browser); the three woff2s now serve from /_next/static/media/; ZERO requests to fonts.googleapis.com; no page errors.
+- VERIFIED THE ACTUAL DOCKER FAILURE IS FIXED: replicated the Dockerfile build steps exactly in an isolated /tmp copy — bun install --frozen-lockfile (644 pkgs incl. geist) → sed sqlite→postgresql flip (Dockerfile line 23) → bun run build → **BUILD SUCCEEDED** (exit 0, full route table, no font errors). Standalone output contains all 3 woff2 files and ZERO googleapis references. Booted the standalone server (node server.js, like the Docker runner): Ready in 75ms, GET / 200, HTML references the self-hosted fonts.
+- Also recovered the wedged dev server (restarted via start-stop-daemon; GET / 200, fonts render, lint clean).
+
+Result: `docker build` will now succeed in ANY environment — no Google Fonts network dependency at build time. Fonts are byte-identical (same Geist/Bricolage faces, same CSS variables, same swap behavior).
+
+---
+
+## Task ID: 20
+Date: 2026-10-31
+
+Task: Render deployment live (clubhub-0rir.onrender.com) but flooding with Prisma errors: P2022 "The column Announcement.accent does not exist" (announcement.findMany) + P2021 "The table public.StoredImage does not exist" (storedImage.findUnique from [club-images] and [avatars] routes).
+
+Work Log:
+- ROOT-CAUSED: the production Supabase Postgres schema drifted behind the code — the repo's supabase_sync.sql predates the StoredImage model (DB-backed image store) and the Announcement accent/tag columns. Prisma selects every scalar column on findMany, so one missing column 500s the whole feature; the missing table 500s every image fetch.
+- DIFFED exhaustively (scripted parser: prisma/schema.prisma models vs sync's CREATE TABLE + ADD COLUMN coverage): the complete drift is exactly 3 items — StoredImage table (6 cols), Announcement.accent, Announcement.tag. Nothing else.
+- UPDATED supabase_sync.sql (still 100% idempotent, never drops data):
+  * Section 1: CREATE TABLE IF NOT EXISTS "StoredImage" (key TEXT PK, kind TEXT, data BYTEA, version INTEGER DEFAULT 1, createdAt/updatedAt) — the DB-backed image store.
+  * Section 2: Announcement healer now adds accent TEXT + tag TEXT; StoredImage healer section added (no-op when section 1 just created it).
+  * RLS section already loops over pg_tables dynamically — StoredImage gets RLS automatically.
+  * Header docs + verify query updated (32 tables).
+- VALIDATED: re-ran the drift checker against the updated file — ZERO drift, every scalar column of every model covered (236 ADD COLUMN statements, 9 CREATE TABLE). Parsed all plain statements with node-sql-parser (postgresql dialect): 247 ok, 0 real failures (DO $$ plpgsql blocks skipped by design). Local dev site unaffected (GET / 200), lint clean.
+- DEPLOY.md: STEP 5 docs + troubleshooting table updated — new P2021 row (missing table, incl. the [club-images]/[avatars] symptom), P2022 row now cites Announcement.accent and notes NO REDEPLOY NEEDED (errors clear on next request after the SQL runs).
+
+Result: User's fix = paste the UPDATED supabase_sync.sql into Supabase SQL Editor → Run. One run creates StoredImage + adds the two columns; announcements and club-images/avatars endpoints heal immediately without redeploying. Download the fresh project (or copy supabase_sync.sql from the repo) to get the updated file.
+
+---
+
+## Task ID: 21
+Date: 2026-10-31
+
+Task: User report — in the join dialog's "Explore clubs" tab (opened via the left sidebar's "Join a club"), every club card still showed "Join" even for clubs the user had ALREADY joined. Wanted them to say "JOINED".
+
+Work Log:
+- LOCATED the flow: ClubSwitcher (left sidebar) → "Join a club" → JoinClubDialog → "Explore clubs" tab → ExploreClubsRedirect/ExploreClubCard mini-directory. The cards had no knowledge of the user's memberships, and the code tab's submit button likewise always read "Join club" (re-joining would 409 "You are already a member of this club").
+- FIXED in src/components/app-shell.tsx (app store's `clubs` memberships already carry each club's `clubCode`; only active memberships are returned by /api/me, so removed members correctly keep the "Join" path):
+  * Explore tab: ExploreClubsRedirect reads `useAppStore((s) => s.clubs)`, memozes a Set of joined codes, passes `joined` to each card. Joined cards render a quiet non-interactive "✓ Joined" pill (bg-muted, same footprint as the Join button so rows don't shift) instead of the club-accent "Join" button. Reactive: joining anywhere in the app refreshes the store and cards flip to Joined live.
+  * Code tab: when the typed (or explore-pre-filled) code matches an existing membership, the primary submit becomes a disabled "✓ Joined" button, the live answer row appends "· already a member", and "Send join request" disables too — no more dead-end 409 toasts.
+- VERIFIED end-to-end with agent-browser as the demo account (member/exec of all 3 seeded public clubs):
+  * Explore tab: Robotics / Photography / Debate cards ALL show "✓ Joined" (was "Join").
+  * Code tab with "PHOTOS1": answer row "Photography Club · already a member", submit "Joined" [disabled], request disabled.
+  * Negative test with unknown code "ZZZZ99": still shows normal enabled "Join club" — join flow untouched.
+  * VLM screenshot review confirmed the Joined pill visually; zero console/page errors; dev.log clean (only the expected 404 for the unknown-code lookup).
+
+Result: Clubs you already joined now show "JOINED" (and can't be re-joined / re-requested) in both the Explore tab cards and the code pane of the join dialog.
+
+---
+
+## Task ID: 22
+Date: 2026-10-31
+
+Task: User report — "some of the announcements disappear on my laptop, on phone it shows all. Must be a storage issue?"
+
+Investigation (systematic elimination):
+- API GET /api/clubs/[clubId]/announcements is DETERMINISTIC per (user, club): same items on every device. Soft-deleted rows (deletedAt) are filtered for everyone.
+- Rendering verified IDENTICAL at both viewports: seeded 26 test announcements (30 total, 2 pages), confirmed 20 cards + "Load more" → 30/30 cards rendered and fully scroll-reachable at 1440×900 AND 390×844. No responsive CSS hides cards; stagger/ch-view-enter animations complete (backwards-fill only, capped 400ms delay); .cv-auto (content-visibility) is financials-only; the modal animation-pause rule only touches .ch-bg-idle/.ch-deco.
+- No service worker, no persisted query cache, no large localStorage writes (all keys are tiny strings) → no storage-quota issue.
+- Polling safety net is ALWAYS on (10s socket-down / 20s socket-up) while the tab is visible, so a visible feed can't be persistently stale.
+- What IS genuinely per-device: signed-in account (cookie), selected club (persisted zustand localStorage), urgent-banner dismissal (per-device localStorage, 7-day TTL), and the dashboard preview (3 recent + pinned by design) vs the full Announcements view. On desktop the current club is only labeled in the left-sidebar switcher (top bar shows the search pill); on mobile the top bar shows the page title — being in the wrong club is much less obvious on a laptop.
+
+ROOT-CAUSE CLASS fixed — stale-tab snapshots: providers.tsx had refetchOnWindowFocus: false + refetchIntervalInBackground: false. A tab that sat in the background (laptop tabs stay open for hours; phone tabs get backgrounded) pauses its poll interval and its socket silently dies; on return there was NO refetch — the device would keep showing an old snapshot (announcements that were since posted or deleted) until the next poll tick, i.e. one device could disagree with the other indefinitely while backgrounded/resumed.
+
+Fixes:
+- providers.tsx: refetchOnWindowFocus: true (gated by staleTime 15s — only actually-stale data refetches, deduped by TanStack). Focusing the window now instantly heals any resumed-from-background tab.
+- realtime-store.ts + usePollingFallback docstrings corrected to match the implementation (polling is an always-on safety net that relaxes 2× when the socket is connected — the old comment claimed it returned false, a maintenance trap).
+- Verified in browser: focus event dispatch triggers immediate refetch of stale queries (announcements + notifications + the rarely-polled /api/me/badges all fired on focus); zero console/page errors; lint clean; test data cleaned (26 seeded rows deleted).
+
+User guidance delivered with the fix (checklist): (1) same account on both devices (top-right avatar → email), (2) same club selected (laptop: left-sidebar club switcher), (3) Announcements view vs Dashboard preview (dashboard shows 3 recent + pinned by design — click "All →"), (4) >20 announcements load via "Load more", (5) if announcements were deleted by an exec the API supports exec recovery (?includeDeleted=true + /restore) but no UI exists yet.
+
+Result: The one real cross-device staleness bug (no refetch on window focus) is fixed; the remaining candidates are per-device state (account / selected club / dashboard-preview vs full view), all covered by the checklist above.

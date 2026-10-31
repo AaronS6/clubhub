@@ -3,7 +3,7 @@
 School-club management platform: announcements, meetings, service hours,
 chat, tasks, notes, finances, and a public club directory — all in one place.
 
-This zip is the full source. The demo database (with the example account and
+This is the full source. The demo database (with the example account and
 three clubs) is included, so it runs immediately after install.
 
 ## Requirements

@@ -17,7 +17,8 @@
 --
 -- HOW IT WORKS
 --   1. Creates any missing feature tables (JoinRequest, ClubTransaction,
---      Badge, MemberBadge, ClubNote, NoteTag, NoteTagAssignment, NoteHeart).
+--      Badge, MemberBadge, ClubNote, NoteTag, NoteTagAssignment, NoteHeart,
+--      StoredImage).
 --   2. Adds EVERY column of EVERY table with ADD COLUMN IF NOT EXISTS —
 --      existing columns are skipped, missing ones are healed (with Prisma's
 --      defaults so NOT NULL is safe on populated tables).
@@ -133,6 +134,20 @@ CREATE TABLE IF NOT EXISTS "NoteHeart" (
     CONSTRAINT "NoteHeart_pkey" PRIMARY KEY ("id")
 );
 
+-- StoredImage — DB-backed image store (club logos, banners, avatars)
+-- Replaced the old disk-based uploads: processed JPEG bytes (sharp) live in
+-- BYTEA, keyed `{clubId}-logo` / `{clubId}-banner` / `{userId}`. Served via
+-- /api/club-images/[...] and /api/avatars/[id] with immutable ?v= caching.
+CREATE TABLE IF NOT EXISTS "StoredImage" (
+    "key" TEXT NOT NULL,
+    "kind" TEXT NOT NULL,               -- "avatar" | "club-image"
+    "data" BYTEA NOT NULL,              -- processed JPEG bytes
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "StoredImage_pkey" PRIMARY KEY ("key")
+);
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 2. COLUMN HEALERS — every column of every table (no-ops where they exist)
@@ -233,6 +248,8 @@ ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "title" TEXT;
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "body" TEXT;
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "isPinned" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "isUrgent" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "accent" TEXT;   -- card accent color key (emerald|amber|rose|violet|teal|gray), null = default
+ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "tag" TEXT;      -- short category label pill (≤24 chars)
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3);
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE "Announcement" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
@@ -430,6 +447,14 @@ ALTER TABLE "NoteHeart" ADD COLUMN IF NOT EXISTS "noteId" TEXT;
 ALTER TABLE "NoteHeart" ADD COLUMN IF NOT EXISTS "userId" TEXT;
 ALTER TABLE "NoteHeart" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
+-- StoredImage (healer — no-op on databases where section 1 just created it)
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "key" TEXT;
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "kind" TEXT;
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "data" BYTEA;
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "StoredImage" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 3. INDEXES (only created if missing)
@@ -604,7 +629,7 @@ END$$;
 SELECT column_name FROM information_schema.columns
 WHERE table_name = 'User' AND column_name = 'avatarDecoration';
 
--- All 31 tables present:
+-- All 32 tables present:
 SELECT count(*) AS table_count FROM pg_tables WHERE schemaname = 'public';
 
 -- RLS on everywhere (rowsecurity + forcerowsecurity both true):

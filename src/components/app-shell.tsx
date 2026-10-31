@@ -2070,6 +2070,14 @@ function JoinClubDialog({
   })
   const clubName = clubInfo?.club?.name
 
+  // Already-a-member check — the typed (or explore-pre-filled) code matches
+  // one of the user's existing memberships, so the primary action settles
+  // into a disabled "Joined" state (joining again would just 409 with "You
+  // are already a member of this club") and the request path disables too.
+  const myClubs = useAppStore((s) => s.clubs)
+  const joinedCodes = useMemo(() => new Set(myClubs.map((c) => c.clubCode)), [myClubs])
+  const alreadyJoined = joinedCodes.has(codeKey)
+
   // ── Path 1 (primary): club code + password → instant join ──────────────
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault()
@@ -2203,6 +2211,11 @@ function JoinClubDialog({
                             <p className="flex items-center gap-1.5 text-sm font-medium text-primary">
                               <Check className="h-4 w-4 shrink-0" aria-hidden />
                               {clubName}
+                              {alreadyJoined && (
+                                <span className="font-normal text-muted-foreground">
+                                  · already a member
+                                </span>
+                              )}
                             </p>
                           ) : clubInfoError ? (
                             <p className="text-sm text-muted-foreground">No club found</p>
@@ -2231,10 +2244,19 @@ function JoinClubDialog({
                     </div>
                     <Button
                       type="submit"
-                      disabled={joining || requesting}
+                      disabled={joining || requesting || alreadyJoined}
                       className="h-11 w-full rounded-lg font-semibold"
                     >
-                      {joining ? "Joining…" : "Join club"}
+                      {joining ? (
+                        "Joining…"
+                      ) : alreadyJoined ? (
+                        <>
+                          <CheckCircle2 className="mr-1.5 h-4 w-4" aria-hidden />
+                          Joined
+                        </>
+                      ) : (
+                        "Join club"
+                      )}
                     </Button>
                   </form>
 
@@ -2277,7 +2299,7 @@ function JoinClubDialog({
                       type="button"
                       variant="outline"
                       className="w-full border-input bg-background hover:bg-accent"
-                      disabled={requesting || joining || codeKey.length < 4}
+                      disabled={requesting || joining || codeKey.length < 4 || alreadyJoined}
                       onClick={handleRequest}
                     >
                       {requesting ? "Sending…" : "Send join request"}
@@ -2328,6 +2350,12 @@ function ExploreClubsRedirect({
   onPickCode: (code: string) => void
 }) {
   const router = useRouter()
+  // The user's existing memberships — each card compares its clubCode
+  // against this so clubs they've ALREADY joined render a settled "Joined"
+  // state instead of a "Join" button. Reactive: joining a club anywhere in
+  // the app refreshes the store, and the cards flip to "Joined" live.
+  const myClubs = useAppStore((s) => s.clubs)
+  const joinedCodes = useMemo(() => new Set(myClubs.map((c) => c.clubCode)), [myClubs])
   const { data, isLoading, isError } = useQuery<{ clubs: PublicClubMini[] }>({
     queryKey: ["public-clubs"],
     queryFn: () => api<{ clubs: PublicClubMini[] }>("/api/public/clubs"),
@@ -2356,7 +2384,12 @@ function ExploreClubsRedirect({
         </div>
       )}
       {clubs.map((club) => (
-        <ExploreClubCard key={club.clubCode} club={club} onPickCode={onPickCode} />
+        <ExploreClubCard
+          key={club.clubCode}
+          club={club}
+          onPickCode={onPickCode}
+          joined={joinedCodes.has(club.clubCode)}
+        />
       ))}
       {!isLoading && !isError && clubs.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
@@ -2382,13 +2415,18 @@ function ExploreClubsRedirect({
 }
 
 /** One club card in the explore mini-directory — banner-first, quiet body,
- *  join-mode chip, club-accent "Join" + public-profile deep link. */
+ *  join-mode chip, club-accent "Join" (or a settled "Joined" pill when the
+ *  user is already a member) + public-profile deep link. */
 function ExploreClubCard({
   club,
   onPickCode,
+  joined,
 }: {
   club: PublicClubMini
   onPickCode: (code: string) => void
+  /** True when the signed-in user is already a member of this club — the
+   *  Join action becomes a quiet, non-interactive "Joined" state. */
+  joined?: boolean
 }) {
   // Same focal-point handling the landing directory uses for banners.
   const focalPct = Math.round((club.bannerFocalY ?? 0.5) * 100)
@@ -2444,14 +2482,27 @@ function ExploreClubCard({
             >
               View club
             </Link>
-            <button
-              type="button"
-              onClick={() => onPickCode(club.clubCode)}
-              className="inline-flex h-7 shrink-0 items-center rounded-md px-3 text-xs font-semibold shadow-sm transition-[filter,transform] duration-150 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
-              style={{ backgroundColor: club.accentColor, color: readableForeground(club.accentColor) }}
-            >
-              Join
-            </button>
+            {joined ? (
+              /* Settled state — a quiet "Joined" pill (check + label) that
+                 matches the Join button's footprint so the card's row doesn't
+                 shift. Non-interactive: there's nothing left to do here. */
+              <span
+                className="inline-flex h-7 shrink-0 cursor-default items-center gap-1 rounded-md bg-muted px-3 text-xs font-semibold text-muted-foreground"
+                title="You're already a member of this club"
+              >
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                Joined
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onPickCode(club.clubCode)}
+                className="inline-flex h-7 shrink-0 items-center rounded-md px-3 text-xs font-semibold shadow-sm transition-[filter,transform] duration-150 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
+                style={{ backgroundColor: club.accentColor, color: readableForeground(club.accentColor) }}
+              >
+                Join
+              </button>
+            )}
           </div>
         </div>
       </div>

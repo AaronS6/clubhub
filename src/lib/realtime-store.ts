@@ -10,12 +10,11 @@ import type { ConnectionState } from "@/lib/use-realtime-sync"
  * - Realtime push is the PRIMARY delivery path for every view (tasks,
  *   meetings, teams, members, announcements, hours, approvals, chat,
  *   notifications, dashboard, activity).
- * - Polling is ONLY a fallback used while the socket is `disconnected`.
- *   Views read `connectionState` from this store and pass
- *   `refetchInterval: connectionState === "disconnected" ? N : false` to
- *   their `useQuery`. This means: when connected, zero polling overhead and
- *   true live updates; when the socket drops, every view gracefully degrades
- *   to polling so the UI never goes stale.
+ * - Polling is a ALWAYS-ON safety net that tightens while the socket is
+ *   down (see usePollingFallback): when connected, views poll at a relaxed
+ *   cadence (2× the fallback interval) so a zombie socket can't silently
+ *   starve the UI; when the socket drops, every view tightens to the full
+ *   fallback rate so the UI never goes stale.
  * - On reconnect (disconnected → connected), `useRealtimeSync` invalidates
  *   every current-club query once to catch up on any events missed while the
  *   socket was down. This is a single batched invalidation, not a per-view
@@ -129,8 +128,14 @@ export function useRemoteChange(type: RemoteChangeType, id: string | undefined):
 
 /**
  * Returns the connection-aware polling interval for `useQuery.refetchInterval`.
- * Pass the desired fallback interval; returns `false` (no polling) when the
- * socket is connected, and the interval (ms) when disconnected.
+ * Polling is ALWAYS ON as a safety net — the interval just relaxes when the
+ * realtime socket is connected (events push updates; the slower poll is
+ * belt-and-suspenders against zombie/half-open sockets that look connected
+ * but deliver nothing) and tightens when it isn't:
+ *
+ *   - connected    → intervalMs * 2 (e.g. 20s)
+ *   - connecting /
+ *     disconnected → intervalMs     (e.g. 10s)
  *
  *   refetchInterval: usePollingFallback(5000)
  */
