@@ -59,6 +59,18 @@ export const authOptions: NextAuthOptions = {
           if (!user) return null
           const ok = await verifyPassword(credentials.password, user.passwordHash ?? "")
           if (!ok) return null
+          // Email+password accounts are gated until the signup verification
+          // code is entered. Throwing (instead of returning null) surfaces a
+          // DISTINCT error to the client ("EMAIL_NOT_VERIFIED") — verified in
+          // next-auth@4.24.13 core/routes/callback.js: a thrown authorize
+          // error becomes `?error=<message>` — so the auth screen can switch
+          // to the verify-email step instead of a misleading "invalid email
+          // or password". No session is ever minted for unverified users,
+          // which keeps every authenticated API route safe without touching
+          // them individually.
+          if (!user.emailVerified) {
+            throw new Error("EMAIL_NOT_VERIFIED")
+          }
           // ⚠️ Do NOT include `image`/`avatarUrl` here — NextAuth merges every
           // field of this returned object into the JWT, which is stored as a
           // browser cookie. Avatars are stored as base64 data URLs (~15KB),
@@ -68,6 +80,12 @@ export const authOptions: NextAuthOptions = {
           // the client still receives it via /api/auth/session.
           return { id: user.id, name: user.name, email: user.email }
         } catch (e) {
+          // The unverified-account gate MUST propagate — next-auth turns a
+          // thrown authorize error into `?error=<message>` (the client reads
+          // it as res.error), which is how the auth screen knows to switch
+          // to the verify-email step. Everything else fails silently (null)
+          // as before.
+          if (e instanceof Error && e.message === "EMAIL_NOT_VERIFIED") throw e
           console.error("[auth] authorize error:", e)
           return null
         }
@@ -91,7 +109,11 @@ export const authOptions: NextAuthOptions = {
               emailVerified: true,
               avatarUrl: user.image ?? undefined,
             },
-            update: {}, // don't overwrite existing user's data
+            // Mark verified on EVERY Google sign-in (not just create) — if the
+            // email already existed as an unverified email+password account,
+            // Google proving ownership at sign-in verifies it. Name/avatar are
+            // still never overwritten (existing behavior).
+            update: { emailVerified: true },
           })
           token.id = dbUser.id
         } else {

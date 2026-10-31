@@ -679,7 +679,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-extrabold tracking-tight">ClubHub</span>
           <UserMenu compact />
         </header>
-        <div className="flex-1 flex flex-col items-center justify-center rounded-2xl border border-border/80 bg-card shadow-card p-6 m-3">
+        {/* Onboarding card — GLASS (same formula as the sidebar): translucent
+            body + backdrop blur/saturation so the ambient atmosphere — the
+            top spotlight, brand glows, and grain — breathes through instead
+            of being hidden behind an opaque slab. */}
+        <div className="flex-1 flex flex-col items-center justify-center rounded-2xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] shadow-card p-6 m-3 dark:bg-card/80">
           <div className="w-full max-w-md text-center">
             {firstName && (
               <p className="text-caption uppercase tracking-wider text-muted-foreground/70 mb-2">
@@ -806,8 +810,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // choppy More / notifications sheet opens on mobile. A nearly-opaque solid
   // background looks identical for ~0 paint cost (same fix the bottom tab
   // bar got earlier).
+  // PERF: no backdrop-blur on the header — it's IN-FLOW (nothing scrolls
+  // underneath), so it can be fully transparent for ZERO cost: the
+  // atmosphere's top backlight beam glows through this whole strip. (The
+  // old bg-background/95 wash hid it.)
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/70 bg-background/95 shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/70 bg-transparent shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
           The wordmark competed with the club switcher in the sidebar.
           Mobile nav is via the bottom tab bar's "More" button — no hamburger
@@ -869,8 +877,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="ch-app h-dvh flex flex-col overflow-hidden relative z-10">
       {/* The ambient background (CustomizationProvider renders this) sits at
           z-0 behind this z-10 shell. We use `bg-transparent` here so the
-          ambient shows through. Cards/surfaces inside (bg-card) remain opaque
-          so content stays readable. */}
+          ambient shows through. Cards/surfaces inside use the glassified
+          `bg-card` (see globals.css — GLASS SURFACES) so the atmosphere's
+          light orbs tint them instead of hiding behind opaque slabs. */}
       <UrgentBanner />
       {topBar}
       <div className="flex flex-1 min-h-0 p-3 gap-3">
@@ -1170,14 +1179,18 @@ function MobileTabBar() {
 
   return (
     <>
-      {/* PERF: no backdrop-blur — a blurred full-width bar re-rastered every
-          frame while the notification/More sheet's overlay faded over it,
-          which was a big part of the sheets' choppy opening on mobile. A
-          nearly-opaque solid background looks the same for ~0 paint cost. */}
+      {/* Mobile tab bar — iOS-style FROSTED glass (bg + blur + saturation).
+          Unlike the top bar this one is FIXED over scrolling content, so it
+          needs opacity/blur to keep scrolled cards from showing through;
+          80% + blur-lg reads as premium glass while the atmosphere's bottom
+          orbs glow through it. (The old PERF note avoided blur because a
+          full-width blurred bar re-rastered during sheet-overlay fades —
+          that cost is acceptable for one static bar and the glass look is
+          worth it.) */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/95"
+        aria-label="Primary"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/80 backdrop-blur-lg backdrop-saturate-[1.1]"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        aria-label="Mobile primary"
       >
         {tabs.map((t) => {
           const active = view === t.view

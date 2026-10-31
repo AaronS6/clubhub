@@ -6,22 +6,30 @@ import { useAppStore } from "@/lib/store"
 
 /**
  * ============================================================================
- * AmbientBackground — the live-preview layer for the customization system
+ * AmbientBackground — the app's designed canvas + live customization layer
  * ============================================================================
  *
- * Renders one of eight background effects behind the app. All effects are
- * pure CSS (no canvas, no WebGL, no images) so they:
- *   - work on every device
- *   - cost nothing to ship (a few KB of CSS + a handful of divs)
- *   - respect `prefers-reduced-motion` (animations halt to a static frame)
+ * Two layers:
  *
- * Design philosophy: every effect is SLOW (30–60s loops), SOFT (heavy blur,
- * no hard edges, no regular patterns) and PRESENT — the veil that sits
- * between the effect and the app is deliberately light (fixed 30%) so a
- * chosen background actually reads as a colorful wash, not a rumor of one.
- * The intensity slider (0–100) scales the effect layer linearly on top of
- * that. Text contrast stays safe: everything under the app's content is
- * either an opaque card or sits over ≤45% alpha of heavily blurred color.
+ *   1. THE ATMOSPHERE (always on) — `.ch-atmosphere` + `.ch-grain` from
+ *      globals.css: a static, zero-cost composition of a top spotlight,
+ *      asymmetric brand glows (emerald/teal/amber), an edge vignette, and
+ *      film grain. This replaced the old flat `--background` fill, which
+ *      read as a lifeless MVP canvas. It's what makes the app stunning
+ *      OUT OF THE BOX, before any customization is chosen.
+ *
+ *   2. THE EFFECT (optional) — one of seven selectable backgrounds rendered
+ *      ABOVE the atmosphere, softened by a light veil so text contrast
+ *      stays safe. Pure CSS (no canvas/WebGL/images):
+ *        - work on every device
+ *        - cost nothing to ship (a few KB of CSS + a handful of divs)
+ *        - respect `prefers-reduced-motion` (animations halt to a frame)
+ *
+ * Design philosophy for the effects: every effect is SLOW (30–60s loops),
+ * SOFT (heavy blur, no hard edges, no regular patterns) and PRESENT — the
+ * veil is deliberately light (fixed 30%) so a chosen background actually
+ * reads as a colorful wash. The intensity slider (0–100) scales the effect
+ * layer on top of that.
  * ============================================================================
  */
 
@@ -51,17 +59,23 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
   }, [color])
 
   if (ambient === "none") {
+    // The default canvas: designed atmosphere + grain. Static (zero frames
+    // composited), theme-aware, and the base every effect sits on too.
     return (
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0"
-        style={{ background: "var(--background)", zIndex: 0 }}
-      />
+      <>
+        <div aria-hidden className="ch-atmosphere" style={{ position: "fixed", zIndex: 0 }} />
+        <div aria-hidden className="ch-grain" style={{ position: "fixed", zIndex: 0 }} />
+      </>
     )
   }
 
   return (
     <>
+      {/* The atmosphere — always under everything, even a chosen effect, so
+          the canvas keeps its depth and warmth instead of collapsing back to
+          a flat fill. */}
+      <div aria-hidden className="ch-atmosphere" style={{ position: "fixed", zIndex: 0 }} />
+
       {/* `ch-bg-idle` — globals.css pauses every animation under this root
           while a modal overlay (sheet/dialog) is open: the overlay's dark
           scrim hides the background entirely, so freezing the heavy blurred
@@ -81,10 +95,9 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
         <AmbientEffect effect={ambient} />
       </div>
       {/* The veil — a LIGHT, fixed 30% wash of the page background over the
-          effect. Previous builds scaled this up to 65%+, which is why
-          backgrounds "barely showed up": at default intensity the effect
-          survived at ~10% alpha. Now the intensity slider alone controls
-          strength, and 70% of whatever you pick actually reaches the screen. */}
+          effect. The intensity slider alone controls strength, and 70% of
+          whatever you pick actually reaches the screen (with the atmosphere
+          still breathing underneath). */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0"
@@ -94,6 +107,9 @@ export function AmbientBackground({ accent }: AmbientBackgroundProps) {
           zIndex: 1,
         }}
       />
+      {/* Grain on top of the whole stack — the tactile topcoat that keeps
+          even the boldest effect feeling printed rather than projected. */}
+      <div aria-hidden className="ch-grain" style={{ position: "fixed", zIndex: 1 }} />
     </>
   )
 }

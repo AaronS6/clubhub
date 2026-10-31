@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   LifeBuoy,
   X,
+  MailCheck,
 } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { api } from "@/lib/api/client"
@@ -81,6 +82,51 @@ function AuthScreenInner() {
   const [signupEmail, setSignupEmail] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
 
+  // ── Email verification step ──────────────────────────────────────────────
+  // Set when the user just signed up (or tried to sign in with an unverified
+  // account). While set, the form column renders the 6-digit code card
+  // instead of the login/signup forms. `verifyPassword` is kept in memory
+  // ONLY (never persisted) to auto sign-in right after a successful verify.
+  const [verifyEmail, setVerifyEmail] = useState<string | null>(null)
+  const [verifyPassword, setVerifyPassword] = useState("")
+  const [devCode, setDevCode] = useState<string | null>(null)
+
+  /** After a successful verify: auto sign-in (password in memory) or fall
+   *  back to the login form prefilled with the verified email. */
+  async function handleVerified() {
+    if (verifyEmail && verifyPassword) {
+      try {
+        const res = await signIn("credentials", {
+          email: verifyEmail,
+          password: verifyPassword,
+          redirect: false,
+        })
+        if (!res?.error) {
+          writeHasAccount()
+          toast.success("Welcome to ClubHub!")
+          setTimeout(() => window.location.reload(), 200)
+          return
+        }
+      } catch {
+        // fall through to the manual login form
+      }
+    }
+    setLoginEmail(verifyEmail ?? "")
+    setLoginPassword("")
+    setVerifyEmail(null)
+    setVerifyPassword("")
+    setDevCode(null)
+    setAuthView("login")
+    setLoading(false)
+  }
+
+  function exitVerify(to: "login" | "signup") {
+    setVerifyEmail(null)
+    setVerifyPassword("")
+    setDevCode(null)
+    setAuthView(to)
+  }
+
   // Mount-only: default view from the durable flag.
   // The `?auth=login|signup` param (linked from the public landing page's
   // Log In / Sign Up buttons) takes precedence so the visitor lands on the
@@ -107,6 +153,16 @@ function AuthScreenInner() {
       redirect: false,
     })
     setLoading(false)
+    if (res?.error === "EMAIL_NOT_VERIFIED") {
+      // The account exists with the right password but hasn't been verified —
+      // switch to the verification step (kept in memory for auto sign-in
+      // after the code is entered).
+      setVerifyPassword(loginPassword)
+      setDevCode(null)
+      setVerifyEmail(loginEmail)
+      toast("Verify your email to finish signing in")
+      return
+    }
     if (res?.error) {
       toast.error("Invalid email or password")
       return
@@ -120,19 +176,27 @@ function AuthScreenInner() {
     e.preventDefault()
     setLoading(true)
     try {
-      await api("/api/auth/signup", {
-        method: "POST",
-        json: { name: signupName, email: signupEmail, password: signupPassword },
-      })
-      const res = await signIn("credentials", {
-        email: signupEmail,
-        password: signupPassword,
-        redirect: false,
-      })
-      if (res?.error) throw new Error("Login failed after signup")
-      writeHasAccount()
-      toast.success("Account created!")
-      setTimeout(() => window.location.reload(), 200)
+      const res = await api<{ ok: true; email: string; emailSent: boolean; devCode?: string }>(
+        "/api/auth/signup",
+        {
+          method: "POST",
+          json: { name: signupName, email: signupEmail, password: signupPassword },
+        },
+      )
+      // NO auto sign-in — the account is gated until the emailed code is
+      // entered. The verify card keeps the password in memory so success
+      // still lands the user straight in the app.
+      setVerifyPassword(signupPassword)
+      setDevCode(res.devCode ?? null)
+      setVerifyEmail(res.email || signupEmail)
+      if (res.devCode) {
+        toast("Account created — code shown below (dev)")
+      } else if (res.emailSent) {
+        toast.success("Verification code sent — check your email")
+      } else {
+        toast.error("Account created, but the code email failed to send — try Resend in a minute")
+      }
+      setLoading(false)
     } catch (err: any) {
       toast.error(err.message || "Signup failed")
       setLoading(false)
@@ -140,7 +204,25 @@ function AuthScreenInner() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+    <div className="relative min-h-screen flex flex-col bg-[#f6f1e8] text-[#1a1815] dark:bg-[#16130e] dark:text-[#f0ebe0]">
+      {/* The designed atmosphere — replaces the old flat single-color fill
+          (a lifeless "digital paper") with a layered canvas: top spotlight,
+          asymmetric brand glows, edge vignette, and film grain. Same system
+          as the app canvas (globals.css `.ch-atmosphere` / `.ch-grain`), so
+          every ClubHub surface shares one design language. */}
+      <div aria-hidden className="ch-atmosphere" />
+      <div aria-hidden className="ch-grain" />
+      {/* An extra emerald halo behind the headline zone — the "backlight"
+          that makes the type (and the form column) feel lit rather than
+          stamped on paper. Static, blurred once, zero frames. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-24 left-[8%] hidden h-[26rem] w-[26rem] rounded-full bg-club/[0.13] blur-[110px] md:block dark:bg-club/[0.16]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-16 right-[-10%] h-64 w-64 rounded-full bg-amber-400/[0.10] blur-[90px] md:hidden dark:bg-amber-500/[0.08]"
+      />
       {/* ── Header (in-flow at top — never overlaps anything) ─────────────── */}
       <motion.header
         initial={{ opacity: 0, y: -4 }}
@@ -171,8 +253,12 @@ function AuthScreenInner() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className="hidden md:flex md:w-[55%] lg:w-[58%] flex-col px-8 lg:px-12 xl:px-16 py-8 border-r border-[#1a1815]/10 dark:border-[#f0ebe0]/10"
+          className="relative hidden md:flex md:w-[55%] lg:w-[58%] flex-col px-8 lg:px-12 xl:px-16 py-8"
         >
+          {/* Fading hairline seam — a printed rule that dissolves at the
+              ends, replacing the hard 1px wall that used to divide the
+              hero from the form column. */}
+          <div aria-hidden className="ch-divider-fade" />
           <div className="flex-1 flex items-center">
             <h1
               className="font-black tracking-tighter leading-[0.92] text-[#1a1815] dark:text-[#f0ebe0] break-words"
@@ -200,29 +286,49 @@ function AuthScreenInner() {
           >
           {/* Mobile tagline (in-flow, below the header — no overlap) */}
           <div className="md:hidden mb-6">
-            <h2 className="text-2xl font-black tracking-tight leading-[1.1]" style={{ letterSpacing: "-0.03em" }}>
-              For the people who run things.
-            </h2>
-            <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
-              The workspace for school clubs &amp; volunteer orgs.
-            </p>
+            {verifyEmail ? (
+              <>
+                <h2 className="text-2xl font-black tracking-tight leading-[1.1]" style={{ letterSpacing: "-0.03em" }}>
+                  Check your inbox.
+                </h2>
+                <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
+                  Enter the 6-digit code we sent you to finish signing up.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-black tracking-tight leading-[1.1]" style={{ letterSpacing: "-0.03em" }}>
+                  For the people who run things.
+                </h2>
+                <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
+                  The workspace for school clubs &amp; volunteer orgs.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Desktop form heading */}
           <div className="hidden md:block mb-6">
             <h2 className="text-2xl font-extrabold tracking-tight" style={{ letterSpacing: "-0.025em" }}>
-              {authView === "login" ? "Welcome back" : "Create your account"}
+              {verifyEmail
+                ? "Verify your email"
+                : authView === "login"
+                  ? "Welcome back"
+                  : "Create your account"}
             </h2>
             <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
-              {authView === "login"
-                ? "Your clubs, tasks, and hours."
-                : "Join a club or create your own."}
+              {verifyEmail
+                ? "One last step — enter the code we emailed you."
+                : authView === "login"
+                  ? "Your clubs, tasks, and hours."
+                  : "Join a club or create your own."}
             </p>
           </div>
 
-          {/* Google sign-in — shared across both login + signup modes.
-              Premium feel: subtle layered border, hairline shadow on hover,
-              smooth lift on hover. The Google logo keeps its brand colors. */}
+          {/* Google sign-in — shared across login + signup modes (hidden on
+              the verification step — it isn't relevant there). Premium feel:
+              subtle layered border, hairline shadow on hover, smooth lift. */}
+          {verifyEmail ? null : (
           <div className="space-y-3">
             <motion.button
               type="button"
@@ -246,9 +352,19 @@ function AuthScreenInner() {
               <div className="flex-1 h-px bg-[#1a1815]/10 dark:bg-[#f0ebe0]/10" />
             </div>
           </div>
+          )}
 
           {/* Cross-fade on mode switch — keyed on authView so motion re-runs
               the entrance each time the user toggles login/signup. */}
+          {verifyEmail ? (
+            <VerifyEmailCard
+              key={verifyEmail}
+              email={verifyEmail}
+              devCode={devCode}
+              onVerified={handleVerified}
+              onBack={() => exitVerify("signup")}
+            />
+          ) : (
           <motion.div
             key={authView}
             initial={{ opacity: 0, y: 6 }}
@@ -373,6 +489,7 @@ function AuthScreenInner() {
               </form>
             )}
           </motion.div>
+          )}
 
           {/* Footer note — mobile only (desktop footer is in the left column) */}
           <p className="md:hidden text-center text-xs text-[#1a1815]/40 dark:text-[#f0ebe0]/40 mt-6">
@@ -708,5 +825,237 @@ function ResetPasswordScreen({
         </div>
       </main>
     </div>
+  )
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// VerifyEmailCard — the signup email-verification step.
+//
+// Shown right after an email+password signup (or a login attempt on an
+// unverified account): 6 segmented code inputs with auto-advance, paste
+// support, and auto-submit on the 6th digit. Resend is rate-limited
+// server-side (1/min) with a 60s client countdown. On success the parent
+// auto signs in using the password it kept in memory.
+//
+// Google accounts never see this card — Google proves email ownership at
+// sign-in, so those users are marked verified directly.
+// ───────────────────────────────────────────────────────────────────────────
+function VerifyEmailCard({
+  email,
+  devCode,
+  onVerified,
+  onBack,
+}: {
+  email: string
+  devCode: string | null
+  onVerified: () => Promise<void> | void
+  onBack: () => void
+}) {
+  const [digits, setDigits] = useState<string[]>(Array(6).fill(""))
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendIn, setResendIn] = useState(0)
+  const [devHint, setDevHint] = useState<string | null>(devCode)
+  const refs = useRef<Array<HTMLInputElement | null>>([])
+  const submittedRef = useRef("")
+
+  // 60s resend countdown
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendIn])
+
+  async function submit(code: string) {
+    if (loading || code.length !== 6) return
+    if (submittedRef.current === code) return // double-fire guard
+    submittedRef.current = code
+    setLoading(true)
+    setError(null)
+    try {
+      await api("/api/auth/verify-email", {
+        method: "POST",
+        json: { email, code },
+      })
+      toast.success("Email verified — welcome to ClubHub!")
+      await onVerified()
+    } catch (e: any) {
+      setError(e?.message || "That code didn't match — check your email and try again")
+      // Clear + refocus for a clean retry
+      submittedRef.current = ""
+      setDigits(Array(6).fill(""))
+      refs.current[0]?.focus()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function setDigit(i: number, raw: string) {
+    const clean = raw.replace(/\D/g, "")
+    if (clean.length === 0) {
+      const next = [...digits]
+      next[i] = ""
+      setDigits(next)
+      submittedRef.current = ""
+      return
+    }
+    if (clean.length > 1) {
+      // Multi-character (paste or fast type) — distribute from position i
+      const next = [...digits]
+      for (let k = 0; k < clean.length && i + k < 6; k++) next[i + k] = clean[k]
+      setDigits(next)
+      const focusIdx = Math.min(i + clean.length, 5)
+      refs.current[focusIdx]?.focus()
+      const joined = next.join("")
+      if (joined.length === 6 && next.every((d) => d !== "")) void submit(joined)
+      else submittedRef.current = ""
+      return
+    }
+    const next = [...digits]
+    next[i] = clean
+    setDigits(next)
+    if (i < 5) refs.current[i + 1]?.focus()
+    const joined = next.join("")
+    if (next.every((d) => d !== "")) void submit(joined)
+    else submittedRef.current = ""
+  }
+
+  function handleKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && !digits[i] && i > 0) {
+      e.preventDefault()
+      const next = [...digits]
+      next[i - 1] = ""
+      setDigits(next)
+      submittedRef.current = ""
+      refs.current[i - 1]?.focus()
+    }
+    if (e.key === "ArrowLeft" && i > 0) refs.current[i - 1]?.focus()
+    if (e.key === "ArrowRight" && i < 5) refs.current[i + 1]?.focus()
+  }
+
+  function handlePaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault()
+    setDigit(i, e.clipboardData.getData("text"))
+  }
+
+  async function resend() {
+    if (resending || resendIn > 0) return
+    setResending(true)
+    try {
+      const res = await api<{ ok: true; emailSent?: boolean; devCode?: string }>(
+        "/api/auth/resend-verification",
+        { method: "POST", json: { email } },
+      )
+      setResendIn(60)
+      if (res.devCode) setDevHint(res.devCode)
+      toast.success(res.emailSent === false ? "Code regenerated" : "New code sent — check your email")
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't resend the code — try again in a minute")
+    } finally {
+      setResending(false)
+    }
+  }
+
+  const code = digits.join("")
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="space-y-5"
+    >
+      {/* Code destination — the email the code was sent to */}
+      <div className="flex items-center gap-3 rounded-none border border-[#1a1815]/12 dark:border-[#f0ebe0]/12 px-3.5 py-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-club/40 bg-club/10 text-club">
+          <MailCheck className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold tracking-wide uppercase text-[#1a1815]/45 dark:text-[#f0ebe0]/45">
+            Code sent to
+          </p>
+          <p className="truncate text-sm font-semibold">{email}</p>
+        </div>
+      </div>
+
+      {/* Dev-only code hint (no email transport configured locally) */}
+      {devHint ? (
+        <div className="rounded-none border border-amber-500/40 bg-amber-500/10 px-3.5 py-3">
+          <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+            <strong>Dev server:</strong> no email transport is configured, so here is your code:{" "}
+            <span className="font-mono text-sm font-bold tracking-[0.35em]">{devHint}</span>
+          </p>
+        </div>
+      ) : null}
+
+      {/* 6 segmented digit inputs — auto-advance, paste, auto-submit */}
+      <div>
+        <Label className="text-sm font-bold tracking-wide uppercase">Verification code</Label>
+        <div className="mt-3 flex gap-2 sm:gap-2.5" role="group" aria-label="6-digit verification code">
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => {
+                refs.current[i] = el
+              }}
+              type="text"
+              inputMode="numeric"
+              autoComplete={i === 0 ? "one-time-code" : "off"}
+              maxLength={1}
+              disabled={loading}
+              value={d}
+              onChange={(e) => setDigit(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onPaste={(e) => handlePaste(i, e)}
+              onFocus={(e) => e.target.select()}
+              aria-label={`Digit ${i + 1} of 6`}
+              className={`h-14 w-full min-w-0 flex-1 rounded-none border bg-transparent text-center text-xl font-bold tabular-nums transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-club/50 ${
+                error
+                  ? "border-red-500/70 text-red-600 dark:text-red-400"
+                  : d
+                    ? "border-[#1a1815]/50 dark:border-[#f0ebe0]/50"
+                    : "border-[#1a1815]/25 dark:border-[#f0ebe0]/25"
+              } focus-visible:border-club`}
+            />
+          ))}
+        </div>
+        {error ? (
+          <p className="mt-2.5 text-sm font-medium text-red-600 dark:text-red-400" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <Button
+        type="button"
+        variant="club"
+        className="w-full h-12 rounded-none text-base font-bold tracking-wide uppercase shadow-none hover:brightness-105 active:scale-[0.99] transition-[filter,transform] duration-150"
+        disabled={loading || code.length !== 6}
+        onClick={() => void submit(code)}
+      >
+        {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+        Verify email
+      </Button>
+
+      {/* Resend + escape hatch */}
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <button
+          type="button"
+          disabled={resending || resendIn > 0}
+          onClick={() => void resend()}
+          className="text-xs font-semibold text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club disabled:hover:text-[#1a1815]/55 dark:disabled:hover:text-[#f0ebe0]/55 disabled:opacity-50 hover:underline transition-colors"
+        >
+          {resending ? "Sending…" : resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+        </button>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs font-semibold text-[#1a1815]/55 dark:text-[#f0ebe0]/55 hover:text-club hover:underline transition-colors"
+        >
+          Wrong email? Start over
+        </button>
+      </div>
+    </motion.div>
   )
 }

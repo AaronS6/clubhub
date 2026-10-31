@@ -508,24 +508,31 @@ export function LandingPage() {
             aria-labelledby="hero-title"
             className="relative overflow-hidden"
           >
-            {/* Ambient photo background — the REAL campus photo, dimmed by an
-                espresso wash and faded out toward the section edges so text
-                stays readable and the texture never fights the content. */}
-            <img
-              src="/landing/bn-gym-north.jpg"
-              alt=""
-              aria-hidden
-              fetchPriority="high"
-              decoding="async"
-              className="absolute inset-0 h-full w-full object-cover opacity-45"
-            />
-            <div aria-hidden className="absolute inset-0 bg-[#171310]/45" />
+            {/* Ambient photo background — the REAL campus photo, treated as a
+                branded duotone atmosphere: the espresso base provides ALL the
+                color and the photo keeps only its light structure
+                (mix-blend-mode: luminosity). What used to read as muddy,
+                half-legible color noise now reads as intentional espresso
+                texture — cohesive with the page instead of fighting it. */}
+            <div aria-hidden className="absolute inset-0 bg-[#171310]">
+              <img
+                src="/landing/bn-gym-north.jpg"
+                alt=""
+                aria-hidden
+                fetchPriority="high"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-cover opacity-60"
+                style={{ mixBlendMode: "luminosity" }}
+              />
+            </div>
+            {/* Vertical espresso fade — anchors the hero into the page at the
+                bottom and lifts it slightly at the top. */}
             <div
               aria-hidden
               className="absolute inset-0"
               style={{
                 background:
-                  "linear-gradient(180deg, rgba(23,19,16,0.55) 0%, rgba(23,19,16,0.12) 34%, rgba(23,19,16,0.2) 60%, #171310 97%)",
+                  "linear-gradient(180deg, rgba(23,19,16,0.5) 0%, rgba(23,19,16,0.08) 30%, rgba(23,19,16,0.14) 60%, #171310 96%)",
               }}
             />
             {/* Extra wash behind the left-aligned headline on wide screens. */}
@@ -534,7 +541,7 @@ export function LandingPage() {
               className="absolute inset-0 hidden sm:block"
               style={{
                 background:
-                  "linear-gradient(100deg, rgba(23,19,16,0.92) 0%, rgba(23,19,16,0.6) 42%, rgba(23,19,16,0.1) 78%, rgba(23,19,16,0) 100%)",
+                  "linear-gradient(100deg, rgba(23,19,16,0.9) 0%, rgba(23,19,16,0.55) 42%, rgba(23,19,16,0.08) 78%, rgba(23,19,16,0) 100%)",
               }}
             />
             {/* Aurora — a slow-drifting multi-radial tint (the page's own
@@ -550,45 +557,36 @@ export function LandingPage() {
             />
             <div aria-hidden className="landing-vignette" style={{ background: "radial-gradient(120% 90% at 50% 30%, transparent 52%, rgba(23,19,16,0.92) 100%)" }} />
 
-            {/* PHONE — the photos live IN the background behind the text,
-                faded with a deep espresso wash so the words stay perfectly
-                readable. sm:hidden. */}
-            <div aria-hidden className="absolute inset-0 sm:hidden">
-              <img
-                src="/landing/bn-club-fair.jpg"
-                alt=""
-                className="absolute right-[-8%] top-[5%] w-[52%] rotate-2 rounded-2xl object-cover opacity-75 ring-1 ring-[#f0ebe0]/10 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
-              />
-              <img
-                src="/landing/bn-cake-decorating.jpg"
-                alt=""
-                className="absolute left-[-6%] top-[34%] w-[42%] -rotate-3 rounded-xl object-cover opacity-80 ring-1 ring-[#f0ebe0]/10 shadow-[0_14px_36px_rgba(0,0,0,0.5)]"
-              />
-              <img
-                src="/landing/real-friends.jpg"
-                alt=""
-                className="absolute right-[4%] bottom-[3%] w-[46%] rotate-2 rounded-xl object-cover opacity-80 ring-1 ring-[#f0ebe0]/10 shadow-[0_14px_36px_rgba(0,0,0,0.5)]"
-              />
-              {/* The fade — strongest over the text zone, letting the media
-                  peek through at the edges. */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    "linear-gradient(100deg, rgba(23,19,16,0.94) 0%, rgba(23,19,16,0.8) 42%, rgba(23,19,16,0.55) 72%, rgba(23,19,16,0.35) 100%)",
-                }}
-              />
-              <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#171310] to-transparent" />
-            </div>
+            {/* PHONE — the duotone-treated hero photo IS the atmosphere; a
+                single deep espresso fade keeps the headline perfectly
+                readable while the texture peeks through at the edges. The old
+                version stacked three extra photos + heavy washes here —
+                visual noise that fought the type. An emerald glow near the
+                top ties the phone hero to the brand light on desktop. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -top-20 left-[-15%] h-64 w-64 rounded-full bg-[#22c55e]/[0.10] blur-[80px] sm:hidden"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 sm:hidden"
+              style={{
+                background:
+                  "linear-gradient(103deg, rgba(23,19,16,0.9) 0%, rgba(23,19,16,0.62) 46%, rgba(23,19,16,0.32) 78%, rgba(23,19,16,0.18) 100%)",
+              }}
+            />
+            <div aria-hidden className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-[#171310] to-transparent sm:hidden" />
 
             <div className="relative mx-auto max-w-6xl px-5 sm:px-8 pt-12 sm:pt-20 pb-16 sm:pb-20 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,290px)] sm:items-center sm:gap-10 md:grid-cols-[minmax(0,1fr)_minmax(0,330px)] lg:grid-cols-[minmax(0,21fr)_minmax(0,19fr)] lg:gap-12 xl:gap-16 lg:pt-24">
               {/* LEFT — the words (headline, subtext, CTAs all anchored left) */}
               <div className="relative z-10 text-left">
-                {/* A soft green halo breathing behind the headline — barely
-                    there, but it keeps the text column from feeling flat. */}
+                {/* A soft green halo breathing behind the headline — the
+                    "backlight" that lifts the type off the espresso. Slightly
+                    stronger than before: over the new duotone photo it reads
+                    as light, not decoration. */}
                 <div
                   aria-hidden
-                  className="landing-breathe pointer-events-none absolute -left-20 -top-24 hidden h-72 w-72 rounded-full bg-[#22c55e]/[0.09] blur-[90px] sm:block"
+                  className="landing-breathe pointer-events-none absolute -left-20 -top-24 hidden h-80 w-80 rounded-full bg-[#22c55e]/[0.13] blur-[90px] sm:block"
                 />
                 <Reveal delay={0.1}>
                   <h1

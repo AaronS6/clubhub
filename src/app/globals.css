@@ -93,7 +93,7 @@
   --radius: 0.5rem; /* 8px — drives rounded-md. Cards/dialogs use rounded-xl (12px). */
 
   /* Neutral scale */
-  --background: #F5F6F8;   /* canvas */
+  --background: #F6F4EF;   /* canvas — warm paper white (green/amber glows read as light on warm cream, not as smudges on cool white) */
   --foreground: #12161C;   /* ink */
   --card: #FFFFFF;         /* surface */
   --card-foreground: #12161C;
@@ -636,17 +636,17 @@
     inset: -22%;
     pointer-events: none;
     background:
-      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #0B8A5F) 15%, transparent), transparent 70%),
-      radial-gradient(28% 34% at 74% 18%, rgba(56, 189, 248, 0.10), transparent 70%),
-      radial-gradient(32% 38% at 62% 76%, rgba(167, 139, 250, 0.10), transparent 70%);
+      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #0B8A5F) 18%, transparent), transparent 70%),
+      radial-gradient(28% 34% at 74% 18%, rgba(45, 212, 191, 0.12), transparent 70%),
+      radial-gradient(32% 38% at 62% 76%, rgba(234, 153, 20, 0.10), transparent 70%);
     filter: blur(28px);
     animation: landing-aurora-drift 26s var(--motion-ease) infinite;
   }
   .dark .landing-aurora {
     background:
-      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #34d399) 12%, transparent), transparent 70%),
-      radial-gradient(28% 34% at 74% 18%, rgba(56, 189, 248, 0.08), transparent 70%),
-      radial-gradient(32% 38% at 62% 76%, rgba(167, 139, 250, 0.08), transparent 70%);
+      radial-gradient(36% 42% at 22% 26%, color-mix(in oklab, var(--club-accent, #34d399) 14%, transparent), transparent 70%),
+      radial-gradient(28% 34% at 74% 18%, rgba(45, 212, 191, 0.10), transparent 70%),
+      radial-gradient(32% 38% at 62% 76%, rgba(217, 119, 6, 0.08), transparent 70%);
   }
   .landing-vignette {
     position: absolute;
@@ -870,6 +870,109 @@ body:has([data-slot="dialog-overlay"][data-state="open"]) .ch-app .ch-deco *,
 body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco,
 body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco * {
   animation-play-state: paused !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ATMOSPHERE v2 — the designed canvas under every surface.
+
+   The flat `--background` fill made the app, auth, and landing read as
+   "lifeless MVP" — a single color with no depth, tactility, or focus. This
+   system replaces flatness with the same design language everywhere:
+
+     1. SPOTLIGHT — a soft light from above (paper under a lamp) that lifts
+        the top of the screen and draws the eye inward.
+     2. BREATH — three static brand glows (emerald anchor, teal neighbor,
+        amber counterpoint) placed asymmetrically so the canvas reads as
+        atmosphere, never as wallpaper.
+     3. VIGNETTE — a barely-there edge falloff for center focus.
+     4. GRAIN — 3.5–5% monochrome fractal noise: printed, not generated.
+
+   Everything is STATIC (no keyframes, no repaint) — as cheap to composite
+   as a flat fill, but with warmth, depth, and hierarchy. Peak glow alpha
+   stays ≤~30% so text contrast over the naked canvas (auth headlines,
+   onboarding text) remains comfortably readable; all app content sits on
+   cards anyway.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ch-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* 1 — the backlight beam: a CRISP light edge at the very top (like a
+       lamp bar above the desk) — narrow + strong enough to read as a
+       source, then a wider soft wash below it. */
+    linear-gradient(180deg, rgba(5, 150, 105, 0.20) 0%, rgba(5, 150, 105, 0.07) 36px, transparent 90px),
+    radial-gradient(140% 26% at 50% -6%, rgba(11, 138, 95, 0.16), transparent 72%),
+    /* 2 — DISTINCT LIGHT SOURCES: small, bright, fast-falloff cores so
+       they read as lamps, not washes. The emerald orb tints the frosted
+       sidebar; teal rides the right edge; amber grounds the bottom-right. */
+    radial-gradient(34% 28% at 7% 6%, rgba(5, 150, 105, 0.34), transparent 58%),
+    radial-gradient(28% 24% at 97% 24%, rgba(13, 148, 136, 0.22), transparent 56%),
+    radial-gradient(34% 30% at 90% 100%, rgba(245, 158, 11, 0.24), transparent 60%),
+    radial-gradient(30% 26% at -3% 82%, rgba(5, 150, 105, 0.16), transparent 58%),
+    /* 3 — vignette: a WARM edge falloff (sunlit-paper shadow, not neutral
+       gray) for focus and depth under the glass cards. */
+    radial-gradient(175% 145% at 50% 44%, transparent 54%, rgba(62, 50, 34, 0.13) 100%);
+}
+.dark .ch-atmosphere {
+  background:
+    /* 1 — the backlight beam: a crisp lit edge at the very top (screen
+       backlight bleed) + a wide emerald wash below it */
+    linear-gradient(180deg, rgba(52, 211, 153, 0.30) 0%, rgba(52, 211, 153, 0.10) 32px, transparent 84px),
+    radial-gradient(140% 22% at 50% -4%, rgba(52, 211, 153, 0.24), transparent 74%),
+    /* 2 — light sources: a strong emerald orb top-left (bleeds through the
+       frosted glass sidebar), a teal orb on the right edge, warm amber
+       bottom-right — layered like lamps in a dark room. */
+    radial-gradient(42% 36% at 6% 4%, rgba(16, 185, 129, 0.36), transparent 68%),
+    radial-gradient(36% 32% at 98% 28%, rgba(45, 212, 191, 0.19), transparent 66%),
+    radial-gradient(48% 44% at 90% 102%, rgba(217, 119, 6, 0.15), transparent 70%),
+    radial-gradient(40% 36% at -4% 82%, rgba(16, 185, 129, 0.15), transparent 68%),
+    /* 3 — vignette: deepens the corners so lit UI floats forward */
+    radial-gradient(175% 145% at 50% 44%, transparent 48%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+/* Film grain — the tactile topcoat. Separate element so surfaces can opt in
+   independently of the glows. 180px tile, monochrome fractal noise. */
+.ch-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='chGrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23chGrain)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+.dark .ch-grain {
+  /* Slightly stronger in the dark — grain is what keeps deep gradients from
+     banding and flat blacks from looking like a void. */
+  opacity: 0.065;
+}
+
+/* Fading hairline divider — the vertical seam between the auth screen's hero
+   and form columns. A solid 1px border reads as a hard wall; this fades in
+   and out at the ends like a printed rule. */
+.ch-divider-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(26, 24, 21, 0.16) 14%,
+    rgba(26, 24, 21, 0.16) 86%,
+    transparent
+  );
+}
+.dark .ch-divider-fade {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(240, 235, 224, 0.14) 14%,
+    rgba(240, 235, 224, 0.14) 86%,
+    transparent
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1218,4 +1321,38 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
 .chat-msg-highlight {
   border-radius: 0.5rem;
   animation: chat-msg-flash 2.6s ease-out forwards;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GLASS SURFACES — every `bg-card` becomes frosted atmosphere.
+
+   The app used to render its surfaces as opaque slabs over a (formerly
+   flat) canvas, hiding the atmosphere behind ~12px slivers. This override
+   redefines the plain `bg-card` utility (later source order within the
+   same utilities layer, so it wins) to a translucent, blurred, slightly
+   saturated glass — the sidebar/onboarding formula, applied app-wide:
+
+     • 82% card + 18% see-through  → the atmosphere's light orbs visibly
+       tint the surface (the "ambient light layer" that makes dashboards
+       feel lit rather than stamped on a gradient)
+     • blur(12px) + saturate(1.12) → frosted depth; saturation makes the
+       bleed-through color read stronger than its raw alpha
+     • opacity-modified variants (`bg-card/85`, `/60`, …) compile to their
+       own selectors and are untouched; popovers/dialogs keep opaque
+       `--popover` for dense, readable overlays
+   ══════════════════════════════════════════════════════════════════════════ */
+/* Deliberately UNLAYERED: unlayered author styles outrank every @layer
+   (including Tailwind's utilities layer) in the cascade regardless of
+   source order — the only bulletproof way to override a core utility.
+   Same-specificity variants (`bg-card/85`, hover:bg-card, …) compile to
+   different selectors and are unaffected. */
+.bg-card {
+  background-color: color-mix(in oklab, var(--card) 82%, transparent);
+  /* The value rides a variable so the CSS transformer keeps BOTH the
+     -webkit- and standard backdrop-filter declarations (it strips static
+     duplicates — the same var-indirection Tailwind's own backdrop-*
+     utilities use to survive the transform). */
+  --ch-glass-filter: blur(12px) saturate(1.12);
+  -webkit-backdrop-filter: var(--ch-glass-filter);
+  backdrop-filter: var(--ch-glass-filter);
 }

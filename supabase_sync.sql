@@ -18,7 +18,8 @@
 -- HOW IT WORKS
 --   1. Creates any missing feature tables (JoinRequest, ClubTransaction,
 --      Badge, MemberBadge, ClubNote, NoteTag, NoteTagAssignment, NoteHeart,
---      StoredImage).
+--      StoredImage, AnnouncementPoll, AnnouncementPollOption,
+--      AnnouncementPollVote, VerificationToken).
 --   2. Adds EVERY column of EVERY table with ADD COLUMN IF NOT EXISTS —
 --      existing columns are skipped, missing ones are healed (with Prisma's
 --      defaults so NOT NULL is safe on populated tables).
@@ -148,6 +149,48 @@ CREATE TABLE IF NOT EXISTS "StoredImage" (
     CONSTRAINT "StoredImage_pkey" PRIMARY KEY ("key")
 );
 
+-- AnnouncementPoll — optional poll attached to an announcement (1:1).
+-- MISSING IN PRODUCTION as of the polls deploy: every announcement feed
+-- query (prisma.announcement.findMany with the poll relation included)
+-- 500s with P2021 "The table public.AnnouncementPoll does not exist" until
+-- these three tables exist.
+CREATE TABLE IF NOT EXISTS "AnnouncementPoll" (
+    "id" TEXT NOT NULL,
+    "announcementId" TEXT NOT NULL,
+    "allowMultiple" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AnnouncementPoll_pkey" PRIMARY KEY ("id")
+);
+
+-- AnnouncementPollOption — ordered answer options of a poll.
+CREATE TABLE IF NOT EXISTS "AnnouncementPollOption" (
+    "id" TEXT NOT NULL,
+    "pollId" TEXT NOT NULL,
+    "text" TEXT NOT NULL,
+    "position" INTEGER NOT NULL,
+    CONSTRAINT "AnnouncementPollOption_pkey" PRIMARY KEY ("id")
+);
+
+-- AnnouncementPollVote — one row per (option, user) vote.
+CREATE TABLE IF NOT EXISTS "AnnouncementPollVote" (
+    "id" TEXT NOT NULL,
+    "optionId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AnnouncementPollVote_pkey" PRIMARY KEY ("id")
+);
+
+-- VerificationToken — signup email-verification codes (identifier = email,
+-- token = 6-digit code). Usually already present (NextAuth base schema),
+-- created here as a safety net for the email-verification feature.
+CREATE TABLE IF NOT EXISTS "VerificationToken" (
+    "id" TEXT NOT NULL,
+    "identifier" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "expires" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "VerificationToken_pkey" PRIMARY KEY ("id")
+);
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 2. COLUMN HEALERS — every column of every table (no-ops where they exist)
@@ -268,6 +311,24 @@ ALTER TABLE "AnnouncementComment" ADD COLUMN IF NOT EXISTS "authorId" TEXT;
 ALTER TABLE "AnnouncementComment" ADD COLUMN IF NOT EXISTS "body" TEXT;
 ALTER TABLE "AnnouncementComment" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE "AnnouncementComment" ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3);
+
+-- AnnouncementPoll
+ALTER TABLE "AnnouncementPoll" ADD COLUMN IF NOT EXISTS "id" TEXT;
+ALTER TABLE "AnnouncementPoll" ADD COLUMN IF NOT EXISTS "announcementId" TEXT;
+ALTER TABLE "AnnouncementPoll" ADD COLUMN IF NOT EXISTS "allowMultiple" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "AnnouncementPoll" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- AnnouncementPollOption
+ALTER TABLE "AnnouncementPollOption" ADD COLUMN IF NOT EXISTS "id" TEXT;
+ALTER TABLE "AnnouncementPollOption" ADD COLUMN IF NOT EXISTS "pollId" TEXT;
+ALTER TABLE "AnnouncementPollOption" ADD COLUMN IF NOT EXISTS "text" TEXT;
+ALTER TABLE "AnnouncementPollOption" ADD COLUMN IF NOT EXISTS "position" INTEGER NOT NULL DEFAULT 0;
+
+-- AnnouncementPollVote
+ALTER TABLE "AnnouncementPollVote" ADD COLUMN IF NOT EXISTS "id" TEXT;
+ALTER TABLE "AnnouncementPollVote" ADD COLUMN IF NOT EXISTS "optionId" TEXT;
+ALTER TABLE "AnnouncementPollVote" ADD COLUMN IF NOT EXISTS "userId" TEXT;
+ALTER TABLE "AnnouncementPollVote" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 -- Team
 ALTER TABLE "Team" ADD COLUMN IF NOT EXISTS "id" TEXT;
@@ -508,6 +569,17 @@ CREATE INDEX IF NOT EXISTS "NoteTagAssignment_tagId_idx" ON "NoteTagAssignment"(
 CREATE INDEX IF NOT EXISTS "NoteHeart_noteId_idx" ON "NoteHeart"("noteId");
 CREATE UNIQUE INDEX IF NOT EXISTS "NoteHeart_noteId_userId_key" ON "NoteHeart"("noteId", "userId");
 
+-- AnnouncementPoll (announcementId is UNIQUE — 1:1 with Announcement)
+CREATE UNIQUE INDEX IF NOT EXISTS "AnnouncementPoll_announcementId_key" ON "AnnouncementPoll"("announcementId");
+CREATE INDEX IF NOT EXISTS "AnnouncementPoll_announcementId_idx" ON "AnnouncementPoll"("announcementId");
+CREATE INDEX IF NOT EXISTS "AnnouncementPollOption_pollId_idx" ON "AnnouncementPollOption"("pollId");
+CREATE INDEX IF NOT EXISTS "AnnouncementPollVote_optionId_idx" ON "AnnouncementPollVote"("optionId");
+CREATE INDEX IF NOT EXISTS "AnnouncementPollVote_userId_idx" ON "AnnouncementPollVote"("userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "AnnouncementPollVote_optionId_userId_key" ON "AnnouncementPollVote"("optionId", "userId");
+
+-- VerificationToken (token must be globally unique for lookup by code)
+CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_token_key" ON "VerificationToken"("token");
+
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 4. FOREIGN KEYS for the feature tables (guarded — no-op if they exist)
@@ -602,6 +674,28 @@ BEGIN
         ALTER TABLE "NoteHeart" ADD CONSTRAINT "NoteHeart_userId_fkey"
             FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE;
     END IF;
+
+    -- AnnouncementPoll
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AnnouncementPoll_announcementId_fkey') THEN
+        ALTER TABLE "AnnouncementPoll" ADD CONSTRAINT "AnnouncementPoll_announcementId_fkey"
+            FOREIGN KEY ("announcementId") REFERENCES "Announcement"("id") ON DELETE CASCADE;
+    END IF;
+
+    -- AnnouncementPollOption
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AnnouncementPollOption_pollId_fkey') THEN
+        ALTER TABLE "AnnouncementPollOption" ADD CONSTRAINT "AnnouncementPollOption_pollId_fkey"
+            FOREIGN KEY ("pollId") REFERENCES "AnnouncementPoll"("id") ON DELETE CASCADE;
+    END IF;
+
+    -- AnnouncementPollVote
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AnnouncementPollVote_optionId_fkey') THEN
+        ALTER TABLE "AnnouncementPollVote" ADD CONSTRAINT "AnnouncementPollVote_optionId_fkey"
+            FOREIGN KEY ("optionId") REFERENCES "AnnouncementPollOption"("id") ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'AnnouncementPollVote_userId_fkey') THEN
+        ALTER TABLE "AnnouncementPollVote" ADD CONSTRAINT "AnnouncementPollVote_userId_fkey"
+            FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE;
+    END IF;
 END$$;
 
 
@@ -629,7 +723,7 @@ END$$;
 SELECT column_name FROM information_schema.columns
 WHERE table_name = 'User' AND column_name = 'avatarDecoration';
 
--- All 32 tables present:
+-- All 35 tables present (32 + the 3 announcement-poll tables):
 SELECT count(*) AS table_count FROM pg_tables WHERE schemaname = 'public';
 
 -- RLS on everywhere (rowsecurity + forcerowsecurity both true):

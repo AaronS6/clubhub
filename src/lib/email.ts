@@ -275,6 +275,9 @@ export async function sendEmail(input: SendEmailInput): Promise<{ ok: boolean; i
  *     ctaUrl: "https://clubhub.app/?view=hours",
  *     clubName: "Robotics Club",
  *   })
+ *
+ * An optional `codeText` renders a large, letter-spaced one-time code block
+ * (used by the signup email-verification email) with an expiry note.
  */
 export function renderEmailHtml(input: {
   title: string
@@ -283,8 +286,9 @@ export function renderEmailHtml(input: {
   ctaText?: string
   ctaUrl?: string
   clubName?: string
+  codeText?: string
 }): string {
-  const { title, preheader, bodyLines, ctaText, ctaUrl, clubName } = input
+  const { title, preheader, bodyLines, ctaText, ctaUrl, clubName, codeText } = input
 
   // Accent = warm emerald (matches app default). Hex must be inline.
   const ACCENT = "#10b981"
@@ -305,6 +309,14 @@ export function renderEmailHtml(input: {
         `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;color:${TEXT};">${escapeHtml(line)}</p>`,
     )
     .join("")
+
+  // Large letter-spaced one-time code (signup email verification).
+  const codeHtml = codeText
+    ? `<div style="margin:20px 0 8px 0;padding:20px 16px;background:#fafafa;border:1px dashed ${BORDER};border-radius:10px;text-align:center;">
+          <div style="font-size:32px;font-weight:700;letter-spacing:10px;color:${TEXT};font-family:ui-monospace,'SF Mono',SFMono-Regular,Consolas,'Liberation Mono',monospace;">${escapeHtml(codeText)}</div>
+        </div>
+        <p style="margin:0 0 12px 0;font-size:12px;line-height:1.5;color:${MUTED};text-align:center;">This code expires in 15 minutes. If you didn't request it, you can ignore this email.</p>`
+    : ""
 
   const ctaHtml =
     ctaText && ctaUrl
@@ -335,6 +347,7 @@ export function renderEmailHtml(input: {
             <td style="padding:28px;">
               <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:700;color:${TEXT};line-height:1.3;">${escapeHtml(title)}</h1>
               ${bodyParagraphs}
+              ${codeHtml}
               ${ctaHtml ? `<div style="margin-top:20px;">${ctaHtml}</div>` : ""}
             </td>
           </tr>

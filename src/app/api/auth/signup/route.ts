@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { db } from "@/lib/db"
 import { hashPassword, isPasswordStrong } from "@/lib/auth"
-import { notify } from "@/lib/activity"
+import { issueVerificationCode, sendVerificationEmail } from "@/lib/email-verification"
 
 const schema = z.object({
   name: z.string().min(1).max(80),
@@ -31,21 +31,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An account with that email already exists" }, { status: 409 })
     }
     const hash = await hashPassword(password)
+    // emailVerified stays false — the account is gated until the user enters
+    // the 6-digit code we're about to email them (Google signups skip this:
+    // Google proves email ownership at sign-in and authOptions marks those
+    // users verified directly).
     const user = await db.user.create({
-      data: { name, email: email.toLowerCase(), passwordHash: hash, emailVerified: true },
+      data: { name, email: email.toLowerCase(), passwordHash: hash, emailVerified: false },
     })
-    // notify is best-effort — don't let it break signup
+
+    // Issue + send the verification code. Best-effort: a failed send must
+    // not 500 the signup — the user can hit "Resend code" on the verify
+    // step (and the welcome notify moves to verify-email, post-verification).
+    let emailSent = false
     try {
-      await notify({
-        userId: user.id,
-        type: "new_announcement",
-        message: `Welcome to ClubHub, ${name}! Create or join a club to get started.`,
-        linkUrl: "?view=clubs",
-      })
+      const code = await issueVerificationCode(user.email)
+      const result = await sendVerificationEmail(user.email, code)
+      emailSent = result.ok
+      // Dev escape hatch: with no email transport configured (local dev),
+      // surface the code in the response so the flow is testable. Production
+      // with Brevo/SendGrid configured sends for real and never leaks it.
+      if (!result.ok && process.env.NODE_ENV !== "production") {
+        console.log("[signup] Dev-only — verification code for", user.email, "is", code)
+        return NextResponse.json({ ok: true, email: user.email, emailSent: false, devCode: code })
+      }
     } catch (e) {
-      console.error("[signup] notify failed (non-fatal):", e)
+      console.error("[signup] verification email failed (non-fatal):", e)
     }
-    return NextResponse.json({ ok: true, userId: user.id })
+    return NextResponse.json({ ok: true, email: user.email, emailSent })
   } catch (err: any) {
     console.error("[signup] error:", err?.message, err?.code, err?.meta)
     // Generic message — never echo internal error text to the client.
