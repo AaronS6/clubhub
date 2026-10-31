@@ -24,6 +24,24 @@ function DialogPortal({
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
 }
 
+/**
+ * Static children-tree scan for a DialogDescription (ours or Radix's).
+ * Lets DialogContent pass `aria-describedby={undefined}` when no
+ * description is rendered — the sanctioned way to silence Radix's
+ * "Missing Description" warning for intentionally bare dialogs —
+ * while keeping the auto-linked attribute for dialogs that have one.
+ */
+function treeHasDescription(children: React.ReactNode): boolean {
+  return React.Children.toArray(children).some((child) => {
+    if (!React.isValidElement(child)) return false
+    if (child.type === DialogDescription || child.type === DialogPrimitive.Description) {
+      return true
+    }
+    const grand = (child.props as { children?: React.ReactNode }).children
+    return grand != null && treeHasDescription(grand)
+  })
+}
+
 function DialogClose({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Close>) {
@@ -54,6 +72,7 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const bare = !treeHasDescription(children) && props["aria-describedby"] === undefined
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -63,6 +82,7 @@ function DialogContent({
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
           className
         )}
+        {...(bare ? { "aria-describedby": undefined } : {})}
         {...props}
       >
         {children}

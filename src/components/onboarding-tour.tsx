@@ -441,7 +441,7 @@ export function OnboardingTour() {
       setAvatarPreview(res.avatarUrl)
       setAvatarSaved(true)
       await update({ image: res.avatarUrl })
-      toast.success("Photo saved — looking good")
+      toast.success("Photo saved")
     } catch (err) {
       toast.error("Couldn't save your photo", { description: errMsg(err) })
     } finally {
@@ -847,7 +847,7 @@ function WelcomeDecorRow({ reduce }: { reduce: boolean }) {
 
       <div className="relative mt-3 border-t border-border/60 bg-muted/30 px-4 py-2.5 text-center">
         <p className="text-xs text-muted-foreground">
-          Your photo and a decoration to match — that&apos;s step two.
+          Your photo and a decoration are next.
         </p>
       </div>
     </motion.div>
@@ -876,8 +876,7 @@ function StepWelcome({ reduce }: { reduce: boolean }) {
         animate="visible"
         className="mt-3 max-w-md leading-relaxed text-muted-foreground"
       >
-        Announcements, service hours, tasks, meetings, chat — everything your
-        club runs, together in one warm place. This takes about a minute.
+        Everything your club runs, in one place. Takes about a minute.
       </motion.p>
 
       <motion.div
@@ -888,7 +887,7 @@ function StepWelcome({ reduce }: { reduce: boolean }) {
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-club" />
-          Replay anytime from your account menu
+          Replay from your account menu
         </span>
         <span className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground sm:inline-flex">
           <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[0.6rem] font-semibold">←</kbd>
@@ -934,7 +933,7 @@ function StepPhoto({
       return
     }
     if (f.size > MAX_UPLOAD_BYTES) {
-      toast.error("That image is over 5MB — try a smaller one")
+      toast.error("That image is over 5MB")
       return
     }
     onPickFile(f)
@@ -944,8 +943,7 @@ function StepPhoto({
     <div className="mx-auto w-full max-w-xl px-5 py-6 sm:px-8 sm:py-8">
       <div className="flex items-start gap-5">
         <StepHeader eyebrow="Your profile" title="Add your photo." className="flex-1">
-          Crop it how you like, then dress it up with a little avatar effect —
-          just like Discord.
+          Crop it, then pick an avatar effect.
         </StepHeader>
         <img
           src="/landing/tour-avatar.jpg"
@@ -983,23 +981,21 @@ function StepPhoto({
                   <Check className="h-4 w-4 text-club" /> Photo saved
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Pick an effect below, or replace the photo anytime — it shows
-                  up in chat, approvals, and the leaderboard.
+                  Pick an effect below, or replace it anytime.
                 </p>
               </>
             ) : cropFile ? (
               <>
                 <p className="text-sm font-semibold text-foreground">Frame it your way</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Drag to reposition, zoom and rotate below, then save — the
-                  circle previews your crop live.
+                  Drag, zoom, rotate — the circle previews live.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm font-semibold text-foreground">A face makes the club feel real</p>
+                <p className="text-sm font-semibold text-foreground">Put a face to your name</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Your photo shows up in chat, approvals, and the leaderboard.
+                  It shows in chat, approvals, and the leaderboard.
                 </p>
               </>
             )}
@@ -1053,7 +1049,7 @@ function StepPhoto({
           onClick={onSkip}
           className="mt-3 inline-flex h-11 items-center rounded-md px-2 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
         >
-          Skip for now — add it later in Settings
+          Skip for now
         </button>
       </motion.section>
 
@@ -1070,8 +1066,7 @@ function StepPhoto({
           <h3 className="text-sm font-semibold text-foreground">Dress it up</h3>
         </div>
         <p className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
-          Pick an effect for your avatar — it animates in chat, your
-          profile, and everywhere else. Change it anytime.
+          It animates everywhere. Change it anytime.
         </p>
         <div className="grid grid-cols-4 gap-2.5">
           {DECORATION_IDS.map((id) => {
@@ -1123,7 +1118,7 @@ function StepTools({ reduce }: { reduce: boolean }) {
   return (
     <div className={STEP_SHELL_CLS}>
       <StepHeader eyebrow="For members" title="What's inside.">
-        Eight tools every member gets on day one.
+        Eight tools every member gets.
       </StepHeader>
 
       <motion.div
@@ -1181,7 +1176,7 @@ function StepGoal({
   return (
     <div className={STEP_SHELL_CLS}>
       <StepHeader eyebrow="Service hours" title="Set your goal.">
-        Aim at something. Every hour you log moves the needle on your dashboard.
+        Every hour you log moves the needle.
       </StepHeader>
 
       {/* ── Personal goal — for everyone ── */}
@@ -1218,8 +1213,8 @@ function StepGoal({
             </p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {personalGoal > 0
-                ? "Start logging hours and watch this fill up on your dashboard."
-                : "Pick a target above, or type any number of hours."}
+                ? "Log hours and watch it fill."
+                : "Pick a preset or type any number."}
             </p>
             <button
               type="button"
@@ -1243,11 +1238,10 @@ function StepGoal({
         >
           <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Users className="h-4 w-4 text-club" />
-            Club goal — for everyone to reach
+            Club goal
           </h3>
           <p className="mb-4 mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            A shared target for the whole club. Every member sees it on their
-            dashboard. Change it anytime in Members → Club hours goal.
+            A shared target every member sees. Change it in Members.
           </p>
 
           <GoalPicker
@@ -1412,8 +1406,7 @@ function StepCustomize({
   return (
     <div className={STEP_SHELL_CLS}>
       <StepHeader eyebrow="Personalize" title="Make it yours.">
-        Hover a swatch to preview it live — the wash and accent around this
-        card shift instantly. Change anytime in Settings → Appearance.
+        Hover to preview live. Change anytime in Settings.
       </StepHeader>
 
       {/* Ambient picker */}
@@ -1526,9 +1519,9 @@ function StepReady({
   const searchHint = useSearchShortcutHint()
   const goalLabel =
     personalGoal > 0
-      ? `${personalGoal}h goal set — see it on your dashboard`
+      ? `${personalGoal}h goal set`
       : isExec && clubGoal > 0
-        ? `${clubGoal}h club goal set for everyone`
+        ? `${clubGoal}h club goal set`
         : null
   const decoLabel = decoration !== "none" ? `${DECORATION_LABELS[decoration]} effect on` : null
 
@@ -1562,8 +1555,7 @@ function StepReady({
         transition={{ delay: reduce ? 0 : 0.14, duration: reduce ? 0 : 0.4, ease: EASE }}
         className="mt-3 max-w-sm leading-relaxed text-muted-foreground"
       >
-        That&rsquo;s the tour. Change your background or theme color anytime in
-        Settings → Appearance.
+        That&rsquo;s the tour. Change the look anytime in Settings → Appearance.
       </motion.p>
 
       {/* Recap chips */}

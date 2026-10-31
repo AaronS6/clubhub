@@ -263,11 +263,11 @@ export function ApprovalsView() {
   if (approvalsQuery.data && approvalsQuery.data.myRole !== "executive") {
     return (
       <div className="space-y-6">
-        <PageHeader title="Approvals" description="Review pending service hour submissions." />
+        <PageHeader title="Approvals" />
         <EmptyState
           icon={<ShieldCheck className="h-8 w-8" />}
           title="Not authorized"
-          description="Only executives can review service hour submissions. Ask a club executive if you believe this is a mistake."
+          description="Only executives can review submissions."
         />
       </div>
     )
@@ -280,9 +280,6 @@ export function ApprovalsView() {
     <div className="space-y-6">
       <PageHeader
         title="Approvals"
-        description={tab === "pending"
-          ? "Review pending service hour submissions from club members."
-          : "Reviewed service hour submissions — approved and rejected entries."}
         actions={
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {otherViewers > 0 && (
@@ -424,9 +421,7 @@ export function ApprovalsView() {
         <EmptyState
           icon={tab === "pending" ? <CheckCircle2 className="h-8 w-8" /> : <History className="h-8 w-8" />}
           title={tab === "pending" ? "No pending approvals" : "No reviewed entries"}
-          description={tab === "pending"
-            ? "You're all caught up."
-            : "Approve or reject submissions to see them here."}
+          description={tab === "pending" ? "You're all caught up." : undefined}
         />
       ) : tab === "pending" ? (
         <>
@@ -1058,7 +1053,7 @@ function RejectDialog({
           <DialogTitle>Reject submission{count > 1 ? "s" : ""}</DialogTitle>
           <DialogDescription>
             {count > 0 ? `Rejecting ${count} entr${count === 1 ? "y" : "ies"}.` : null}
-            {" "}Let the member know why (optional, but recommended).
+            {" "}Optional comment for the member.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
@@ -1066,7 +1061,7 @@ function RejectDialog({
           <Textarea
             id="reject-comment"
             rows={3}
-            placeholder="e.g. Please provide more details about the activity, or attach a clearer proof photo."
+            placeholder="Tell them what to fix…"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             maxLength={1000}
@@ -1074,7 +1069,7 @@ function RejectDialog({
           {!comment.trim() && (
             <div className="flex items-start gap-2 text-xs text-warning-foreground dark:text-warning-foreground">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              <span>Without a comment, the member won&apos;t know what to fix. You can still reject.</span>
+              <span>Without a comment, they won&apos;t know what to fix.</span>
             </div>
           )}
         </div>

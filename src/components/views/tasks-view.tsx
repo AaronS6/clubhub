@@ -85,7 +85,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -431,7 +430,6 @@ export function TasksView() {
       <div className="hidden sm:block sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-background/45 backdrop-blur-xl border-b border-border/60">
         <PageHeader
           title="Tasks"
-          description="Track club work, subtasks, and assignments."
           actions={
             <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
               <Plus className="size-4" />
@@ -444,7 +442,6 @@ export function TasksView() {
       <div className="sm:hidden">
         <PageHeader
           title="Tasks"
-          description="Track club work, subtasks, and assignments."
           actions={
             <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
               <Plus className="size-4" />
@@ -634,7 +631,6 @@ export function TasksView() {
         <EmptyState
           illustration={<TasksEmptyIllustration />}
           title="No tasks yet"
-          description="Create one to get started."
           action={
             <Button variant="club" onClick={() => setNewTaskOpen(true)} size="sm">
               <Plus className="size-4" />
@@ -740,7 +736,7 @@ function MainGoalCard({
 
   async function handleSave() {
     if (draft.length > MAIN_GOAL_MAX) {
-      toast.error(`Main goal must be ${MAIN_GOAL_MAX} characters or fewer`)
+      toast.error(`Main goal too long (max ${MAIN_GOAL_MAX})`)
       return
     }
     setSaving(true)
@@ -775,7 +771,7 @@ function MainGoalCard({
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, MAIN_GOAL_MAX))}
-          placeholder="What is the club working on right now? (e.g. Win the regional competition by March.)"
+          placeholder="What is the club working on?"
           maxLength={MAIN_GOAL_MAX}
           className="min-h-[64px] resize-y text-sm"
           autoFocus
@@ -822,7 +818,7 @@ function MainGoalCard({
         </p>
       ) : (
         <p className="text-body min-w-0 flex-1 truncate text-muted-foreground italic">
-          No main goal set{isExec ? " — set one to focus the club." : "."}
+          No main goal set.
         </p>
       )}
       {isExec && (
@@ -890,7 +886,7 @@ function TeamMainIdeaChip({
 
   async function handleSave() {
     if (draft.length > MAIN_IDEA_MAX) {
-      toast.error(`Team main idea must be ${MAIN_IDEA_MAX} characters or fewer`)
+      toast.error(`Main idea too long (max ${MAIN_IDEA_MAX})`)
       return
     }
     setSaving(true)
@@ -899,7 +895,7 @@ function TeamMainIdeaChip({
         method: "PATCH",
         json: { mainIdea: draft },
       })
-      toast.success(`"${team.name}" main idea updated`)
+      toast.success("Main idea updated")
       setEditing(false)
       onChanged()
     } catch (e: any) {
@@ -965,7 +961,7 @@ function TeamMainIdeaChip({
       </div>
       <p className="text-body text-muted-foreground line-clamp-2 break-words">
         {team.mainIdea || (
-          <span className="italic">No main idea set{isExec ? " — click to add" : ""}</span>
+          <span className="italic">No main idea set.</span>
         )}
       </p>
     </div>
@@ -1550,9 +1546,6 @@ function NewTaskDialog({
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>New task</DialogTitle>
-            <DialogDescription>
-              Add a task to track club work. You can edit details later.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-4">
@@ -1583,7 +1576,7 @@ function NewTaskDialog({
                 id="task-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add details, context, links…"
+                placeholder="Add details…"
                 rows={3}
                 maxLength={5000}
               />
@@ -1704,9 +1697,7 @@ function TaskDetailSheet({
           <SheetTitle className="truncate">
             {task?.title ?? "Task details"}
           </SheetTitle>
-          <SheetDescription className="sr-only">
-            Edit task details, manage subtasks and comments.
-          </SheetDescription>
+          <SheetDescription className="sr-only">Task details.</SheetDescription>
         </SheetHeader>
         {task ? (
           <ScrollArea className="flex-1">
@@ -2044,10 +2035,7 @@ function TaskDetailBody({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this task?</AlertDialogTitle>
             <AlertDialogDescription>
-              The task “{task.title}” will be removed from the board. You can
-              undo this from the toast that appears for the next few seconds;
-              after that, an executive can recover it from the deleted-tasks
-              view.
+              “{task.title}” will be removed. You can undo for a few seconds.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2160,7 +2148,7 @@ function SubtasksSection({
 
       {task.subtasks.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No subtasks yet. Add a checklist item above.
+          No subtasks yet.
         </p>
       ) : (
         <ul className="flex flex-col gap-1">
@@ -2289,7 +2277,7 @@ function CommentsSection({
         </div>
       ) : comments.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No comments yet. Start the conversation.
+          No comments yet.
         </p>
       ) : (
         <ul className="flex flex-col gap-3 max-h-72 overflow-y-auto pr-1">

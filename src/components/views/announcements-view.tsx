@@ -22,14 +22,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MentionableTextarea, type MentionableMember } from "@/components/ui/mentionable-textarea"
 import { RichText, MarkdownToolbar } from "@/components/shared/rich-text"
 import {
+  ANNOUNCEMENT_ACCENTS,
+  ANNOUNCEMENT_ACCENT_KEYS,
+  ANNOUNCEMENT_TAG_PRESETS,
+  MAX_ANNOUNCEMENT_TAG_LENGTH,
+  isAccentKey,
+} from "@/lib/announcement-style"
+import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -59,11 +64,14 @@ import {
   Send,
   Plus,
   MoreVertical,
+  Palette,
   Pencil,
   Loader2,
   ChevronDown,
   SmilePlus,
   AlertTriangle,
+  X,
+  type LucideIcon,
 } from "lucide-react"
 
 // Reaction feature data — fixed set of emojis for the picker.
@@ -98,6 +106,8 @@ interface AnnouncementItem {
   body: string
   isPinned: boolean
   isUrgent: boolean
+  accent: string | null
+  tag: string | null
   createdAt: string
   updatedAt: string
   authorId: string
@@ -241,6 +251,12 @@ export function AnnouncementsView() {
           `last-seen-announcements-${clubId}`,
           String(latestCreatedAt)
         )
+        // §Instant dot-clear — poke the sidebar's unread-peek query so the
+        // "New announcements" dot clears in under half a second instead of
+        // lingering until its next 60s poll.
+        queryClient.invalidateQueries({
+          queryKey: ["announcements-unread-peek", clubId],
+        })
       }
     } catch {
       // ignore — localStorage may be unavailable in private browsing
@@ -249,7 +265,7 @@ export function AnnouncementsView() {
 
   if (!clubId) {
     return (
-      <div className="p-8 text-muted-foreground">Select a club to view announcements.</div>
+      <div className="p-8 text-muted-foreground">Select a club to start.</div>
     )
   }
 
@@ -262,11 +278,10 @@ export function AnnouncementsView() {
       <div className="hidden sm:block sticky top-0 z-20 bg-background/45 backdrop-blur-xl -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Announcements"
-          description="Stay up to date with club news, pinned notices, and discussions."
           actions={
             isExec ? (
               <Button variant="club" onClick={() => setComposeOpen(true)}>
-                <Plus className="h-4 w-4" /> New Announcement
+                <Plus className="h-4 w-4" /> New post
               </Button>
             ) : undefined
           }
@@ -276,11 +291,10 @@ export function AnnouncementsView() {
       <div className="sm:hidden -mx-4 -mt-4 px-4 pt-2 pb-3 border-b border-border/60">
         <PageHeader
           title="Announcements"
-          description="Stay up to date with club news, pinned notices, and discussions."
           actions={
             isExec ? (
               <Button variant="club" onClick={() => setComposeOpen(true)}>
-                <Plus className="h-4 w-4" /> New Announcement
+                <Plus className="h-4 w-4" /> New post
               </Button>
             ) : undefined
           }
@@ -293,15 +307,11 @@ export function AnnouncementsView() {
         <EmptyState
           illustration={<AnnouncementsEmptyIllustration />}
           title="No announcements yet"
-          description={
-            isExec
-              ? "Share an update with your club."
-              : "Check back soon — execs will share updates here."
-          }
+          description={isExec ? "Post the first one." : undefined}
           action={
             isExec ? (
               <Button variant="club" onClick={() => setComposeOpen(true)}>
-                <Plus className="h-4 w-4" /> Post announcement
+                <Plus className="h-4 w-4" /> New post
               </Button>
             ) : undefined
           }
@@ -346,6 +356,7 @@ export function AnnouncementsView() {
         open={composeOpen}
         onOpenChange={setComposeOpen}
         clubId={clubId}
+        author={currentUser}
         onCreated={() => {
           setComposeOpen(false)
           invalidateAll()
@@ -393,6 +404,11 @@ function AnnouncementCard({
 
   const isAuthor = !!currentUserId && announcement.authorId === currentUserId
   const canEdit = isExec || isAuthor
+  // Chosen accent color (null = default card). Pinned-without-accent keeps
+  // the classic club strip + tint below.
+  const accentDef = isAccentKey(announcement.accent)
+    ? ANNOUNCEMENT_ACCENTS[announcement.accent]
+    : undefined
 
   const reactionMutation = useMutation({
     mutationFn: (emoji: string) =>
@@ -478,10 +494,9 @@ function AnnouncementCard({
   return (
     <div className={cn(
       "stagger-in rounded-xl border border-border/80 bg-card shadow-card overflow-hidden transition-[color,background-color,border-color,transform,box-shadow] duration-200",
-      // Pinned — the app's ONE emphasized-card language: a quiet 2px club
-      // accent strip on the leading edge + a whisper of accent tint (same
-      // treatment as the dashboard attention cards). No 4px amber bar.
-      announcement.isPinned && "border-l-2 border-l-club bg-club-subtle/50 dark:bg-club-subtle/30"
+      accentDef
+        ? `border-l-2 ${accentDef.strip}`
+        : announcement.isPinned && "border-l-2 border-l-club bg-club-subtle/50 dark:bg-club-subtle/30"
     )}
       style={{ "--stagger-i": index } as CSSProperties}>
       <div className="p-4 md:p-5 space-y-3">
@@ -501,6 +516,14 @@ function AnnouncementCard({
                 <span className="text-caption text-muted-foreground">{relativeTime(announcement.createdAt)}</span>
                 {new Date(announcement.updatedAt).getTime() - new Date(announcement.createdAt).getTime() > 1000 && (
                   <span className="text-caption text-muted-foreground italic">(edited)</span>
+                )}
+                {announcement.tag && (
+                  <span className={cn(
+                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                    accentDef ? accentDef.pill : "bg-muted text-muted-foreground",
+                  )}>
+                    {announcement.tag}
+                  </span>
                 )}
                 {announcement.isUrgent && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-danger-subtle text-danger-foreground dark:bg-danger-subtle dark:text-danger-foreground px-2 py-0.5 text-xs font-semibold">
@@ -710,7 +733,7 @@ function ReactionBar({
             <TooltipContent side="top" className="max-w-[240px]">
               <div className="text-xs">
                 <div className="font-semibold mb-1">
-                  {entry.count} {entry.count === 1 ? "person" : "people"} reacted with {entry.emoji}
+                  {entry.count} reacted
                 </div>
                 {users.length > 0 && (
                   <div className="text-xs space-y-0.5">
@@ -727,11 +750,6 @@ function ReactionBar({
                       <div className="text-muted-foreground">+{users.length - 6} more</div>
                     )}
                   </div>
-                )}
-                {isMine ? (
-                  <div className="mt-1 text-xs text-muted-foreground">Click to remove your reaction</div>
-                ) : (
-                  <div className="mt-1 text-xs text-muted-foreground">Click to switch your reaction</div>
                 )}
               </div>
             </TooltipContent>
@@ -754,31 +772,26 @@ function ReactionBar({
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-auto max-w-[calc(100vw-1.5rem)] p-3">
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1">
-              {REACTION_EMOJIS.map((emoji) => {
-                const isMine = myReaction === emoji
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => onReact(emoji)}
-                    disabled={disabled}
-                    className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-md text-xl hover:bg-muted transition-[color,background-color,border-color,transform,box-shadow]",
-                      isMine && "bg-club-muted ring-1 ring-club"
-                    )}
-                    aria-label={`React with ${emoji}`}
-                    aria-pressed={isMine}
-                  >
-                    {emoji}
-                  </button>
-                )
-              })}
-            </div>
-            <p className="text-xs text-muted-foreground leading-snug">
-              You can pick one reaction — picking another swaps it.
-            </p>
+          <div className="flex flex-wrap gap-1">
+            {REACTION_EMOJIS.map((emoji) => {
+              const isMine = myReaction === emoji
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => onReact(emoji)}
+                  disabled={disabled}
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-md text-xl hover:bg-muted transition-[color,background-color,border-color,transform,box-shadow]",
+                    isMine && "bg-club-muted ring-1 ring-club"
+                  )}
+                  aria-label={`React with ${emoji}`}
+                  aria-pressed={isMine}
+                >
+                  {emoji}
+                </button>
+              )
+            })}
           </div>
         </PopoverContent>
       </Popover>
@@ -882,7 +895,7 @@ function CommentSection({
         </div>
       ) : items.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-2">
-          No comments yet. Be the first to start the discussion.
+          No replies yet.
         </p>
       ) : (
         <ul className="space-y-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
@@ -909,7 +922,7 @@ function CommentSection({
           value={draft}
           members={members}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Write a comment… (Enter to send, Shift+Enter for new line. Use @ to mention.)"
+          placeholder="Write a comment…"
           rows={1}
           className="min-h-9 resize-none"
           onKeyDown={(e) => {
@@ -992,37 +1005,280 @@ function CommentRow({
   )
 }
 
+// --- announcement customization (composer + card shared pieces) ---
+
+/** WYSIWYG mini replica of the feed card — updates live while composing. */
+function AnnouncementPreview({
+  title,
+  body,
+  tag,
+  accent,
+  isPinned,
+  isUrgent,
+  author,
+}: {
+  title: string
+  body: string
+  tag: string | null
+  accent: string | null
+  isPinned: boolean
+  isUrgent: boolean
+  author?: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
+}) {
+  const accentDef = isAccentKey(accent) ? ANNOUNCEMENT_ACCENTS[accent] : undefined
+  const strip = accentDef
+    ? `border-l-2 ${accentDef.strip}`
+    : isPinned
+      ? "border-l-2 border-l-club"
+      : null
+  const excerpt = body.trim().slice(0, 240)
+  const name = author?.name ?? "You"
+  return (
+    <div aria-hidden className={cn("rounded-xl border border-border/80 bg-card shadow-card overflow-hidden", strip)}>
+      <div className="p-3.5 space-y-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <DecoratedAvatar
+            decoration={author?.avatarDecoration ?? undefined}
+            src={author?.avatarUrl ?? undefined}
+            name={name}
+            className="h-8 w-8 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold truncate">{name}</span>
+              <span className="text-caption text-muted-foreground">now</span>
+              {tag && (
+                <span className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                  accentDef ? accentDef.pill : "bg-muted text-muted-foreground",
+                )}>
+                  {tag}
+                </span>
+              )}
+              {isUrgent && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-danger-subtle text-danger-foreground px-2 py-0.5 text-xs font-semibold">
+                  <AlertTriangle className="h-3 w-3" /> Urgent
+                </span>
+              )}
+              {isPinned && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-club-subtle text-club-ink px-2 py-0.5 text-xs font-semibold">
+                  <Pin className="h-3 w-3" /> Pinned
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="text-card-title leading-tight">
+          {title.trim() || <span className="text-muted-foreground/70">Title</span>}
+        </div>
+        <p className="text-body text-muted-foreground line-clamp-2 whitespace-pre-wrap break-words">
+          {excerpt || <span className="text-muted-foreground/70">Your post shows up here.</span>}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Compact pill toggle (Pin / Urgent) — replaces the old wordy switch cards. */
+function ToggleChip({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  tone = "club",
+}: {
+  active: boolean
+  onClick: () => void
+  icon: LucideIcon
+  label: string
+  tone?: "club" | "danger"
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors cursor-pointer",
+        active
+          ? tone === "danger"
+            ? "border-danger/40 bg-danger-subtle text-danger-foreground"
+            : "border-club/40 bg-club-muted text-club"
+          : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  )
+}
+
+/** Color + tag pickers — the announcement customization surface. */
+function AnnouncementStyleControls({
+  accent,
+  onAccent,
+  tag,
+  onTag,
+}: {
+  accent: string | null
+  onAccent: (v: string | null) => void
+  tag: string | null
+  onTag: (v: string | null) => void
+}) {
+  const [custom, setCustom] = useState("")
+  const isPreset = tag != null && (ANNOUNCEMENT_TAG_PRESETS as readonly string[]).includes(tag)
+
+  function commitCustom() {
+    const v = custom.trim()
+    if (v) {
+      onTag(v.slice(0, MAX_ANNOUNCEMENT_TAG_LENGTH))
+      setCustom("")
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/20 space-y-2.5 p-3">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Palette className="h-3.5 w-3.5" aria-hidden />
+        <span className="text-[11px] font-semibold uppercase tracking-wider">Style</span>
+      </div>
+
+      {/* Accent color dots */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="w-9 shrink-0 text-xs text-muted-foreground">Color</span>
+        <button
+          type="button"
+          onClick={() => onAccent(null)}
+          aria-pressed={accent == null}
+          aria-label="No color"
+          title="None"
+          className={cn(
+            "h-6 w-6 rounded-full border-2 border-dashed border-border transition-transform hover:scale-110",
+            accent == null && "border-solid border-foreground/50",
+          )}
+        />
+        {ANNOUNCEMENT_ACCENT_KEYS.map((k) => {
+          const def = ANNOUNCEMENT_ACCENTS[k]
+          const active = accent === k
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onAccent(active ? null : k)}
+              aria-pressed={active}
+              aria-label={def.label}
+              title={def.label}
+              className={cn(
+                "h-6 w-6 rounded-full transition-transform hover:scale-110",
+                def.swatch,
+                active && cn("ring-2 ring-offset-2 ring-offset-background", def.active),
+              )}
+            />
+          )
+        })}
+      </div>
+
+      {/* Tag chips + custom entry */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="w-9 shrink-0 text-xs text-muted-foreground">Tag</span>
+        {tag && !isPreset && (
+          <span className="inline-flex h-7 items-center gap-1 rounded-full border border-club bg-club-muted px-2.5 text-xs font-medium text-club">
+            {tag}
+            <button
+              type="button"
+              onClick={() => onTag(null)}
+              aria-label="Remove tag"
+              className="text-club/70 hover:text-club"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        )}
+        {ANNOUNCEMENT_TAG_PRESETS.map((p) => {
+          const active = tag === p
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onTag(active ? null : p)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition-colors cursor-pointer",
+                active
+                  ? "border-club bg-club-muted text-club"
+                  : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+              )}
+            >
+              {p}
+            </button>
+          )
+        })}
+        <input
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              commitCustom()
+            }
+          }}
+          onBlur={commitCustom}
+          placeholder="Custom…"
+          maxLength={MAX_ANNOUNCEMENT_TAG_LENGTH}
+          aria-label="Custom tag"
+          className="h-7 w-24 rounded-full border border-border bg-transparent px-3 text-xs outline-none placeholder:text-muted-foreground/70 focus:border-foreground/30"
+        />
+      </div>
+    </div>
+  )
+}
+
 function ComposeAnnouncementDialog({
   open,
   onOpenChange,
   clubId,
+  author,
   onCreated,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
   clubId: string
+  author?: { id: string; name: string; avatarUrl: string | null; avatarDecoration?: string | null }
   onCreated: () => void
 }) {
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [isPinned, setIsPinned] = useState(false)
   const [isUrgent, setIsUrgent] = useState(false)
+  const [accent, setAccent] = useState<string | null>(null)
+  const [tag, setTag] = useState<string | null>(null)
   const [titleError, setTitleError] = useState<string | null>(null)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+
+  // Reset the customization state whenever the dialog closes
+  function handleOpenChange(v: boolean) {
+    if (!v) {
+      setAccent(null)
+      setTag(null)
+    }
+    onOpenChange(v)
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
       api(`/api/clubs/${clubId}/announcements`, {
         method: "POST",
-        json: { title: title.trim(), body: body.trim(), isPinned, isUrgent },
+        json: { title: title.trim(), body: body.trim(), isPinned, isUrgent, accent, tag },
       }),
     onSuccess: () => {
-      toast.success("Announcement posted")
+      toast.success("Posted")
       setTitle("")
       setBody("")
       setIsPinned(false)
       setIsUrgent(false)
+      setAccent(null)
+      setTag(null)
       setTitleError(null)
       setBodyError(null)
       onCreated()
@@ -1046,16 +1302,29 @@ function ComposeAnnouncementDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-3 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
-          <DialogTitle>New announcement</DialogTitle>
-          <DialogDescription>
-            Share an update with all members. Plain text is fine — line breaks are preserved.
-          </DialogDescription>
+          <DialogTitle>New post</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4 pb-24 sm:pb-6">
+            {/* Live preview — mirrors the feed card as you type */}
+            <div>
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Preview
+              </div>
+              <AnnouncementPreview
+                title={title}
+                body={body}
+                tag={tag}
+                accent={accent}
+                isPinned={isPinned}
+                isUrgent={isUrgent}
+                author={author}
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="ann-title">Title</Label>
               <Input
@@ -1065,7 +1334,7 @@ function ComposeAnnouncementDialog({
                   setTitle(e.target.value)
                   if (titleError) setTitleError(null)
                 }}
-                placeholder="e.g. Spring service drive kicks off next week"
+                placeholder="Title"
                 maxLength={200}
                 required
                 aria-invalid={!!titleError}
@@ -1095,39 +1364,42 @@ function ComposeAnnouncementDialog({
                   setBody(e.target.value)
                   if (bodyError) setBodyError(null)
                 }}
-                placeholder="Write your announcement. Use **bold**, *italic*, # headings, - lists, > quotes, or the toolbar above."
+                placeholder="Write your post…"
                 rows={6}
                 maxLength={8000}
                 required
                 aria-invalid={!!bodyError}
                 className={bodyError ? "border-danger focus-visible:ring-red-500" : ""}
               />
-              <p className="text-xs text-muted-foreground">
-                {body.length}/8000 characters · markdown supported
-              </p>
+              {body.length > 6800 && (
+                <p className="text-xs text-muted-foreground">{body.length}/8000</p>
+              )}
               {bodyError && (
                 <p className="text-xs text-danger mt-1">{bodyError}</p>
               )}
             </div>
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <Switch checked={isPinned} onCheckedChange={setIsPinned} id="ann-pinned" />
-              <Label htmlFor="ann-pinned" className="cursor-pointer">
-                <div className="text-sm font-medium">Pin to top</div>
-                <div className="text-xs text-muted-foreground">
-                  Pinned announcements appear first for all members.
-                </div>
-              </Label>
-            </div>
-            <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-subtle/60 dark:bg-danger-subtle p-3">
-              <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="ann-urgent" />
-              <Label htmlFor="ann-urgent" className="cursor-pointer">
-                <div className="text-sm font-medium flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Shows a dismissible banner at the top of the app for all members until they dismiss it.
-                </div>
-              </Label>
+
+            <AnnouncementStyleControls accent={accent} onAccent={setAccent} tag={tag} onTag={setTag} />
+
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <ToggleChip
+                  icon={Pin}
+                  label="Pin to top"
+                  active={isPinned}
+                  onClick={() => setIsPinned((v) => !v)}
+                />
+                <ToggleChip
+                  icon={AlertTriangle}
+                  label="Urgent"
+                  tone="danger"
+                  active={isUrgent}
+                  onClick={() => setIsUrgent((v) => !v)}
+                />
+              </div>
+              {isUrgent && (
+                <p className="text-xs text-muted-foreground">Banners the app for everyone until dismissed.</p>
+              )}
             </div>
           </div>
           {/* Floating Post button — always visible at the bottom-right
@@ -1146,7 +1418,7 @@ function ComposeAnnouncementDialog({
                 </>
               ) : (
                 <>
-                  <Send className="h-4 w-4" /> Post announcement
+                  <Send className="h-4 w-4" /> Post
                 </>
               )}
             </Button>
@@ -1176,16 +1448,29 @@ function EditAnnouncementDialog({
   const [body, setBody] = useState(announcement.body)
   const [isPinned, setIsPinned] = useState(announcement.isPinned)
   const [isUrgent, setIsUrgent] = useState(announcement.isUrgent)
+  const [accent, setAccent] = useState<string | null>(announcement.accent)
+  const [tag, setTag] = useState<string | null>(announcement.tag)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const mutation = useMutation({
     mutationFn: () =>
       api<{ item: AnnouncementItem }>(
         `/api/clubs/${clubId}/announcements/${announcement.id}`,
-        { method: "PATCH", json: { title: title.trim(), body: body.trim(), isPinned, isUrgent } }
+        {
+          method: "PATCH",
+          // Pin/urgent are exec-only fields — only send them when the editor
+          // is an exec (a member author previously got a 403 here).
+          json: {
+            title: title.trim(),
+            body: body.trim(),
+            accent,
+            tag,
+            ...(isExec ? { isPinned, isUrgent } : {}),
+          },
+        }
       ),
     onSuccess: () => {
-      toast.success("Announcement updated")
+      toast.success("Saved")
       onSaved()
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1204,11 +1489,24 @@ function EditAnnouncementDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-3 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
-          <DialogTitle>Edit announcement</DialogTitle>
-          <DialogDescription>Update the title, body, or pin status.</DialogDescription>
+          <DialogTitle>Edit post</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4 pb-24 sm:pb-6">
+            <div>
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Preview
+              </div>
+              <AnnouncementPreview
+                title={title}
+                body={body}
+                tag={tag}
+                accent={accent}
+                isPinned={isPinned}
+                isUrgent={isUrgent}
+                author={announcement.author}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="edit-title">Title</Label>
               <Input
@@ -1234,29 +1532,31 @@ function EditAnnouncementDialog({
                 maxLength={8000}
                 required
               />
+              {body.length > 6800 && (
+                <p className="text-xs text-muted-foreground">{body.length}/8000</p>
+              )}
             </div>
+            <AnnouncementStyleControls accent={accent} onAccent={setAccent} tag={tag} onTag={setTag} />
             {isExec && (
-              <div className="flex items-center gap-3 rounded-lg border p-3">
-                <Switch checked={isPinned} onCheckedChange={setIsPinned} id="edit-pinned" />
-                <Label htmlFor="edit-pinned" className="cursor-pointer">
-                  <div className="text-sm font-medium">Pin to top</div>
-                  <div className="text-xs text-muted-foreground">
-                    Pinned announcements appear first.
-                  </div>
-                </Label>
-              </div>
-            )}
-            {isExec && (
-              <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger-subtle/60 dark:bg-danger-subtle p-3">
-                <Switch checked={isUrgent} onCheckedChange={setIsUrgent} id="edit-urgent" />
-                <Label htmlFor="edit-urgent" className="cursor-pointer">
-                  <div className="text-sm font-medium flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Mark as urgent
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Shows a dismissible banner at the top of the app until members dismiss it.
-                  </div>
-                </Label>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <ToggleChip
+                    icon={Pin}
+                    label="Pin to top"
+                    active={isPinned}
+                    onClick={() => setIsPinned((v) => !v)}
+                  />
+                  <ToggleChip
+                    icon={AlertTriangle}
+                    label="Urgent"
+                    tone="danger"
+                    active={isUrgent}
+                    onClick={() => setIsUrgent((v) => !v)}
+                  />
+                </div>
+                {isUrgent && (
+                  <p className="text-xs text-muted-foreground">Banners the app for everyone until dismissed.</p>
+                )}
               </div>
             )}
           </div>
@@ -1275,7 +1575,7 @@ function EditAnnouncementDialog({
                 </>
               ) : (
                 <>
-                  <Send className="h-4 w-4" /> Save changes
+                  <Send className="h-4 w-4" /> Save
                 </>
               )}
             </Button>

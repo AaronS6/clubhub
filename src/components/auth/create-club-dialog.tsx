@@ -42,7 +42,7 @@ export function CreateClubDialog({
       bad = true
     } else setNameError(null)
     if (clubPassword.length < 4) {
-      setPasswordError("Club password must be at least 4 characters")
+      setPasswordError("At least 4 characters")
       bad = true
     } else setPasswordError(null)
     if (!adminPasscode) {
@@ -61,7 +61,7 @@ export function CreateClubDialog({
         json: { adminPasscode },
       })
       if (!verify.valid) {
-        setPasscodeError("Incorrect admin passcode. Ask your ClubHub admin for the passcode to create a new club.")
+        setPasscodeError("Wrong passcode. Ask your ClubHub admin.")
         setLoading(false)
         return
       }
@@ -69,7 +69,7 @@ export function CreateClubDialog({
         method: "POST",
         json: { name, description, accentColor, clubPassword, adminPasscode },
       })
-      toast.success("Club created! You are now an executive.")
+      toast.success("Club created!")
       setName("")
       setDescription("")
       setClubPassword("")
@@ -91,9 +91,7 @@ export function CreateClubDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Create a new club</DialogTitle>
-          <DialogDescription>
-            You&apos;ll become the first executive. Share the generated club code and password with others so they can join.
-          </DialogDescription>
+          <DialogDescription>You&apos;ll be the first executive.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleCreate} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
@@ -153,7 +151,7 @@ export function CreateClubDialog({
               {passwordError ? (
                 <p className="text-xs text-danger mt-1">{passwordError}</p>
               ) : (
-                <p className="text-xs text-muted-foreground">A 6-character club code will be auto-generated.</p>
+                <p className="text-xs text-muted-foreground">A 6-character code is auto-generated.</p>
               )}
             </div>
             <div className="space-y-2 rounded-md border border-club/30 bg-club-subtle p-3">
@@ -177,7 +175,7 @@ export function CreateClubDialog({
                 <p className="text-xs text-danger mt-1">{passcodeError}</p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Required to create a new club. Ask your ClubHub admin if you don&apos;t have it.
+                  Don&apos;t have it? Ask your ClubHub admin.
                 </p>
               )}
             </div>

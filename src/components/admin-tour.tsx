@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils"
  *     unmistakable that the contents are simulated, never the real club.
  *   • One clock drives every beat. The cursor glides to its target
  *     (~0.2s), PRESSES it — the target itself visibly depresses, exactly
- *     like a real screencast — and the result fires at +0.42s. Cause and
+ *     like a real screencast; the result fires at +0.42s. Cause and
  *     effect are always in the right order, never before the click.
  *   • Captions crossfade instantly (no stacked exit/enter dead time) — and
  *     nothing in the chrome loops or sweeps, so the demo stays calm to read.
@@ -113,22 +113,22 @@ const BRAND_BULLETS: BulletItem[] = [
   {
     icon: ImageIcon,
     lead: "The banner.",
-    rest: "Upload a photo from the Dashboard and drag the focus point — faces stay in frame, on every screen.",
+    rest: "Upload it, then drag the focus point.",
   },
   {
     icon: PenLine,
     lead: "Logo & description.",
-    rest: "Set them once in Members. They flow to the sidebar, the dashboard, and your public profile page.",
+    rest: "Set once in Members — used everywhere.",
   },
   {
     icon: Flag,
     lead: "The club goal.",
-    rest: "One hours target that every member’s dashboard tracks toward — change it any time.",
+    rest: "One hours target, tracked on every member’s dashboard.",
   },
   {
     icon: LayoutDashboard,
     lead: "Executive insights.",
-    rest: "Pending approvals, review turnaround, and completion rate — front and center on your dashboard.",
+    rest: "Pending approvals and completion rate, front and center.",
   },
 ]
 
@@ -136,27 +136,27 @@ const INVITE_BULLETS: BulletItem[] = [
   {
     icon: KeyRound,
     lead: "Code + password.",
-    rest: "Instant join for anyone you share them with. Regenerate or change them any time.",
+    rest: "Share them for instant joins — regenerate anytime.",
   },
   {
     icon: UserPlus,
     lead: "Join requests.",
-    rest: "No code? They send a request with a note attached — approve or decline it in Members.",
+    rest: "No code? They request in with a note.",
   },
   {
     icon: Upload,
     lead: "CSV import.",
-    rest: "Bring a whole roster over at once — name and email columns, up to 500 rows.",
+    rest: "Import a whole roster, up to 500 rows.",
   },
   {
     icon: ShieldCheck,
     lead: "Roles & removal.",
-    rest: "Promote executives, demote, or remove members — removals even come with a 5-second undo.",
+    rest: "Promote, demote, or remove — removals have undo.",
   },
   {
     icon: Eye,
     lead: "Public directory.",
-    rest: "Flip it on and the club appears on Explore, with a shareable public profile — banner, logo, stats and all.",
+    rest: "Flip it on to list the club on Explore.",
   },
 ]
 
@@ -164,22 +164,22 @@ const APPROVAL_BULLETS: BulletItem[] = [
   {
     icon: ListChecks,
     lead: "The pending queue.",
-    rest: "Each submission arrives with its reason, category, and attached proof.",
+    rest: "Each shows its reason, category, and proof.",
   },
   {
     icon: BadgeCheck,
     lead: "Approve or reject.",
-    rest: "One click approves. Rejecting asks for a comment, so the member knows exactly what to fix.",
+    rest: "One click approves; rejects ask for a comment.",
   },
   {
     icon: CheckSquare,
     lead: "Bulk review.",
-    rest: "Multi-select a batch and clear the queue in seconds — the Reviewed tab keeps the full history.",
+    rest: "Select a batch and clear the queue in seconds.",
   },
   {
     icon: Clock,
     lead: "Review ETA.",
-    rest: "Members see an ETA on their pending hours — quick reviews keep them logging.",
+    rest: "Members see an ETA on pending hours.",
   },
 ]
 
@@ -187,22 +187,22 @@ const RUN_BULLETS: BulletItem[] = [
   {
     icon: Megaphone,
     lead: "Announcements.",
-    rest: "Post, pin, or mark urgent — urgent ones banner across the whole app until dismissed.",
+    rest: "Post, pin, or mark urgent app-wide.",
   },
   {
     icon: CalendarDays,
     lead: "Meetings.",
-    rest: "One-off or recurring, with live RSVPs and an attendees list only executives see.",
+    rest: "One-off or recurring, with live RSVPs.",
   },
   {
     icon: CheckSquare,
     lead: "Tasks.",
-    rest: "Anyone can create and assign them. You set the Main Goal the whole club works toward.",
+    rest: "Anyone can assign them; you set the Main Goal.",
   },
   {
     icon: Users,
     lead: "Teams.",
-    rest: "Sub-groups for projects and events — reshuffle members whenever the plan changes.",
+    rest: "Sub-groups you can reshuffle anytime.",
   },
 ]
 
@@ -210,17 +210,17 @@ const RECORDS_BULLETS: BulletItem[] = [
   {
     icon: Wallet,
     lead: "Financials.",
-    rest: "Log revenue and expenses with categories — the whole club sees the balance, only executives edit the books.",
+    rest: "The club sees the balance; only execs edit.",
   },
   {
     icon: MessageSquare,
     lead: "Chat, moderated.",
-    rest: "Real-time groups and DMs. Rename groups, pin messages, or remove any message when things get rowdy.",
+    rest: "Groups and DMs — rename, pin, or remove messages.",
   },
   {
     icon: NotebookPen,
     lead: "Notes.",
-    rest: "The club’s shared brain — everyone writes, everyone hearts the good ones, and you can tidy up any note.",
+    rest: "Everyone writes; you can tidy up any note.",
   },
 ]
 
@@ -228,17 +228,17 @@ const OVERSIGHT_BULLETS: BulletItem[] = [
   {
     icon: ScrollText,
     lead: "Activity Log.",
-    rest: "A living record of who did what, and when — filter it by type, or clear it when it grows.",
+    rest: "Who did what and when — filter or clear.",
   },
   {
     icon: Database,
     lead: "Storage.",
-    rest: "Exactly what fills the club’s 15 MB advisory quota, category by category — deleting content frees it live.",
+    rest: "What fills the 15 MB quota, by category.",
   },
   {
     icon: ShieldCheck,
     lead: "Yours alone.",
-    rest: "These two never appear for members — the quiet pair of tools that keeps you in the know.",
+    rest: "Members never see these two.",
   },
 ]
 
@@ -247,7 +247,7 @@ const READY_ITEMS: { icon: LucideIcon; text: string }[] = [
   { icon: CalendarDays, text: "Schedule a meeting" },
   { icon: ListChecks, text: "Approve a submitted hour" },
   { icon: Users, text: "Create a team" },
-  { icon: KeyRound, text: "Copy your club code & share it" },
+  { icon: KeyRound, text: "Share your club code" },
 ]
 
 /** Ready-step quick jumps (view targets, not demos). */
@@ -664,9 +664,9 @@ function WelcomeHero({ reduce, clubName }: { reduce: boolean; clubName: string }
 // ---------------------------------------------------------------------------
 
 const BRAND_CAPS = [
-  "Click “Edit banner” on the Dashboard.",
-  "Upload a photo, then drag the focus to frame it.",
-  "Saved — the whole club sees it instantly.",
+  "Click “Edit banner”.",
+  "Upload, then drag the focus.",
+  "Saved — everyone sees it instantly.",
 ] as const
 const BRAND_DUR = [900, 1050, 800]
 const BRAND_CURSOR: readonly CursorSpec[] = [
@@ -793,10 +793,10 @@ function BrandDemo({ reduce, clubName }: { reduce: boolean; clubName: string }) 
 // ---------------------------------------------------------------------------
 
 const INVITE_CAPS = [
-  "Copy the club code to share it.",
+  "Copy the code to share it.",
   "Code + password — instant join.",
-  "No code? They request in, with a note.",
-  "Approved — in, notified, on the roster.",
+  "No code? They send a request.",
+  "Approved — they’re in and notified.",
 ] as const
 const INVITE_DUR = [800, 700, 850, 800]
 const INVITE_CURSOR: readonly CursorSpec[] = [
@@ -901,10 +901,10 @@ function InviteDemo({ reduce }: { reduce: boolean }) {
 // ---------------------------------------------------------------------------
 
 const APPROVAL_CAPS = [
-  "Every submitted hour lands here — with proof.",
-  "A backlog? Select the batch…",
+  "Submitted hours land here with proof.",
+  "Select the batch…",
   "…as many as you like…",
-  "…then clear the queue in one go.",
+  "…then clear them all at once.",
 ] as const
 const APPROVAL_DUR = [850, 650, 650, 950]
 const APPROVAL_CURSOR: readonly CursorSpec[] = [
@@ -1038,7 +1038,7 @@ function ApprovalsDemo({ reduce }: { reduce: boolean }) {
                 <Check className="h-3 w-3" strokeWidth={3} />
               </span>
               <span className="text-[11px] font-bold text-club-ink">
-                Queue clear — both approved
+                Queue cleared
               </span>
             </motion.div>
           ) : n > 0 ? (
@@ -1078,10 +1078,10 @@ function ApprovalsDemo({ reduce }: { reduce: boolean }) {
 // ---------------------------------------------------------------------------
 
 const RUN_CAPS = [
-  "Pin it — it stays on top for everyone.",
-  "Mark it urgent — it banners across the whole app.",
+  "Pinned — it stays on top.",
+  "Urgent — it banners app-wide.",
   "RSVPs land in real time.",
-  "Tasks drag across the board — you set the Main Goal.",
+  "Tasks drag across the board.",
 ] as const
 const RUN_DUR = [800, 800, 800, 950]
 const RUN_CURSOR: readonly CursorSpec[] = [
@@ -1304,8 +1304,8 @@ function RunDemo({ reduce }: { reduce: boolean }) {
 
 const RECORDS_CAPS = [
   "Log revenue or expenses in seconds.",
-  "It lands in the ledger — the balance ticks for everyone.",
-  "Only executives edit the books — members just watch.",
+  "The balance ticks for everyone.",
+  "Only executives edit the books.",
 ] as const
 const RECORDS_DUR = [800, 1000, 800]
 const RECORDS_CURSOR: readonly CursorSpec[] = [
@@ -1421,9 +1421,9 @@ function RecordsDemo({ reduce }: { reduce: boolean }) {
 // ---------------------------------------------------------------------------
 
 const OVERSIGHT_CAPS = [
-  "Every action, recorded — who did what, and when.",
+  "Every action, recorded.",
   "Filter the feed by type.",
-  "Delete an old upload — the space frees on the spot.",
+  "Delete it — space frees on the spot.",
   "Yours alone — members never see these.",
 ] as const
 const OVERSIGHT_DUR = [800, 850, 950, 750]
@@ -1756,10 +1756,7 @@ function StepWelcome({ reduce, clubName }: { reduce: boolean; clubName: string }
         animate="visible"
         className="mt-3 max-w-md leading-relaxed text-muted-foreground"
       >
-        This is the executive guide — a short tour of every admin power that
-        comes with the role, each shown with a quick sample-data demo of
-        exactly how it works. Watch it work, then jump in and try the real
-        thing.
+        A quick tour of your admin powers — each with a live demo.
       </motion.p>
 
       <motion.div
@@ -1770,11 +1767,11 @@ function StepWelcome({ reduce, clubName }: { reduce: boolean; clubName: string }
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground">
           <Clock className="h-3.5 w-3.5 text-club" />
-          About 2 minutes
+          2 minutes
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-foreground/90">
           <Clapperboard className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-          Previews use sample data
+          Sample data
         </span>
         <span className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-xs text-muted-foreground sm:inline-flex">
           <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[0.6rem] font-semibold">←</kbd>
@@ -1790,13 +1787,12 @@ function StepBrand({ reduce, clubName, onTry }: { reduce: boolean; clubName: str
   return (
     <FeatureStep demo={<BrandDemo reduce={reduce} clubName={clubName} />}>
       <StepHeader eyebrow="Branding" title="Your club, your look.">
-        The banner, the logo, the club goal — everything members see is set by
-        you, and changeable any time.
+        Banner, logo, club goal — all set by you.
       </StepHeader>
       <BulletList items={BRAND_BULLETS} reduce={reduce} />
       <TryItButton
         icon={LayoutDashboard}
-        label="Open the Dashboard"
+        label="Dashboard"
         onTry={() => onTry("dashboard")}
       />
     </FeatureStep>
@@ -1807,13 +1803,12 @@ function StepInvite({ reduce, onTry }: { reduce: boolean; onTry: (v: View) => vo
   return (
     <FeatureStep demo={<InviteDemo reduce={reduce} />}>
       <StepHeader eyebrow="Growing the club" title="Bring people in.">
-        Share the code for instant joins — or let people request in, and
-        approve them yourself.
+        Share the code, or approve requests.
       </StepHeader>
       <BulletList items={INVITE_BULLETS} reduce={reduce} />
       <TryItButton
         icon={UserCog}
-        label="Open Members"
+        label="Members"
         onTry={() => onTry("members")}
       />
     </FeatureStep>
@@ -1824,8 +1819,7 @@ function StepApprovals({ reduce, onTry }: { reduce: boolean; onTry: (v: View) =>
   return (
     <FeatureStep demo={<ApprovalsDemo reduce={reduce} />}>
       <StepHeader eyebrow="Service hours" title="The approval desk.">
-        Every hour a member submits lands here for your call — the heart of
-        exec work, and the quickest to master.
+        Submitted hours land here for your approval.
       </StepHeader>
       <BulletList items={APPROVAL_BULLETS} reduce={reduce} />
 
@@ -1833,15 +1827,15 @@ function StepApprovals({ reduce, onTry }: { reduce: boolean; onTry: (v: View) =>
       <div className="mt-4 flex gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
         <p className="text-[12.5px] leading-relaxed text-foreground/90">
-          <span className="font-semibold">Remember:</span> ClubHub never submits
-          hours to your school — members export their records and submit them
-          through the school&apos;s own process.
+          <span className="font-semibold">Remember:</span> ClubHub doesn&apos;t
+          submit hours to your school — members export and submit them
+          themselves.
         </p>
       </div>
 
       <TryItButton
         icon={ListChecks}
-        label="Open Approvals"
+        label="Approvals"
         onTry={() => onTry("approvals")}
       />
     </FeatureStep>
@@ -1852,14 +1846,13 @@ function StepRun({ reduce, onTry }: { reduce: boolean; onTry: (v: View) => void 
   return (
     <FeatureStep demo={<RunDemo reduce={reduce} />}>
       <StepHeader eyebrow="Day to day" title="Run the day-to-day.">
-        Announcements, meetings, tasks, and teams — the four tools the club
-        runs on.
+        The four tools the club runs on.
       </StepHeader>
       <BulletList items={RUN_BULLETS} reduce={reduce} />
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <TryItButton
           icon={Megaphone}
-          label="Post an announcement"
+          label="Announcements"
           onTry={() => onTry("announcements")}
         />
       </div>
@@ -1875,14 +1868,13 @@ function StepRun({ reduce, onTry }: { reduce: boolean; onTry: (v: View) => void 
 function StepRecords({ reduce, onTry }: { reduce: boolean; onTry: (v: View) => void }) {
   return (
     <FeatureStep demo={<RecordsDemo reduce={reduce} />}>
-      <StepHeader eyebrow="Money & records" title="Keep the books — and the peace.">
-        Track the balance, moderate the chat, and keep the club&apos;s shared
-        notes tidy.
+      <StepHeader eyebrow="Money & records" title="Keep the books.">
+        Track the balance, moderate chat, keep notes tidy.
       </StepHeader>
       <BulletList items={RECORDS_BULLETS} reduce={reduce} />
       <TryItButton
         icon={Wallet}
-        label="Open Financials"
+        label="Financials"
         onTry={() => onTry("financials")}
       />
     </FeatureStep>
@@ -1893,13 +1885,12 @@ function StepOversight({ reduce, onTry }: { reduce: boolean; onTry: (v: View) =>
   return (
     <FeatureStep demo={<OversightDemo reduce={reduce} />}>
       <StepHeader eyebrow="Exec-only tools" title="See the full picture.">
-        Two tools members never see — a complete audit trail, and a live map
-        of what fills your storage.
+        Two tools members never see: the audit trail and storage.
       </StepHeader>
       <BulletList items={OVERSIGHT_BULLETS} reduce={reduce} />
       <TryItButton
         icon={ScrollText}
-        label="Open the Activity Log"
+        label="Activity Log"
         onTry={() => onTry("activity")}
       />
     </FeatureStep>
@@ -1917,7 +1908,7 @@ function StepReady({
   return (
     <div className={STEP_SHELL_CLS}>
       <StepHeader eyebrow="You're set" title="Now make it yours.">
-        The fastest way to learn is to use it. Start with these:
+        Start with these:
       </StepHeader>
       <motion.div variants={fadeUp} initial="hidden" animate="visible" className="mt-4">
         <ReadyChecklist reduce={reduce} />
@@ -1956,25 +1947,23 @@ function StepReady({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold leading-tight text-foreground">
-              One more thing — your member guide
+              Your member guide
             </p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
-              You&apos;re a member here too. Up next: your avatar, decorations,
-              and personal profile — the member side of the club. It opens
-              right after this one.
+              Up next: your avatar and profile — the member side.
             </p>
           </div>
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-club/20 bg-card/60 px-4 py-2">
           <span className="text-[11px] text-muted-foreground">
-            Replay this guide anytime — <span className="font-semibold text-foreground">Settings → Security</span>
+            Replay anytime — <span className="font-semibold text-foreground">Settings → Security</span>
           </span>
           <button
             type="button"
             onClick={onSkip}
             className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
           >
-            Skip — start exploring
+            Skip
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
@@ -2285,7 +2274,7 @@ export function AdminTour() {
               <button
                 type="button"
                 onClick={() => close()}
-                aria-label="Dismiss the executive guide"
+                aria-label="Dismiss guide"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
               >
                 <X className="h-4 w-4" />
@@ -2304,7 +2293,7 @@ export function AdminTour() {
               around” is never a lost guide. */}
           <motion.button
             type="button"
-            aria-label="Peek at the app — the guide waits in the pill up top"
+            aria-label="Peek at the app"
             onClick={() => suspend()}
             variants={scrimVariants}
             initial="hidden"
@@ -2355,7 +2344,7 @@ export function AdminTour() {
                 <button
                   type="button"
                   onClick={() => suspend()}
-                  aria-label="Close executive guide — resumes from the pill up top"
+                  aria-label="Close executive guide"
                   className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                 >
                   <X className="h-5 w-5" />
@@ -2428,7 +2417,7 @@ export function AdminTour() {
               </Button>
 
               <span className="hidden text-[11px] font-medium text-muted-foreground/80 sm:inline">
-                {stepId === "ready" ? "Next: the member guide" : `Step ${index + 1} of ${total}`}
+                {stepId === "ready" ? "Next: member guide" : `Step ${index + 1} of ${total}`}
               </span>
 
               {stepId === "ready" ? (
@@ -2437,7 +2426,7 @@ export function AdminTour() {
                   onClick={finishToMemberGuide}
                   className="h-11 min-w-[10rem] focus-visible:ring-2 focus-visible:ring-ring/60"
                 >
-                  <Wand2 className="h-4 w-4" /> Open member guide
+                  <Wand2 className="h-4 w-4" /> Member guide
                 </Button>
               ) : (
                 <Button

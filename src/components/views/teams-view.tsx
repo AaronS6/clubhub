@@ -28,7 +28,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -176,7 +175,6 @@ export function TeamsView() {
     <div className="space-y-6">
       <PageHeader
         title="Teams"
-        description="Organize your club into working teams with dedicated rosters, tasks, and meetings."
         actions={
           isExec ? (
             <Button variant="club" onClick={() => setCreateOpen(true)}>
@@ -199,11 +197,6 @@ export function TeamsView() {
         <EmptyState
           icon={<Users className="h-8 w-8" />}
           title="No teams yet"
-          description={
-            isExec
-              ? "Create one to organize your members."
-              : "Your club hasn't created any teams yet. Check back soon."
-          }
           action={
             isExec ? (
               <Button variant="club" onClick={() => setCreateOpen(true)}>
@@ -575,7 +568,7 @@ function TeamDetailSheet({
             {team.tasks.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                 <Inbox className="h-5 w-5" />
-                No tasks assigned to this team.
+                No tasks.
               </div>
             ) : (
               <ul className="space-y-1.5">
@@ -623,7 +616,7 @@ function TeamDetailSheet({
             {team.upcomingMeetings.length === 0 ? (
               <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
                 <CalendarDays className="h-5 w-5" />
-                No upcoming meetings scheduled.
+                No upcoming meetings.
               </div>
             ) : (
               <ul className="space-y-2">
@@ -744,9 +737,6 @@ function CreateTeamDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Create a team</DialogTitle>
-          <DialogDescription>
-            Teams organize members around specific projects, events, or ongoing responsibilities.
-          </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
@@ -833,7 +823,6 @@ function EditTeamDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit team</DialogTitle>
-          <DialogDescription>Update the name and description for this team.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 space-y-4">
@@ -891,9 +880,9 @@ function DeleteTeamDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete team?</AlertDialogTitle>
           <AlertDialogDescription>
-            Delete <span className="font-medium text-foreground">{team.name}</span>? This removes the
-            roster. Tasks and meetings associated with this team remain in the club but become
-            unassigned to a team. This cannot be undone.
+            Delete <span className="font-medium text-foreground">{team.name}</span>? This removes
+            the roster; tasks and meetings stay but lose their team. This cannot
+            be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -1013,10 +1002,6 @@ function AddMembersDialog({
       <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-md")} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle className="truncate">Add members to {team.name}</DialogTitle>
-          <DialogDescription>
-            Select club members to add to this team. {team.memberCount} current{" "}
-            {team.memberCount === 1 ? "member" : "members"}.
-          </DialogDescription>
         </DialogHeader>
         <div className="flex-1 flex flex-col min-h-0">
           <div className="px-4 pt-3 sm:px-0 sm:pt-0 shrink-0">
@@ -1034,7 +1019,7 @@ function AddMembersDialog({
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {membersData && membersData.members.length === 0
                   ? "No club members found."
-                  : "No members match your search or all are already on this team."}
+                  : "No matches, or everyone is already on this team."}
               </div>
             ) : (
               <ul className="divide-y rounded-lg border">

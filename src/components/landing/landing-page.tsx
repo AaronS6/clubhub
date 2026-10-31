@@ -163,7 +163,7 @@ const STEPS: {
     icon: Compass,
     word: "one",
     title: "Discover",
-    body: "Browse the clubs at North and see what they're actually about.",
+    body: "See who runs each club, how many members it has, and what they do.",
     photo: "/landing/bn-club-fair.jpg",
     photoAlt: "Students exploring club tables at the club fair",
   },
@@ -171,7 +171,7 @@ const STEPS: {
     icon: KeyRound,
     word: "two",
     title: "Join",
-    body: "Enter a club code, or send a request if the club wants to meet you first.",
+    body: "Enter the club's code to join instantly, or send a request.",
     photo: "/landing/bn-signup-table.jpg",
     photoAlt: "A club sign-up table with laptops, flyers, and candy",
   },
@@ -179,21 +179,21 @@ const STEPS: {
     icon: CalendarDays,
     word: "three",
     title: "Show up",
-    body: "Meetings, tasks, announcements, service hours — all in one calm place.",
+    body: "Meetings, announcements, tasks, and hours — all in one place.",
     photo: "/landing/bn-welcome-meeting.jpg",
     photoAlt: "Students at a club's welcome meeting",
   },
 ]
 
 const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
-  { icon: Megaphone, title: "Announcements", body: "Pinned news, reactions, and threads." },
-  { icon: Clock, title: "Service hours", body: "Log them, get them approved, hit the goal." },
-  { icon: CheckSquare, title: "Tasks", body: "A kanban board people actually use." },
-  { icon: CalendarDays, title: "Meetings", body: "RSVPs, attendees, and calendar export." },
-  { icon: MessageSquare, title: "Chat", body: "Club-wide, teams, and DMs — live." },
-  { icon: Users, title: "Teams", body: "Sub-groups with their own lanes of work." },
-  { icon: Wallet, title: "Financials", body: "Revenue, expenses, and balance." },
-  { icon: Trophy, title: "Badges", body: "Earn them. Climb the leaderboard." },
+  { icon: Megaphone, title: "Announcements", body: "Pinned posts with reactions, threads, colors, and tags." },
+  { icon: Clock, title: "Service hours", body: "Log hours, get them approved in a tap." },
+  { icon: CheckSquare, title: "Tasks", body: "A kanban board — assign, drag, done." },
+  { icon: CalendarDays, title: "Meetings", body: "RSVPs, attendance, and calendar export." },
+  { icon: MessageSquare, title: "Chat", body: "Club-wide channels, team spaces, and DMs." },
+  { icon: Users, title: "Teams", body: "Sub-groups with their own chat and tasks." },
+  { icon: Wallet, title: "Financials", body: "Revenue, expenses, and an honest balance." },
+  { icon: Trophy, title: "Badges", body: "Earn them, then climb the leaderboard." },
 ]
 
 /** Moments — every photo here is one of OURS: taken at Burnaby North by
@@ -295,27 +295,27 @@ const MOMENTS: { src: string; alt: string }[] = [
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What is ClubHub, actually?",
-    a: "The home for every club at Burnaby North. There's a public directory of what's out there, and once you're in a club you get announcements, tasks, meetings, chat, and service-hour tracking — all in one calm place instead of five group chats.",
+    a: "One home for every club at North — announcements, meetings, hours, chat, and members — instead of five group chats.",
   },
   {
     q: "Do I need an account to look around?",
-    a: "Nope. The whole directory is open — browse every listed club, read what they're about, see how many members they have. You only need an account to join a club or run one.",
+    a: "Nope, the directory is open. You only need an account to join or run a club.",
   },
   {
     q: "How do I join a club?",
-    a: "Find it in Explore, tap Join, then enter the club's code — or send a request if the club wants to meet you first. Either way it takes about ten seconds.",
+    a: "Find it, tap Join, and enter the club's code — leaders hand these out at the fair. Some clubs take requests instead.",
   },
   {
     q: "Is it free?",
-    a: "Yes, completely. ClubHub was built by students, not a company — no subscriptions, no ads, no upsells. It's just a tool that makes clubs easier to run.",
+    a: "Yes, completely. No ads, no subscriptions, no premium tier.",
   },
   {
-    q: "My club isn't listed — can we get on it?",
-    a: "Any club at North can be. A leader creates the club in a couple of minutes and flips on the public directory in club settings — after that it shows up here for everyone.",
+    q: "How can my club get listed?",
+    a: "Create your club (about two minutes), then flip on the public directory in Members → Club settings.",
   },
   {
     q: "Who made this?",
-    a: "A student at North who got tired of the group-chat chaos and decided to build the fix. The footer at the bottom of this page says exactly who.",
+    a: "A student at North who got tired of watching announcements die in group chats nobody reads. The footer says who.",
   },
 ]
 
@@ -626,9 +626,8 @@ export function LandingPage() {
 
                 <Reveal delay={0.18}>
                   <p className="mt-7 max-w-[34rem] text-base sm:text-lg leading-relaxed text-[#f0ebe0]/65">
-                    ClubHub is the home for every club at Burnaby North. Browse
-                    what&apos;s out there, join in a couple of clicks, and stop
-                    running your whole club out of a group chat.
+                    Every club at North in one place — announcements, meetings,
+                    hours, and chat, without the group-chat chaos.
                   </p>
                 </Reveal>
 
@@ -790,12 +789,6 @@ export function LandingPage() {
                 </div>
               </div>
             </Reveal>
-            <Reveal delay={0.16}>
-              <p className="mx-auto mt-6 max-w-xl text-center font-serif text-lg italic leading-relaxed text-[#f0ebe0]/55 sm:mt-8">
-                Made for Burnaby North students, by students who lived in
-                Group Chat chaos.
-              </p>
-            </Reveal>
           </section>
 
           {/* ── Explore clubs — the real public directory ─────────────────── */}
@@ -811,8 +804,7 @@ export function LandingPage() {
                     Find your people.
                   </h2>
                   <p className="mt-4 text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
-                    Real clubs, run by real students at North. See what each one
-                    is about before you commit to anything.
+                    Real clubs, real member counts. No account needed to browse.
                   </p>
                 </div>
               </Reveal>
@@ -829,7 +821,7 @@ export function LandingPage() {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search clubs at North…"
                     aria-label="Search public clubs"
-                    className="h-12 w-full rounded-full border-0 bg-[#221d15] pl-11 pr-12 text-[15px] text-[#f0ebe0] ring-1 ring-[#f0ebe0]/15 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_10px_24px_-14px_rgba(0,0,0,0.5)] placeholder:text-[#f0ebe0]/45 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#22c55e]/50"
+                    className="h-12 w-full rounded-full border-0 bg-[#221d15] pl-11 pr-12 text-[15px] text-[#f0ebe0] ring-1 ring-[#f0ebe0]/15 shadow-[0_1px_2px_rgba(0,0,0,0.3),0_10px_24px_-14px_rgba(0,0,0,0.5)] placeholder:text-[#f0ebe0]/45 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#f0ebe0]/40"
                   />
                   {query && (
                     <button
@@ -893,6 +885,9 @@ export function LandingPage() {
                 >
                   From scrolling to showing up.
                 </h2>
+                <p className="mt-4 max-w-xl text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
+                  No forms, no emails, no DMs into the void.
+                </p>
               </Reveal>
 
               <div className="mt-10 sm:mt-14 grid grid-cols-1 gap-5 sm:grid-cols-3 sm:gap-6">
@@ -944,9 +939,6 @@ export function LandingPage() {
                 >
                   Everything a club needs. Nothing it doesn&apos;t.
                 </h2>
-                <p className="mt-4 text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
-                  All of this is live in ClubHub today.
-                </p>
               </Reveal>
 
               <div className="mt-10 sm:mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
@@ -1011,10 +1003,9 @@ export function LandingPage() {
                       Create with ClubHub.
                     </h2>
                     <p className="mt-4 text-base sm:text-lg leading-relaxed text-[#f0ebe0]/60">
-                      If you run a club at North, this is your back office —
-                      announcements that actually reach people, service-hour
-                      approvals in a tap, a banner that makes your club feel
-                      real, and join requests you get to vet.
+                      Announcements people actually read. Hours approved in a
+                      tap. Join requests you vet. A public page so new members
+                      can find you.
                     </p>
                     <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-4">
                       <button
@@ -1062,6 +1053,9 @@ export function LandingPage() {
                 <p className="relative font-serif text-2xl sm:text-3xl italic text-[#f0ebe0]">
                   go join something.
                 </p>
+                <p className="relative mx-auto mt-4 max-w-md text-sm sm:text-[15px] leading-relaxed text-[#f0ebe0]/55">
+                  There&apos;s a room full of your people meeting this week.
+                </p>
                 <button
                   type="button"
                   onClick={scrollToClubs}
@@ -1085,8 +1079,8 @@ export function LandingPage() {
               <p className="font-display text-base font-bold tracking-tight text-[#f0ebe0]">
                 ClubHub
               </p>
-              <p className="mt-2.5 text-sm text-[#f0ebe0]/55">
-                Built for students at Burnaby North Secondary.
+              <p className="mt-2.5 max-w-xs text-sm text-[#f0ebe0]/55">
+                Every club at Burnaby North, in one place.
               </p>
               <p className="mt-1 text-xs text-[#f0ebe0]/35 select-none">
                 Made by Aaron Shan · v{APP_VERSION}
@@ -1309,8 +1303,8 @@ function StatsBand({ clubs, loading }: { clubs: PublicClubSummary[]; loading: bo
   const members = clubs.reduce((sum, club) => sum + club.memberCount, 0)
 
   const stats: { value: number; label: string; green?: boolean }[] = [
-    { value: clubs.length, label: "clubs on the directory" },
-    { value: members, label: "members across them" },
+    { value: clubs.length, label: "clubs listed" },
+    { value: members, label: "members total" },
     { value: 0, label: "chaos remaining", green: true },
   ]
 
@@ -1598,10 +1592,9 @@ function EmptyDirectory() {
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#4ade80]/[0.12] text-[#4ade80]">
         <Compass className="h-5 w-5" aria-hidden />
       </div>
-      <h3 className="text-base font-semibold text-[#f0ebe0]">No clubs are listed yet</h3>
+      <h3 className="text-base font-semibold text-[#f0ebe0]">No clubs listed yet</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[#f0ebe0]/55">
-        New clubs show up here automatically. Club leaders can manage their
-        listing from{" "}
+        New clubs appear automatically. Manage yours in{" "}
         <span className="font-semibold text-[#f0ebe0]">Members → Club settings</span>.
       </p>
     </div>
@@ -1616,7 +1609,7 @@ function NoMatchState({ query, onClear }: { query: string; onClear: () => void }
       </div>
       <h3 className="text-base font-semibold text-[#f0ebe0]">No clubs match “{query}”</h3>
       <p className="mt-1.5 text-sm text-[#f0ebe0]/55">
-        Try a different name, word, or club code.
+        Try another name or club code.
       </p>
       <button
         type="button"

@@ -35,6 +35,8 @@
 import { db } from "../src/lib/db"
 import { hashPassword } from "../src/lib/auth"
 import { encryptClubPassword } from "../src/lib/club-crypto"
+import sharp from "sharp"
+import { saveImage, publicUrl } from "../src/lib/image-store"
 
 const EXAMPLE_EMAIL = "alex@clubhub.example"
 const EXAMPLE_PASSWORD = "ClubHub2026!"
@@ -73,6 +75,11 @@ async function main() {
     // exists (its cascade handles club-scoped rows).
     const existingClub = await db.club.findFirst({ where: { name: CLUB_NAME } })
     if (existingClub) {
+      // DB-backed demo images seed with a fresh club id each run — delete
+      // the old club's StoredImage rows so re-seeds don't orphan bytes.
+      await db.storedImage.deleteMany({
+        where: { key: { in: [`${existingClub.id}-banner`, `${existingClub.id}-logo`] } },
+      })
       await db.club.delete({ where: { id: existingClub.id } })
     }
     await db.user.deleteMany({ where: { id: { in: existingUsers.map((u) => u.id) } } })
@@ -99,10 +106,10 @@ async function main() {
         "We design, build, and compete with robots in the FIRST Robotics Competition. " +
         "New members welcome — no experience required.",
       accentColor: CLUB_ACCENT,
-      // Demo banner — a cinematic workshop photo served from /public/banners.
-      // Real clubs upload their own via the exec "Edit banner" control
-      // (stored as a data URL); this static path just seeds the demo club.
-      bannerUrl: "/banners/robotics-banner.jpg",
+      // bannerUrl/logoUrl are set right after creation — the demo images are
+      // seeded through the PRODUCTION DB-backed image pipeline below
+      // (StoredImage rows + /api/club-images/{key} URLs, the same path real
+      // exec uploads take) so they can never be lost to a filesystem wipe.
       bannerFocalY: 0.6,
       // Listed in the public landing-page directory (see
       // seed-public-clubs.ts for the extra demo clubs).
@@ -112,6 +119,49 @@ async function main() {
       hoursGoal: 200,
       createdBy: alex.id,
       members: { create: { userId: alex.id, role: "executive" } },
+    },
+  })
+
+  // ── 2b. Demo banner + logo via the production DB image pipeline ─────────
+  // The banner is processed exactly like a real exec upload (1280×720 cover,
+  // JPEG q62 mozjpeg) and stored as a StoredImage row; the logo is a crisp
+  // branded robot-glyph tile (pure vector shapes — no font dependency)
+  // rasterized at the real logo size (256×256 q80). Both serve through
+  // /api/club-images/{key}?v=1 so the club switcher shows a branded tile and
+  // a sandbox/depoy disk wipe can never blank them.
+  console.log("   seeding banner + logo through the DB image pipeline…")
+  const bannerKey = `${club.id}-banner`
+  const bannerBytes = await sharp("public/banners/robotics-banner.jpg")
+    .resize(1280, 720, { fit: "cover", position: "centre" })
+    .jpeg({ quality: 62, mozjpeg: true })
+    .toBuffer()
+  await saveImage("club-image", bannerKey, bannerBytes)
+
+  const logoKey = `${club.id}-logo`
+  const logoSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">` +
+      `<rect width="256" height="256" rx="56" fill="${CLUB_ACCENT}"/>` +
+      `<circle cx="128" cy="52" r="10" fill="#ffffff"/>` +
+      `<rect x="118" y="58" width="20" height="20" fill="#ffffff"/>` +
+      `<rect x="58" y="78" width="140" height="94" rx="28" fill="#ffffff"/>` +
+      `<circle cx="98" cy="122" r="14" fill="${CLUB_ACCENT}"/>` +
+      `<circle cx="158" cy="122" r="14" fill="${CLUB_ACCENT}"/>` +
+      `<rect x="98" y="148" width="60" height="10" rx="5" fill="${CLUB_ACCENT}"/>` +
+      `<rect x="34" y="104" width="16" height="42" rx="8" fill="#ffffff"/>` +
+      `<rect x="206" y="104" width="16" height="42" rx="8" fill="#ffffff"/>` +
+      `</svg>`,
+  )
+  const logoBytes = await sharp(logoSvg)
+    .resize(256, 256, { fit: "cover", position: "centre" })
+    .jpeg({ quality: 80, mozjpeg: true })
+    .toBuffer()
+  await saveImage("club-image", logoKey, logoBytes)
+
+  await db.club.update({
+    where: { id: club.id },
+    data: {
+      bannerUrl: publicUrl("club-image", bannerKey, 1),
+      logoUrl: publicUrl("club-image", logoKey, 1),
     },
   })
 

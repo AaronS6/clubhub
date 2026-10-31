@@ -328,17 +328,17 @@ function ProfileBody({
       }
       await navigator.clipboard.writeText(url)
       toast.success("Link copied", {
-        description: "Paste it anywhere — bios, stories, group chats.",
+        description: "Paste it anywhere.",
       })
     } catch (err) {
       if ((err as Error)?.name === "AbortError") return // user closed the sheet
       try {
         await navigator.clipboard.writeText(url)
         toast.success("Link copied", {
-          description: "Paste it anywhere — bios, stories, group chats.",
+          description: "Paste it anywhere.",
         })
       } catch {
-        toast.error("Couldn't copy — grab the link from the address bar.")
+        toast.error("Couldn't copy. Grab it from the address bar.")
       }
     }
   }
@@ -556,8 +556,7 @@ function ProfileBody({
               </span>
               <p className="text-sm leading-relaxed text-[#f0ebe0]/70 pt-1.5 max-w-md">
                 <span className="font-bold text-[#f0ebe0]/90">Have the club code?</span>{" "}
-                You&apos;re in instantly — enter the code and the password an
-                executive shared with you.
+                Enter it with the password to join instantly.
               </p>
             </div>
             <div className="flex items-start gap-3.5 pt-4">
@@ -600,7 +599,7 @@ function ProfileBody({
                   Open club workspace
                 </Button>
                 <p className="text-sm text-[#f0ebe0]/50 max-w-md">
-                  You&apos;re a member of {club.name} — continue to its dashboard.
+                  You&apos;re already a member.
                 </p>
               </>
             ) : (
@@ -614,10 +613,6 @@ function ProfileBody({
                   <UserPlus className="h-4 w-4" />
                   Join this club
                 </Button>
-                <p className="text-sm text-[#f0ebe0]/50 max-w-md">
-                  Use the club code and password, or send a join request — an
-                  executive will approve you.
-                </p>
               </>
             )
           ) : (
@@ -632,7 +627,7 @@ function ProfileBody({
                 Join this club
               </Button>
               <p className="text-sm text-[#f0ebe0]/50 max-w-md">
-                Free account required — it takes under a minute.
+                Free, and it takes under a minute.
               </p>
             </>
           )}
@@ -795,7 +790,7 @@ function ClubJoinDialog({
         method: "POST",
         json: { clubCode: club.clubCode, message: message.trim() || undefined },
       })
-      toast.success("Request sent — an executive will review it.")
+      toast.success("Request sent.")
       setRequested(true)
     } catch (err: any) {
       toast.error(err.message)
@@ -826,8 +821,7 @@ function ClubJoinDialog({
             Join {club.name}
           </DialogTitle>
           <DialogDescription className="text-sm leading-relaxed text-[#f0ebe0]/60">
-            Use the club code and password, or send a join request — an
-            executive will approve you.
+            Use the club password, or send a join request.
           </DialogDescription>
         </DialogHeader>
 
@@ -845,8 +839,7 @@ function ClubJoinDialog({
             <div>
               <p className="text-sm font-semibold">Request sent</p>
               <p className="mt-1 text-sm leading-relaxed text-[#f0ebe0]/55 max-w-xs mx-auto">
-                An executive of {club.name} will review your request. You&apos;ll
-                get a notification the moment it&apos;s approved.
+                You&apos;ll get a notification when it&apos;s approved.
               </p>
             </div>
             <button
@@ -889,8 +882,7 @@ function ClubJoinDialog({
                 />
                 {pwFailed && (
                   <p className="text-xs leading-relaxed text-[#f0ebe0]/60">
-                    That password didn&apos;t work — you can also send a join
-                    request below and an executive will let you in.
+                    That password didn&apos;t work. Try a join request below.
                   </p>
                 )}
               </div>
@@ -920,8 +912,7 @@ function ClubJoinDialog({
                 <div>
                   <p className="text-sm font-semibold">Don&apos;t have the code?</p>
                   <p className="mt-0.5 text-xs leading-relaxed text-[#f0ebe0]/55">
-                    Send a join request instead — an executive will review it
-                    and let you in.
+                    An executive will review it and let you in.
                   </p>
                 </div>
               </div>
@@ -1002,16 +993,13 @@ function JoinPromptDialog({
             Join the ClubHub community
           </DialogTitle>
           <DialogDescription className="text-sm leading-relaxed text-[#f0ebe0]/60">
-            Create an account or log in to join{" "}
-            <span className="font-bold text-[#f0ebe0]/85">{clubName}</span> and
-            access its activities.
+            Sign up or log in to join{" "}
+            <span className="font-bold text-[#f0ebe0]/85">{clubName}</span>.
           </DialogDescription>
         </DialogHeader>
 
         <p className="text-xs text-[#f0ebe0]/45 mb-6">
-          After signing in we&apos;ll take you straight back to{" "}
-          <span className="font-mono font-semibold">{clubCode}</span>&apos;s join
-          steps.
+          After signing in, we&apos;ll bring you right back.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-2.5">
@@ -1109,7 +1097,7 @@ function ProfileError({ message, code }: { message: string; code: string }) {
       <p className="mt-3 text-sm leading-relaxed text-[#f0ebe0]/60 max-w-sm">
         We couldn&apos;t find a club with the code{" "}
         <span className="font-mono font-bold text-[#f0ebe0]/85">{code}</span>.
-        Check the link and try again.
+        Double-check the link.
       </p>
       <p className="text-xs text-[#f0ebe0]/30 mt-3">{message}</p>
       <Button

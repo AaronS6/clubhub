@@ -157,33 +157,27 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                ClubHub took a big step toward running itself this release:
-                storage you can actually see and manage, introduction guides
-                that never get lost, a leaner chat, and a full redesign of
-                every avatar effect.
+                Storage you can see, guides that never get lost, a leaner
+                chat, and redesigned avatar effects.
               </p>
 
               {/* ── v8.0 — storage becomes real ─────────────────────────── */}
               <SectionLabel version="v8.0" label="Storage becomes real" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
                 <ReleaseNote emoji="📊" title="Your club's storage, visible">
-                  A live meter of everything your club keeps — chat,
-                  announcements, tasks, images and more — against its 15 MB
-                  quota, with per-category breakdowns.
+                  A live meter of the club&apos;s 15 MB quota, by category.
                 </ReleaseNote>
                 <ReleaseNote emoji="⏸️" title="A full pause, not a crash">
-                  If storage ever hits 100%, new content pauses club-wide
-                  until an executive clears some room. Nothing is lost, and
-                  everyone is told exactly what&apos;s going on.
+                  At 100%, new posts pause club-wide until an exec clears
+                  room. Nothing is lost.
                 </ReleaseNote>
                 <ReleaseNote emoji="🧹" title="Cleanup that doesn't hurt">
-                  Ranked suggestions tell you what&apos;s safe to clear first —
-                  old chat and the activity feed, never your financial
-                  records. Deleting frees space on the spot.
+                  Ranked, safe-to-clear suggestions — never financial
+                  records. Deleting frees space instantly.
                 </ReleaseNote>
                 <ReleaseNote emoji="📬" title="Need more room?">
-                  An &ldquo;Increase storage capacity&rdquo; action reaches the
-                  ClubHub team directly from the Storage page.
+                  &ldquo;Increase storage capacity&rdquo; on the Storage page
+                  reaches the ClubHub team.
                 </ReleaseNote>
               </div>
 
@@ -191,14 +185,12 @@ export function WhatsNewModal() {
               <SectionLabel version="v8.0" label="Guides that never get lost" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
                 <ReleaseNote emoji="🛡️" title="The executive guide">
-                  New executives get an eight-stop tour of every admin power —
-                  branding, invites, approvals, records — with animated demo
-                  previews and one-tap jumps into the real thing.
+                  An eight-stop tour of every admin power, with demos and
+                  one-tap jumps.
                 </ReleaseNote>
                 <ReleaseNote emoji="📍" title="Pause it, resume anytime">
-                  Leave the guide mid-tour and it parks into a small pill at
-                  the top of the app — click it later and you&apos;re back on
-                  the exact step. Replay it anytime from Settings → Security.
+                  Leave mid-tour and it waits in a pill up top — resume on
+                  the exact step.
                 </ReleaseNote>
               </div>
 
@@ -206,18 +198,15 @@ export function WhatsNewModal() {
               <SectionLabel version="v8.0" label="A leaner chat" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
                 <ReleaseNote emoji="💬" title="More messages on screen">
-                  Tighter bubbles and spacing — conversations read denser and
-                  scroll lighter, without losing timestamps or reactions.
+                  Tighter bubbles and spacing — timestamps and reactions
+                  intact.
                 </ReleaseNote>
                 <ReleaseNote emoji="⌨️" title="Keep typing after Enter">
-                  Sending with Enter now leaves your cursor right in the
-                  message box — no more clicking the chat box after every
-                  message.
+                  Enter sends without stealing your cursor.
                 </ReleaseNote>
                 <ReleaseNote emoji="🪶" title="Chat weighs ~60% less">
-                  Every message used to quietly log extra rows in the
-                  background. Those are gone — old ones cleaned up too — so
-                  conversations cost far less of your club&apos;s storage.
+                  Hidden per-message overhead is gone — old extras cleaned
+                  up too.
                 </ReleaseNote>
               </div>
 
@@ -234,11 +223,8 @@ export function WhatsNewModal() {
                     </h3>
                   </div>
                   <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
-                    An accent ring in your club&apos;s color with a metallic
-                    sheen, a soft glow, starlight, a comet with a visible
-                    track, blossom petals, a neon glitch, sunset, aurora, and
-                    a gold halo — all bigger and clearer in the picker, so you
-                    can actually tell what you&apos;re choosing.
+                    Ring, glow, starlight, comet, petals, glitch, sunset,
+                    aurora, halo — bigger and clearer in the picker.
                   </p>
                   <button
                     type="button"
@@ -251,22 +237,18 @@ export function WhatsNewModal() {
                 </div>
               </div>
 
-              {/* ── v8.0 — and the rest ─────────────────────────────────── */}
+              {/* ── v8.0 · the rest ──────────────────────────────────── */}
               <SectionLabel version="v8.0" label="And the rest" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
                 <ReleaseNote emoji="🔒" title="Private notes, plainly">
-                  A clear &ldquo;Make private&rdquo; button with a
-                  who-can-see chooser — only you, or specific people. No more
-                  guessing what the toggle did.
+                  A &ldquo;Make private&rdquo; button with a who-can-see
+                  chooser.
                 </ReleaseNote>
                 <ReleaseNote emoji="🌌" title="Backgrounds that show up">
-                  Ambient backgrounds were rebuilt to be genuinely visible,
-                  with live preview tiles in Settings → Appearance.
+                  Genuinely visible, with live preview tiles in Settings.
                 </ReleaseNote>
                 <ReleaseNote emoji="📱" title="Mobile, smoothed out">
-                  Buttons that overflowed on small screens fixed, the
-                  keyboard behaves, and the whole app leans a little more
-                  polished.
+                  Overflow fixes, keyboard fixes, general polish.
                 </ReleaseNote>
               </div>
 
@@ -275,20 +257,17 @@ export function WhatsNewModal() {
                   Our goal
                 </p>
                 <p className="mt-2 text-sm text-[#f0ebe0]/80 leading-relaxed">
-                  We want ClubHub to be more than a place where executives
-                  post announcements — somewhere students find their people,
-                  get involved, and keep everything organized in one place.
-                  v8.0 is another big step toward the club that (actually)
-                  runs itself.
+                  ClubHub should be more than announcements — a place
+                  students find their people and stay organized.
                 </p>
               </div>
 
               <p className="mt-5 text-sm text-[#f0ebe0]/75 leading-relaxed">
-                A huge thank-you to everyone who&apos;s been using ClubHub so far.
+                Thank you for using ClubHub.
               </p>
               <p className="mt-2 text-sm text-[#f0ebe0]/75 leading-relaxed">
-                Go explore everything new in ClubHub v{APP_VERSION} and let us
-                know what you think! 👀
+                Explore what&apos;s new in v{APP_VERSION} and tell us what
+                you think.
               </p>
               <p className="mt-4 text-xs text-[#f0ebe0]/45 font-medium">
                 — The ClubHub Team | Aaron Shan
@@ -308,7 +287,7 @@ export function WhatsNewModal() {
                 Let&apos;s go
               </button>
               <p className="mt-2.5 text-center text-xs text-[#f0ebe0]/40">
-                You can find these notes anytime in your notifications.
+                Reopen these notes anytime from your notifications.
               </p>
             </div>
           </motion.div>

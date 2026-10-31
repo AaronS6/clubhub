@@ -216,7 +216,7 @@ export function AvatarCropper({
       {/* Confirm row */}
       <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-card/70 px-3 py-2.5">
         <p className="hidden text-xs text-muted-foreground sm:block">
-          Drag to reposition · square crop
+          Drag to reposition
         </p>
         <Button
           type="button"

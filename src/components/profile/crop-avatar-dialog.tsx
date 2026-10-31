@@ -133,7 +133,7 @@ export function CropAvatarDialog({
       <DialogContent className="sm:max-w-md rounded-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogHeader className="px-5 pt-5 pb-3 shrink-0">
           <DialogTitle>Crop your photo</DialogTitle>
-          <DialogDescription>Drag to reposition. Use the slider to zoom.</DialogDescription>
+          <DialogDescription>Drag to reposition.</DialogDescription>
         </DialogHeader>
 
         <div className="relative h-72 w-full bg-muted/50 overflow-hidden">

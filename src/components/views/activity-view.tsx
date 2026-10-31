@@ -138,7 +138,6 @@ export function ActivityView() {
       <EmptyState
         icon={<Users className="h-8 w-8" />}
         title="No club selected"
-        description="Pick a club from the sidebar to view its activity log."
       />
     )
   }
@@ -154,7 +153,7 @@ export function ActivityView() {
     <div className="space-y-4">
       <PageHeader
         title="Activity log"
-        description={`Audit trail of everything happening in this club · ${total} ${total === 1 ? "entry" : "entries"}`}
+        description={`${total} ${total === 1 ? "entry" : "entries"}`}
         actions={
           <div className="flex items-center gap-2">
             <Select value={actionType} onValueChange={setActionType}>
@@ -194,7 +193,8 @@ export function ActivityView() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Clear all activity?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This permanently deletes every activity entry for this club. The action cannot be undone. New activity will continue to be logged going forward.
+                      This permanently deletes every entry. New activity keeps
+                      logging.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -245,11 +245,6 @@ export function ActivityView() {
             <EmptyState
               icon={<ScrollText className="h-8 w-8" />}
               title={actionType === "all" ? "No activity yet" : "No matching entries"}
-              description={
-                actionType === "all"
-                  ? "As you and your members use the club, actions will appear here."
-                  : "Try a different filter or clear it to see everything."
-              }
               action={
                 actionType !== "all" ? (
                   <Button variant="outline" size="sm" onClick={() => setActionType("all")}>

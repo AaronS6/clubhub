@@ -275,13 +275,6 @@ export function NotificationsView() {
               ? "No matching notifications"
               : "No notifications yet"
           }
-          description={
-            filter === "unread"
-              ? "You have no unread notifications. New activity in your clubs will appear here."
-              : filter !== "all"
-              ? "Try a different filter or clear it to see everything."
-              : "When something happens in your clubs — like a task being assigned or hours approved — it'll show up here."
-          }
           action={
             filter !== "all" ? (
               <Button variant="outline" size="sm" onClick={() => setFilter("all")}>

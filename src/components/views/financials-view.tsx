@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
@@ -97,7 +97,7 @@ export function FinancialsView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Financials" description="Track your club's budget, revenue, and expenses."
+      <PageHeader title="Financials"
         actions={isExec ? <Button variant="club" onClick={() => setAddOpen(true)} size="sm"><Plus className="size-4" /><span className="hidden sm:inline">Add entry</span></Button> : undefined}
       />
 
@@ -139,7 +139,6 @@ export function FinancialsView() {
           <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : transactions.length === 0 ? (
           <EmptyState icon={<Wallet className="h-8 w-8" />} title="No transactions yet"
-            description={isExec ? "Add your first revenue or expense to start tracking." : "Check back once executives start recording finances."}
             action={isExec ? <Button variant="club" size="sm" onClick={() => setAddOpen(true)}><Plus className="size-4" /> Add entry</Button> : undefined}
           />
         ) : (
@@ -308,14 +307,14 @@ function TransactionDialog({ clubId, open, onOpenChange, editing, onSaved }: { c
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-md")} showCloseButton>
-        <DialogHeader><DialogTitle>{editing ? "Edit transaction" : "Add transaction"}</DialogTitle><DialogDescription>Record money in (revenue) or money out (expense).</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{editing ? "Edit transaction" : "Add transaction"}</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-4 py-4 sm:p-0">
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setType("revenue")} className={cn("flex items-center justify-center gap-2 rounded-md border px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color,transform,box-shadow]", type === "revenue" ? "border-success bg-success-subtle text-success-foreground scale-[1.02]" : "border-border hover:bg-accent")}><ArrowUpRight className="h-4 w-4" />Revenue</button>
             <button type="button" onClick={() => setType("expense")} className={cn("flex items-center justify-center gap-2 rounded-md border px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color,transform,box-shadow]", type === "expense" ? "border-danger bg-danger-subtle text-danger-foreground scale-[1.02]" : "border-border hover:bg-accent")}><ArrowDownRight className="h-4 w-4" />Expense</button>
           </div>
           <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Amount</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span><Input type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="pl-7" /></div></div>
-          <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Category</Label><Input required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Bake sale, Supplies, Transportation" /></div>
+          <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Category</Label><Input required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Bake sale" /></div>
           <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">Description (optional)</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Add details…" /></div>
           <Button type="submit" variant="club" className="w-full h-11" disabled={loading}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{editing ? "Save changes" : "Add transaction"}</Button>
         </form>

@@ -176,7 +176,7 @@ export function KeyboardShortcuts() {
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Press <Kbd>g</Kbd> then a key to jump anywhere — from any view, any time.
+            Press <Kbd>g</Kbd>, then a key.
           </DialogDescription>
         </DialogHeader>
 
@@ -210,14 +210,14 @@ export function KeyboardShortcuts() {
                 <li className="flex items-center justify-between gap-4 py-0.5">
                   <span
                     className="flex items-center gap-1"
-                    aria-label="Search — tap the search icon in the top bar"
+                    aria-label="Search — tap the search icon"
                   >
                     <Kbd>
                       <Search className="h-3 w-3" aria-hidden />
                     </Kbd>
                   </span>
                   <span className="text-body text-muted-foreground text-right">
-                    Tap the search icon in the top bar
+                    Tap the search icon
                   </span>
                 </li>
               ) : (
@@ -231,7 +231,7 @@ export function KeyboardShortcuts() {
                   </li>
                   <li className="flex items-center justify-between gap-4 py-0.5">
                     <Kbd>/</Kbd>
-                    <span className="text-body text-muted-foreground text-right">Open search — any keyboard</span>
+                    <span className="text-body text-muted-foreground text-right">Open search</span>
                   </li>
                 </>
               )}

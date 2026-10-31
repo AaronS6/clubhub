@@ -400,7 +400,6 @@ function ChatPane({ clubId }: { clubId: string }) {
               <EmptyState
                 illustration={<ChatEmptyIllustration />}
                 title="No conversation selected"
-                description="Pick a conversation from the list, or start a new chat."
               />
             </div>
           )}
@@ -974,7 +973,7 @@ function ConversationPane({
         { method: "DELETE" },
       ),
     onSuccess: () => {
-      toast.success("You left the conversation")
+      toast.success("Left the conversation")
       setLeaveOpen(false)
       // Reset mobile state so the user is returned to the conversation list
       // (rather than seeing the now-gone conversation pane).
@@ -1180,7 +1179,7 @@ function ConversationPane({
             </div>
             <h4 className="text-card-title">No messages yet</h4>
             <p className="text-body text-muted-foreground mt-1">
-              Say hi 👋 — be the first to start the conversation.
+              Be the first to say hi.
             </p>
           </div>
         ) : (
@@ -1297,8 +1296,7 @@ function ConversationPane({
           <AlertDialogHeader>
             <AlertDialogTitle>Leave this conversation?</AlertDialogTitle>
             <AlertDialogDescription>
-              You will no longer receive messages from this group chat. You can
-              be re-added later by an owner or executive.
+              You can be re-added later by an owner or executive.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1414,7 +1412,7 @@ function MembersDropdown({
         <DropdownMenuSeparator />
         {onlineMembers.length === 0 ? (
           <div className="px-2 py-3 text-xs text-muted-foreground italic">
-            No one is online right now.
+            No one is online.
           </div>
         ) : (
           onlineMembers.slice(0, 12).map((m) => (
@@ -2217,7 +2215,7 @@ function MessageComposer({
               setValue(e.target.value)
               maybeEmitTyping()
             }}
-            placeholder="Type a message… use @ to mention someone"
+            placeholder="Type a message…"
             className="flex-1 h-9 min-h-0 shrink-0 resize-none overflow-y-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             rows={1}
             onKeyDown={(e) => {
@@ -2251,11 +2249,6 @@ function MessageComposer({
           </Button>
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground/60 mt-1 px-1 hidden sm:block">
-        Press <kbd className="rounded border border-border px-1">Enter</kbd> to send,{" "}
-        <kbd className="rounded border border-border px-1">Shift+Enter</kbd> for a new line.
-        Type <kbd className="rounded border border-border px-1">@</kbd> to mention someone.
-      </p>
     </div>
   )
 }
@@ -2334,9 +2327,6 @@ function NewGroupChatDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New group chat</DialogTitle>
-          <DialogDescription>
-            Create a group chat with other members of this club.
-          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -2468,9 +2458,6 @@ function NewDirectChatDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New direct message</DialogTitle>
-          <DialogDescription>
-            Start a private 1:1 conversation with a club member.
-          </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
           <Input
@@ -2561,7 +2548,6 @@ function RenameDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Rename conversation</DialogTitle>
-          <DialogDescription>Choose a new name for this group chat.</DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
           <Label htmlFor="rename-name">Name</Label>
@@ -2644,9 +2630,6 @@ function AddMemberDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add members</DialogTitle>
-          <DialogDescription>
-            Add active club members to this group chat.
-          </DialogDescription>
         </DialogHeader>
         <div className="max-h-80 overflow-y-auto scrollbar-thin rounded-md border border-border divide-y divide-border">
           {others.length === 0 ? (

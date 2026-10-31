@@ -233,7 +233,6 @@ export function MeetingsView() {
         <EmptyState
           icon={<CalendarDays className="h-8 w-8" />}
           title="No club selected"
-          description="Join or create a club to manage meetings."
         />
       </div>
     )
@@ -245,7 +244,6 @@ export function MeetingsView() {
     <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-4">
       <PageHeader
         title="Meetings"
-        description="RSVP, plan, and track club meetings."
         actions={
           <>
             <Button variant="outline" size="sm" onClick={handleExportIcs} className="gap-2">
@@ -305,11 +303,6 @@ export function MeetingsView() {
               onEdit={(m) => setEditingMeeting(m)}
               onOpenDetail={(m) => setDetailMeeting(m)}
               emptyTitle="No meetings scheduled"
-              emptyDescription={
-                isExec
-                  ? "Plan one to get the team together."
-                  : "Check back soon — execs haven't scheduled anything yet."
-              }
               emptyAction={
                 isExec ? (
                   <Button size="sm" variant="club" className="gap-2" onClick={() => setCreateOpen(true)}>
@@ -331,7 +324,6 @@ export function MeetingsView() {
               onEdit={() => {}}
               onOpenDetail={(m) => setDetailMeeting(m)}
               emptyTitle="No past meetings"
-              emptyDescription="Past meetings will show up here after they end."
             />
           </TabsContent>
 
@@ -418,7 +410,7 @@ function MeetingsList({
       <EmptyState
         icon={<X className="size-8" />}
         title="Couldn't load meetings"
-        description="Something went wrong. Please try again."
+        description="Something went wrong."
         action={
           <Button variant="outline" size="sm" onClick={onRetry} className="gap-2">
             <RefreshCw className="size-4" /> Retry
@@ -695,13 +687,12 @@ function CancelMeetingMenuItem({ meeting }: { meeting: MeetingItem }) {
               <span>
                 {isRecurring ? (
                   <span>
-                    <strong>{meeting.title}</strong> is part of a recurring series. Choose whether
-                    to cancel only this occurrence or every remaining occurrence in the series.
+                    Choose whether to cancel only this occurrence or the whole
+                    series.
                   </span>
                 ) : (
                   <span>
-                    This will cancel <strong>{meeting.title}</strong>. Members will be notified.
-                    This cannot be undone.
+                    Members will be notified. This cannot be undone.
                   </span>
                 )}
               </span>
@@ -738,7 +729,7 @@ function CancelMeetingMenuItem({ meeting }: { meeting: MeetingItem }) {
                 <div>
                   <div className="font-medium">Entire series ({meeting.recurrenceRule})</div>
                   <div className="text-xs text-muted-foreground">
-                    Cancels all upcoming non-cancelled occurrences with this title.
+                    Cancels all upcoming occurrences.
                   </div>
                 </div>
               </label>
@@ -853,9 +844,6 @@ function CreateMeetingDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Schedule a meeting</DialogTitle>
-          <DialogDescription>
-            Create a meeting — RSVPs open immediately to all members.
-          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 grid gap-4">
@@ -958,8 +946,8 @@ function CreateMeetingDialog({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Creates the next 8 occurrences (9 total). You can cancel individual ones or the
-                    entire series later.
+                    Creates the next 8 occurrences. Cancel individually or the
+                    whole series anytime.
                   </p>
                 </div>
               )}
@@ -1060,13 +1048,11 @@ function EditMeetingDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-4 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Edit meeting</DialogTitle>
-          <DialogDescription>
-            {meeting.isRecurring ? (
-              <>Editing this occurrence only. Series metadata stays unchanged.</>
-            ) : (
-              <>Update the details of this meeting.</>
-            )}
-          </DialogDescription>
+          {meeting.isRecurring && (
+            <DialogDescription>
+              This occurrence only; the series stays unchanged.
+            </DialogDescription>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:p-0 grid gap-4">
@@ -1496,7 +1482,6 @@ function CalendarPanel({
           <EmptyState
             icon={<CalendarDays className="size-8" />}
             title="No meetings to show"
-            description="Upcoming meetings will appear here as they're scheduled."
           />
         </div>
       )}

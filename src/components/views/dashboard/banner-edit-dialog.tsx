@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
@@ -75,11 +75,11 @@ export function BannerEditDialog({
   const pickFile = (f: File | null | undefined) => {
     if (!f) return
     if (!f.type.startsWith("image/")) {
-      toast.error("Please choose an image file (PNG or JPG).")
+      toast.error("Choose an image file.")
       return
     }
     if (f.size > 8 * 1024 * 1024) {
-      toast.error("Image is too large (max 8MB).")
+      toast.error("Image too large (max 8MB).")
       return
     }
     setFile(f)
@@ -93,7 +93,7 @@ export function BannerEditDialog({
         form.append("file", file)
         form.append("focalY", String(focal / 100))
         await apiUpload<{ bannerUrl: string }>(`/api/clubs/${clubId}/banner`, form)
-        toast.success("Banner updated", { description: "Members will see it on their dashboard." })
+        toast.success("Banner updated")
       } else if (previewUrl) {
         await api(`/api/clubs/${clubId}/banner`, { method: "PATCH", json: { focalY: focal / 100 } })
         toast.success("Banner position updated")
@@ -112,7 +112,7 @@ export function BannerEditDialog({
     try {
       await api(`/api/clubs/${clubId}/banner`, { method: "DELETE" })
       await qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
-      toast.success("Banner removed", { description: "The dashboard uses the default look." })
+      toast.success("Banner removed")
       onOpenChange(false)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to remove banner")
@@ -132,10 +132,6 @@ export function BannerEditDialog({
             <ImagePlus className="h-4 w-4 text-club" />
             Edit banner
           </DialogTitle>
-          <DialogDescription className="text-caption">
-            A wide image works best — it crops to fit the card. Pick an image, set
-            the focal point, then save.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 sm:px-0 sm:pb-0 space-y-4">
@@ -186,9 +182,7 @@ export function BannerEditDialog({
                       <p className="truncate text-base font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.55)]">
                         {clubName}
                       </p>
-                      <p className="text-[11px] text-white/75">
-                        Preview — as members will see it
-                      </p>
+                      <p className="text-[11px] text-white/75">Preview</p>
                     </div>
                   </div>
                 </div>
@@ -238,10 +232,10 @@ export function BannerEditDialog({
                 max={100}
                 step={1}
                 disabled={busy}
-                aria-label="Vertical focal point of the banner"
+                aria-label="Banner focal point"
               />
               <p className="text-caption mt-2">
-                The card crops the image to fit — this sets which part stays visible.
+                Sets which part of the image stays visible.
               </p>
             </div>
           )}

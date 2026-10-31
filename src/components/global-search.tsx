@@ -74,6 +74,43 @@ interface SearchResponse {
 const EMPTY: SearchResponse = { members: [], tasks: [], announcements: [], meetings: [] }
 
 // ---------------------------------------------------------------------------
+// Presentation tokens — the palette's visual language (rounded-xl shell,
+// sidebar-style micro group labels, kbd caps, comfortable rows).
+// ---------------------------------------------------------------------------
+
+/** kbd cap — same recipe as the SearchShortcutHint caps in app-shell.tsx. */
+const KBD_CAP =
+  "rounded border border-border/80 bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-muted-foreground"
+
+/** Micro group label — the sidebar's tier-label language: 10px, medium,
+ *  tracked, muted. Rendered as a node inside cmdk's group-heading wrapper
+ *  (its px-2 + this ml-1 ≈ px-3), so labels align with item text at px-3. */
+const GROUP_LABEL =
+  "ml-1 block text-[10px] font-medium tracking-[0.14em] text-muted-foreground/70"
+
+/** CommandDialog pads items via a `[&_[cmdk-item]]:px-2` variant on the
+ *  Command root, which out-ranks any padding class on the item itself —
+ *  so the comfortable px-3 row padding is applied inline (always wins). */
+const ITEM_PAD: React.CSSProperties = {
+  paddingLeft: "0.75rem",
+  paddingRight: "0.75rem",
+}
+
+/** Quick jumps shown when the palette opens with an empty query — the
+ *  club's four main surfaces, keyboard-selectable like any search hit. */
+const QUICK_JUMPS: {
+  view: View
+  label: string
+  icon: typeof UsersIcon
+  hint: string
+}[] = [
+  { view: "members", label: "Members", icon: UsersIcon, hint: "m" },
+  { view: "tasks", label: "Tasks", icon: CheckSquare, hint: "t" },
+  { view: "announcements", label: "Announcements", icon: Megaphone, hint: "a" },
+  { view: "meetings", label: "Meetings", icon: CalendarDays, hint: "m" },
+]
+
+// ---------------------------------------------------------------------------
 // Hook — opens the palette on Cmd/Ctrl+K (and `/` when not focused on a text input).
 // Exposed so the app shell header button can also open it.
 // ---------------------------------------------------------------------------
@@ -103,6 +140,7 @@ export function openGlobalSearch() {
 
 export function GlobalSearch() {
   const clubId = useAppStore((s) => s.currentClubId)
+  const currentClub = useAppStore((s) => s.currentClub)
   const setView = useAppStore((s) => s.setView)
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
@@ -209,37 +247,83 @@ export function GlobalSearch() {
       open={open}
       onOpenChange={setOpen}
       title="Search this club"
-      description="Find members, tasks, announcements, and meetings."
-      className="sm:max-w-xl"
+      description="Search members, tasks, and more."
+      className="sm:max-w-xl rounded-xl shadow-dialog"
     >
-      <CommandInput
-        placeholder={clubId ? "Search members, tasks, announcements, meetings…" : "Select a club first"}
-        value={query}
-        onValueChange={setQuery}
-        disabled={!clubId}
-      />
-      <CommandList>
+      {/* Input row — 16px type in a 48px-tall row: search glyph left,
+          esc cap right (visual only — cmdk handles the Escape key itself). */}
+      <div className="relative">
+        <CommandInput
+          placeholder={clubId ? "Search this club…" : "Select a club first"}
+          value={query}
+          onValueChange={setQuery}
+          disabled={!clubId}
+          className="pr-14 text-base"
+        />
+        <kbd
+          aria-hidden
+          className={cn(
+            KBD_CAP,
+            "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+          )}
+        >
+          esc
+        </kbd>
+      </div>
+      <CommandList className="max-h-[min(70vh,380px)] pt-1.5 pb-1.5">
         {!clubId ? (
-          <CommandEmpty>Select or create a club to start searching.</CommandEmpty>
+          <CommandEmpty className="text-muted-foreground">
+            Select a club first.
+          </CommandEmpty>
         ) : !hasQuery ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            <Search className="mx-auto mb-2 h-5 w-5 opacity-50" />
-            Start typing to search this club.
-          </div>
+          <>
+            {/* Empty query → "Jump to" quick navigation to the club's main
+                surfaces (same onSelect navigation the search results use),
+                with a quiet hint line to start typing below it. */}
+            <CommandGroup heading={<span className={GROUP_LABEL}>JUMP TO</span>}>
+              {QUICK_JUMPS.map((q) => {
+                const Icon = q.icon
+                return (
+                  <CommandItem
+                    key={q.view}
+                    value={`jump ${q.view} ${q.label}`}
+                    onSelect={() => go(q.view)}
+                    className="gap-3 rounded-lg"
+                    style={ITEM_PAD}
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="flex-1 truncate font-medium">{q.label}</span>
+                    <kbd aria-hidden className={KBD_CAP}>
+                      {q.hint}
+                    </kbd>
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+            <div className="flex items-center gap-1.5 py-2 pr-3 pl-5 text-xs text-muted-foreground">
+              <Search className="h-3 w-3 shrink-0 opacity-60" />
+              <span>Type to search this club</span>
+            </div>
+          </>
         ) : loading ? (
           <SearchSkeleton />
         ) : totalCount === 0 ? (
-          <CommandEmpty>No results for “{query}”.</CommandEmpty>
+          <CommandEmpty className="text-muted-foreground">
+            Nothing for “{query}” — try a name or a shorter word.
+          </CommandEmpty>
         ) : (
           <>
             {results.members.length > 0 && (
-              <CommandGroup heading="Members">
+              <CommandGroup heading={<span className={GROUP_LABEL}>PEOPLE</span>}>
                 {results.members.map((m) => (
                   <CommandItem
                     key={`m-${m.id}`}
                     value={`member ${m.name} ${m.email}`}
                     onSelect={() => go("members")}
-                    className="gap-3"
+                    className="gap-3 rounded-lg"
+                    style={ITEM_PAD}
                   >
                     <Avatar className="h-7 w-7">
                       <AvatarImage src={m.avatarUrl ?? undefined} alt={m.name} />
@@ -270,15 +354,16 @@ export function GlobalSearch() {
             {results.tasks.length > 0 && (
               <>
                 {results.members.length > 0 && <CommandSeparator />}
-                <CommandGroup heading="Tasks">
+                <CommandGroup heading={<span className={GROUP_LABEL}>TASKS</span>}>
                   {results.tasks.map((t) => (
                     <CommandItem
                       key={`t-${t.id}`}
                       value={`task ${t.title}`}
                       onSelect={() => go("tasks")}
-                      className="gap-3"
+                      className="gap-3 rounded-lg"
+                      style={ITEM_PAD}
                     >
-                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                         <CheckSquare className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -301,15 +386,16 @@ export function GlobalSearch() {
                 {(results.members.length > 0 || results.tasks.length > 0) && (
                   <CommandSeparator />
                 )}
-                <CommandGroup heading="Announcements">
+                <CommandGroup heading={<span className={GROUP_LABEL}>ANNOUNCEMENTS</span>}>
                   {results.announcements.map((a) => (
                     <CommandItem
                       key={`a-${a.id}`}
                       value={`announcement ${a.title}`}
                       onSelect={() => go("announcements")}
-                      className="gap-3"
+                      className="gap-3 rounded-lg"
+                      style={ITEM_PAD}
                     >
-                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                         <Megaphone className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -330,15 +416,16 @@ export function GlobalSearch() {
                 {(results.members.length > 0 ||
                   results.tasks.length > 0 ||
                   results.announcements.length > 0) && <CommandSeparator />}
-                <CommandGroup heading="Meetings">
+                <CommandGroup heading={<span className={GROUP_LABEL}>MEETINGS</span>}>
                   {results.meetings.map((m) => (
                     <CommandItem
                       key={`mt-${m.id}`}
                       value={`meeting ${m.title}`}
                       onSelect={() => go("meetings")}
-                      className="gap-3"
+                      className="gap-3 rounded-lg"
+                      style={ITEM_PAD}
                     >
-                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                         <CalendarDays className="h-4 w-4" />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -356,41 +443,27 @@ export function GlobalSearch() {
         )}
       </CommandList>
 
-      {/* Footer hint */}
-      <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
-        <span className="flex items-center gap-1.5">
-          <span className="flex items-center gap-1">
-            {results.members.length > 0 && (
-              <>
-                <UsersIcon className="h-3 w-3" />
-                {results.members.length}
-              </>
+      {/* Footer — club identity on the left (accent dot + name), keyboard
+          affordances on the right. */}
+      <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-3 py-2">
+        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span
+            aria-hidden
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              !currentClub?.accentColor && "bg-primary"
             )}
-            {results.tasks.length > 0 && (
-              <>
-                <CheckSquare className="h-3 w-3 ml-1.5" />
-                {results.tasks.length}
-              </>
-            )}
-            {results.announcements.length > 0 && (
-              <>
-                <Megaphone className="h-3 w-3 ml-1.5" />
-                {results.announcements.length}
-              </>
-            )}
-            {results.meetings.length > 0 && (
-              <>
-                <CalendarDays className="h-3 w-3 ml-1.5" />
-                {results.meetings.length}
-              </>
-            )}
-          </span>
+            style={
+              currentClub?.accentColor
+                ? { backgroundColor: currentClub.accentColor }
+                : undefined
+            }
+          />
+          <span className="truncate">{currentClub?.clubName ?? "ClubHub"}</span>
         </span>
-        <span className="flex items-center gap-1.5">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">↵</kbd>
-          <span>to open</span>
-          <kbd className="ml-2 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">esc</kbd>
-          <span>to close</span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <kbd className={KBD_CAP}>↵ open</kbd>
+          <kbd className={KBD_CAP}>esc close</kbd>
         </span>
       </div>
     </CommandDialog>
@@ -434,7 +507,7 @@ function SearchSkeleton() {
   return (
     <div className="p-2">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-2 py-2">
+        <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-2.5">
           <Skeleton className="h-7 w-7 rounded-full" />
           <div className="flex-1 space-y-1.5">
             <Skeleton className="h-3 w-2/3" />

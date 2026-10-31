@@ -44,7 +44,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -188,7 +187,6 @@ export function NotesView() {
       <div className="hidden sm:block sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-background/45 backdrop-blur-xl border-b border-border/60">
         <PageHeader
           title="Notes"
-          description="Share knowledge, meeting recaps, and ideas."
           actions={
             <NotesHeaderActions
               clubId={currentClubId}
@@ -204,7 +202,6 @@ export function NotesView() {
       <div className="sm:hidden">
         <PageHeader
           title="Notes"
-          description="Share knowledge, meeting recaps, and ideas."
           actions={
             <NotesHeaderActions
               clubId={currentClubId}
@@ -297,11 +294,6 @@ export function NotesView() {
         <EmptyState
           illustration={<NotesEmptyIllustration />}
           title={data && data.notes.length > 0 ? "No notes match your filters" : "No notes yet"}
-          description={
-            data && data.notes.length > 0
-              ? "Try clearing the filters above."
-              : "Be the first to jot something down — meeting recaps, links, and ideas all live here."
-          }
           action={
             data && data.notes.length === 0 ? (
               <Button variant="club" onClick={() => setComposerOpen(true)} size="sm">
@@ -406,7 +398,7 @@ export function NotesView() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this note?</AlertDialogTitle>
             <AlertDialogDescription>
-              The note will be hidden immediately. This cannot be undone from inside the app.
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -826,7 +818,7 @@ function NoteComposerDialog({
       return
     }
     if (state.content.length > maxContent) {
-      toast.error(`Content must be ${maxContent} characters or fewer`)
+      toast.error(`Content too long (max ${maxContent})`)
       return
     }
     setSubmitting(true)
@@ -870,11 +862,6 @@ function NoteComposerDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-4 pt-3 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>{mode === "create" ? "New note" : "Edit note"}</DialogTitle>
-          <DialogDescription>
-            {mode === "create"
-              ? "Markdown-style notes — no images, just text. Be concise."
-              : "Update your note. Only you can edit it."}
-          </DialogDescription>
         </DialogHeader>
 
         {/* Body — scrollable on both mobile and desktop so long content never
@@ -914,7 +901,7 @@ function NoteComposerDialog({
               id="note-content"
               value={state.content}
               onChange={(e) => setState((s) => ({ ...s, content: e.target.value.slice(0, maxContent) }))}
-              placeholder="Meeting recap, links, ideas, anything text-based…"
+              placeholder="Meeting recap, links, ideas…"
               className="min-h-[140px] resize-y"
               maxLength={maxContent}
             />
@@ -925,7 +912,7 @@ function NoteComposerDialog({
             <Label className="text-caption-medium">Tags</Label>
             {tags.length === 0 ? (
               <p className="text-caption text-muted-foreground">
-                No tags yet — create one below.
+                No tags yet.
               </p>
             ) : (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -1004,9 +991,9 @@ function NoteComposerDialog({
                   <p className="text-caption text-muted-foreground mt-0.5">
                     {state.isPrivate
                       ? state.sharedWith.length > 0
-                        ? `Only you and the ${state.sharedWith.length === 1 ? "member" : `${state.sharedWith.length} members`} you picked can see this note.`
+                        ? `Only you and the ${state.sharedWith.length === 1 ? "member" : `${state.sharedWith.length} members`} you picked.`
                         : "Only you can see this note."
-                      : "All active members of this club can see this note."}
+                      : "All club members can see it."}
                   </p>
                 </div>
               </div>
@@ -1070,7 +1057,7 @@ function NoteComposerDialog({
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-tight">Only me</span>
                       <span className="block text-caption text-muted-foreground mt-0.5">
-                        Just you — nobody else can open it.
+                        Nobody else can open it.
                       </span>
                     </span>
                   </button>
@@ -1098,7 +1085,7 @@ function NoteComposerDialog({
                     <span className="min-w-0">
                       <span className="block text-sm font-medium leading-tight">Specific people</span>
                       <span className="block text-caption text-muted-foreground mt-0.5">
-                        You choose exactly who — pick below.
+                        Pick who below.
                       </span>
                     </span>
                   </button>
@@ -1152,7 +1139,7 @@ function NoteComposerDialog({
                     )}
                     {state.sharedWith.length === 0 && (
                       <p className="text-caption text-muted-foreground px-0.5">
-                        Until you tick a name, the note stays visible to you only.
+                        Tick a name to share it.
                       </p>
                     )}
                   </>

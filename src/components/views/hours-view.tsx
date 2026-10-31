@@ -31,7 +31,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -272,7 +271,6 @@ export function HoursView() {
     <div className="space-y-6">
       <PageHeader
         title="Service Hours"
-        description="Log and track your service contributions to the club."
         actions={
           <>
             <Button variant="outline" size="sm" onClick={handleExport} disabled={!data || data.items.length === 0}>
@@ -370,7 +368,6 @@ export function HoursView() {
           <EmptyState
             icon={<Clock className="h-8 w-8" />}
             title="No service hours yet"
-            description="Log your first contribution."
             action={
               <Button size="sm" variant="club" onClick={() => setSubmitOpen(true)}>
                 <Plus className="h-4 w-4" /> Submit Hours
@@ -381,7 +378,6 @@ export function HoursView() {
           <EmptyState
             icon={<Calendar className="h-8 w-8" />}
             title="No entries in this period"
-            description="Try a different time period — or switch to “All time” to see everything."
           />
         ) : (
           <>
@@ -805,7 +801,6 @@ function SubmitHoursDialog({
       <DialogContent className={DIALOG_CLASS} showCloseButton={false}>
         <DialogHeader className="px-5 pt-5 pb-3 sm:p-0 sm:pb-0 border-b sm:border-0 shrink-0">
           <DialogTitle>Submit service hours</DialogTitle>
-          <DialogDescription>Record your volunteer work. An executive will review it.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex-1 relative flex flex-col min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-5 py-5 sm:p-0 space-y-5 pb-24 sm:pb-6">
@@ -833,7 +828,7 @@ function SubmitHoursDialog({
             <div className="space-y-1.5">
               <Label htmlFor="hours-reason" className="text-xs font-medium text-muted-foreground">What did you do?</Label>
               <Textarea id="hours-reason" rows={4}
-                placeholder="e.g. Helped set up the spring fair booths and cleaned up afterwards."
+                placeholder="e.g. Helped set up the spring fair booths."
                 value={reason} onChange={(e) => { setReason(e.target.value); if (reasonError) setReasonError(null) }}
                 maxLength={2000} required aria-invalid={!!reasonError}
                 className={cn(reasonError && "border-danger/50")}
@@ -924,7 +919,7 @@ function SetGoalPopover({
     setSaving(true)
     try {
       await api(`/api/clubs/${clubId}/my-goal`, { method: "PATCH", json: { goal } })
-      toast.success(goal > 0 ? `Personal goal set — ${goal}h` : "Personal goal cleared")
+      toast.success(goal > 0 ? `Personal goal set to ${goal}h` : "Personal goal cleared")
       setOpen(false)
       onSaved?.()
     } catch (err: any) {
@@ -951,8 +946,7 @@ function SetGoalPopover({
       <PopoverContent align="end" className="w-64 p-4" aria-label="Edit personal goal">
         <p className="text-sm font-semibold">Personal goal</p>
         <p className="text-caption text-muted-foreground mt-0.5 mb-3">
-          Your own target for this club. The club-wide goal applies when you
-          don&apos;t set one.
+          Your own target. The club goal applies otherwise.
         </p>
         <div className="flex items-center gap-2">
           <Input

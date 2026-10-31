@@ -455,16 +455,20 @@
   }
 
   /* View-enter — one-shot entrance for the main content area when the
-     user switches views (or clubs). "Motion answers the action": 200ms,
-     6px rise, opacity + transform only (compositor-friendly, no layout).
-     The remount key on the shell's content wrapper replays it per switch;
-     the reduced-motion kill switch above neutralizes it safely. */
+     user switches views (or clubs). "Motion answers the action": upgraded
+     to the Apple-settle feel (§ per-tab polish) — 320ms, 10px rise, a
+     hairline 0.5% scale, opacity + transform only (compositor-friendly,
+     no layout). The remount key on the shell's content wrapper replays it
+     per switch; the reduced-motion kill switch above neutralizes it safely.
+     Fill mode BACKWARDS only: during the (zero-length) delay the from-state
+     applies, and after the animation ends no transform lingers to fight
+     descendants or hover transitions. */
   @keyframes ch-view-enter {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: none; }
   }
   .ch-view-enter {
-    animation: ch-view-enter 200ms var(--motion-ease) backwards;
+    animation: ch-view-enter 320ms var(--motion-ease) backwards;
   }
 
   /* Skeleton shimmer (§ v7.2) — the app's loading-ghost language. A soft
@@ -955,6 +959,242 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
 
 @media (prefers-reduced-motion: reduce) {
   .ch-tour-pop {
+    animation: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Aurora greeting text (dashboard "Good morning, Alex." line).
+   The element styles are applied INLINE in dashboard-view.tsx, and the band
+   is driven by a rAF loop in the component that writes backgroundPosition
+   every frame. NO CSS animation is used: this environment's Chromium
+   freezes the painted raster of background-clip:text elements driven by
+   CSS background-position animations (computed style advances, pixels
+   never repaint — verified by live pixel-diff bisection across durations,
+   delays, and layering). JS-driven per-frame inline updates are the only
+   path verified to repaint (2,816 px of sweep motion in the verification
+   harness). The keyframes below are retained ONLY for backwards
+   compatibility with any stray usage; the greeting itself no longer
+   references them. The soft band (club accent → teal → violet, mixed
+   toward the ink so it never goes neon) crosses the glyphs once per 12s;
+   the widened gradient stops (40→62%) are the "slower, lingers longer"
+   tuning, and the rAF driver's 2.6s virtual head start keeps color on the
+   glyphs at first paint.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes aurora-slide {
+  from { background-position: 100% 0; }
+  to   { background-position: 0% 0; }
+}
+
+/* Old-browser fallback only: modern browsers render the richer inline
+   gradient (with color-mix) on top of this. If color-mix() is unsupported
+   the inline declaration is dropped and this plain-ink gradient keeps the
+   greeting visible (a failed background + transparent fill would vanish
+   the line). */
+.aurora-fallback {
+  background-image: linear-gradient(110deg, var(--foreground), var(--foreground));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The component also drops the inline animation itself; this belt-and-
+     suspenders rule covers any stray usage of the keyframes. The static
+     background-position (100% 0) already parks on a plain foreground
+     window, so the line renders as normal ink either way. */
+  .aurora-fallback {
+    animation: none;
+  }
+}
+
+/* ===== Storage glass (Task R-b) ===== */
+/* iCloud-style glass panes for the storage view (storage-view.tsx only).
+   Light: frosted card at 60% + white inset bevel + hairline edge. Dark:
+   white/7 surface + white/10 bevel/edge. ::before is a static diagonal
+   specular band (the pane's self-luminosity); ::after is a one-time
+   specular sweep that crosses the pane shortly after mount (transform
+   only). Both are pointer-events-none and clipped by the pane's own
+   overflow. Direct children are promoted above the static band so text
+   stays crisp — the sheen reads on the glass surface around the content,
+   while the transient sweep passes over it. */
+
+.storage-glass {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.75rem;
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  backdrop-filter: blur(24px) saturate(1.1);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(15, 18, 22, 0.04),
+    0 16px 40px -24px rgba(15, 18, 22, 0.18);
+}
+.dark .storage-glass {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 20px 48px -28px rgba(0, 0, 0, 0.55);
+}
+.storage-glass > * {
+  position: relative;
+}
+.storage-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+.dark .storage-glass::before {
+  background: linear-gradient(
+    115deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.09) 50%,
+    transparent 58%
+  );
+}
+.storage-glass::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(
+    115deg,
+    transparent 42%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 58%
+  );
+  pointer-events: none;
+  transform: translateX(-55%);
+  animation: storage-sweep 1400ms var(--motion-ease) 450ms both;
+}
+.dark .storage-glass::after {
+  background: linear-gradient(
+    115deg,
+    transparent 43%,
+    rgba(255, 255, 255, 0.10) 50%,
+    transparent 57%
+  );
+}
+@keyframes storage-sweep {
+  to {
+    transform: translateX(55%);
+  }
+}
+
+/* Warm variant — the cleanup pane sits slightly apart from the neutral
+   category panes: a more transparent body + a warm-neutral sheen. */
+.storage-glass--warm {
+  background: color-mix(in srgb, var(--card) 45%, transparent);
+}
+.storage-glass--warm::before {
+  background: linear-gradient(
+    115deg,
+    transparent 40%,
+    rgba(255, 245, 228, 0.34) 50%,
+    transparent 60%
+  );
+}
+.dark .storage-glass--warm {
+  background: rgba(255, 255, 255, 0.05);
+}
+.dark .storage-glass--warm::before {
+  background: linear-gradient(
+    115deg,
+    transparent 42%,
+    rgba(255, 232, 200, 0.08) 50%,
+    transparent 58%
+  );
+}
+
+/* Quiet variant — the CATEGORY panes. User feedback: the solid glass
+   rectangles read as heavy "black boxes". These panes now float nearly
+   invisible: a hairline border + a whisper of background, no specular
+   sweep, no blur, no elevation shadow — the rows themselves (hairline
+   dividers) carry the structure. Only the hero keeps the full glass. */
+.storage-glass--quiet {
+  background: color-mix(in srgb, var(--card) 22%, transparent);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: var(--border);
+  box-shadow: none;
+}
+.storage-glass--quiet::before,
+.storage-glass--quiet::after {
+  content: none;
+}
+.dark .storage-glass--quiet {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Entrance — staggered rise for the storage page's major blocks (hero,
+   then each category pane, then the cleanup pane). 640ms Apple-settle;
+   the per-pane delay is passed inline via animationDelay. */
+@keyframes storage-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.storage-rise {
+  animation: storage-rise 640ms var(--motion-ease) backwards;
+}
+
+/* Dial draw-in — the usage arc's stroke-dashoffset transition (1.15s,
+   Apple-settle). The component flips the offset right after mount (double
+   rAF); this class owns the curve. */
+.storage-dial-arc {
+  transition: stroke-dashoffset 1150ms var(--motion-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storage-rise,
+  .storage-glass::after {
+    animation: none;
+  }
+  .storage-dial-arc {
+    transition: none;
+  }
+}
+
+/* ===== Dashboard load choreography (Task R-restore) ===== */
+/* One-shot entrance for the dashboard's major blocks: each rises 14px with a
+   hairline scale on a 640ms Apple-settle curve, staggered ~70ms apart via an
+   inline `--dash-d` delay custom property. Order: banner → hours panel →
+   attention row → bento tiles → stat strips. The greeting line is
+   deliberately NOT animated (the aurora color sweep is its entrance).
+   fill-mode BACKWARDS: during its delay a block holds the from-state
+   (invisible), and after the animation ends no transform lingers to fight
+   the tiles' hover transitions — the same pattern as .ch-view-enter. */
+@keyframes dash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.dash-rise {
+  animation: dash-rise 640ms var(--motion-ease, cubic-bezier(0.22, 1, 0.36, 1)) backwards;
+  animation-delay: var(--dash-d, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-rise {
     animation: none;
   }
 }

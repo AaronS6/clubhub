@@ -52,9 +52,6 @@ export function OnboardingBanner({
         <PartyPopper className="h-4 w-4 text-club shrink-0" />
         <h2 className="text-section-title">Welcome! Let&apos;s set up your club</h2>
       </div>
-      <p className="text-caption text-muted-foreground mb-4">
-        A few quick steps will get your members engaged.
-      </p>
       <ul className="grid sm:grid-cols-2 gap-2">
         {items.map((it, i) => (
           <li key={i}>

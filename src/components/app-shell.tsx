@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react"
 import { useAppStore, View } from "@/lib/store"
 import { api, apiUpload } from "@/lib/api/client"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import dynamic from "next/dynamic"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -12,6 +13,7 @@ import { initials, relativeTime } from "@/components/shared/page-header"
 import { UnreadDot, UnreadBadge } from "@/components/shared/unread-indicator"
 import { DIALOG_CLASS } from "@/components/shared/dialog-class"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ResilientImage } from "@/components/ui/resilient-image"
 import {
   DecoratedAvatar,
   DECORATION_IDS,
@@ -33,7 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -55,15 +57,14 @@ import {
   MessageSquare, CheckCheck, Check, ChevronRight, AlertTriangle, X, RefreshCw,
   Upload, Trash2, Palette, NotebookPen, KeyRound, Compass, UserCheck,
   BookOpen, BookOpenCheck, Keyboard, Database, GraduationCap, PlayCircle,
+  User, Link2, ChevronLeft, CheckCircle2, UserPlus,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useSearchShortcutHint } from "@/hooks/use-platform"
-import { AuthScreen } from "@/components/auth/auth-screen"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
-import { PublicClubProfile } from "@/components/public-club-profile"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { openGlobalSearch } from "@/components/global-search"
 // Lazy-load the GlobalSearch command palette (heavy: bundles cmdk). It's
@@ -81,6 +82,47 @@ const LandingPage = dynamic(
   () => import("@/components/landing/landing-page").then((m) => m.LandingPage),
   { ssr: false }
 )
+// §Load speed — code-split the rarely-rendered / event-driven surfaces so
+// ~250KB of source leaves the shell's critical chunk (smaller first paint
+// + faster hydration; these chunks stream in parallel only when actually
+// needed):
+//   • PublicClubProfile — renders ONLY for ?public=<code> visitors.
+//   • AuthScreen — renders ONLY for ?auth=login|signup or reset links.
+//   • OnboardingTour / AdminTour / ExecHandbookModal — overlay guides that
+//     mount idle and listen for events; their auto-open flows all carry
+//     ≥1.1s settle delays, so a parallel chunk fetch never races them.
+// AdminTour is additionally gated below on the executive role, so regular
+// members never download it at all.
+const PublicClubProfile = dynamic(
+  () => import("@/components/public-club-profile").then((m) => m.PublicClubProfile),
+  { ssr: false, loading: () => <FullBleedLoader label="Loading club…" /> }
+)
+const AuthScreen = dynamic(
+  () => import("@/components/auth/auth-screen").then((m) => m.AuthScreen),
+  { ssr: false, loading: () => <FullBleedLoader label="Loading…" /> }
+)
+const OnboardingTour = dynamic(
+  () => import("@/components/onboarding-tour").then((m) => m.OnboardingTour),
+  { ssr: false, loading: () => null }
+)
+const AdminTour = dynamic(
+  () => import("@/components/admin-tour").then((m) => m.AdminTour),
+  { ssr: false, loading: () => null }
+)
+const ExecHandbookModal = dynamic(
+  () => import("@/components/exec-handbook-modal").then((m) => m.ExecHandbookModal),
+  { ssr: false, loading: () => null }
+)
+// Minimal full-bleed loader for the code-split full-page branches above —
+// the visitor sees a quiet spinner for the ~100-300ms the chunk streams in.
+function FullBleedLoader({ label }: { label: string }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-muted-foreground" role="status" aria-label={label}>
+      <Loader2 className="h-6 w-6 animate-spin" />
+      <span className="text-sm">{label}</span>
+    </div>
+  )
+}
 import {
   notifMeta, notifToneClasses, targetViewFor,
 } from "@/lib/notif-meta"
@@ -90,9 +132,6 @@ import { useWhatsNewNotif, openWhatsNew } from "@/lib/whats-new"
 // APP_VERSION (not whats-new's ack key "7.5.1") — the bell section label
 // displays the real user-facing version.
 import { APP_VERSION } from "@/lib/version"
-import { OnboardingTour } from "@/components/onboarding-tour"
-import { ExecHandbookModal } from "@/components/exec-handbook-modal"
-import { AdminTour } from "@/components/admin-tour"
 import { KeyboardShortcuts, OPEN_KEYBOARD_SHORTCUTS_EVENT } from "@/components/shared/keyboard-shortcuts"
 
 interface MeResponse {
@@ -118,6 +157,24 @@ interface JoinedClubInfo {
   name: string
   clubCode: string
   accentColor: string
+}
+
+/** A club entry in the public directory list (GET /api/public/clubs) — the
+ *  public-safe recruiting fields the join dialog's Explore tab renders in
+ *  its mini-directory (the same shape the landing page directory consumes).
+ *  No passwords, no member lists — identity info only. */
+interface PublicClubMini {
+  name: string
+  description: string | null
+  logoUrl: string | null
+  bannerUrl: string | null
+  /** 0–1 vertical focal point for the banner crop (as the landing cards). */
+  bannerFocalY: number | null
+  accentColor: string
+  clubCode: string
+  /** How new members get in: type the code, or request approval. */
+  joinMode: "code" | "request"
+  memberCount: number
 }
 
 /** sessionStorage key set right before the public club profile navigates into
@@ -209,6 +266,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const params = useSearchParams()
+  const router = useRouter()
   const { theme, setTheme } = useTheme()
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark")
 
@@ -336,7 +394,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const code = intent.trim().toUpperCase()
       const existing = clubs.find((c) => c.clubCode === code)
       if (existing) {
-        toast(`You're already a member of ${existing.clubName} — opening it now.`)
+        toast(`Already a member of ${existing.clubName}.`)
         selectClub(existing.clubId)
         return
       }
@@ -564,7 +622,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <h2 className="text-lg font-semibold mb-1">Taking a moment to load</h2>
           <p className="text-sm text-muted-foreground mb-4">
-            The server is taking longer than expected. This usually clears up on retry.
+            This usually clears up on retry.
           </p>
           <Button onClick={retryBoot} variant="default">
             <RefreshCw className="mr-1.5 h-4 w-4" /> Retry
@@ -612,19 +670,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // No clubs yet -> onboarding
   if (clubs.length === 0) {
+    const firstName = session?.user?.name?.split(" ")[0]
     return (
       <div className="min-h-screen flex flex-col bg-transparent relative z-10">
-        <div className="flex-1 flex flex-col items-center justify-center rounded-xl border border-border/80 bg-card shadow-card p-6 m-3">
+        {/* Header — wordmark left, profile menu right (account settings,
+            join/create, and Sign out live in the dropdown). */}
+        <header className="flex h-14 shrink-0 items-center justify-between px-4 sm:px-6">
+          <span className="text-lg font-extrabold tracking-tight">ClubHub</span>
+          <UserMenu compact />
+        </header>
+        <div className="flex-1 flex flex-col items-center justify-center rounded-2xl border border-border/80 bg-card shadow-card p-6 m-3">
           <div className="w-full max-w-md text-center">
-            <h1 className="text-page-title mb-2">ClubHub</h1>
+            {firstName && (
+              <p className="text-caption uppercase tracking-wider text-muted-foreground/70 mb-2">
+                Welcome, {firstName}
+              </p>
+            )}
+            <h1 className="text-page-title mb-2">Get started</h1>
             <p className="text-body text-muted-foreground mt-2 mb-7 max-w-sm mx-auto">
-              You&apos;re not in any clubs yet. Create a new club to become its first executive, or join an existing one with a club code.
+              Create a club, or join one with a code.
             </p>
             <div className="flex flex-col gap-2">
               <Button variant="club" size="lg" onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" /> Create a club
               </Button>
               <JoinClubInline onJoined={(club) => landInClub(club?.id)} />
+              <Button variant="ghost" onClick={() => router.push("/?landing=1")}>
+                <Compass className="mr-1.5 h-4 w-4" /> Explore clubs
+              </Button>
             </div>
           </div>
         </div>
@@ -665,10 +738,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (items.length === 0) return null
         return (
           <div key={tier.id} className="space-y-0.5">
-            {/* Group label — one consistent 11px uppercase tracked muted label.
+            {/* Group label — one consistent 10px uppercase tracked muted label.
                 No top padding: the nav's gap-4 between tiers keeps the rhythm
                 even, so every label sits the same distance from what's above. */}
-            <div className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
               {tier.label}
             </div>
             {items.map((item) => {
@@ -679,18 +752,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.view}
                   onClick={() => { setView(item.view); setMobileNavOpen(false) }}
                   className={cn(
-                    "group flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm font-medium transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
+                    "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
                     active
-                      ? "bg-club-subtle text-club-ink"
-                      : "text-muted-foreground hover:bg-accent/70 hover:text-foreground"
+                      ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                      : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  {/* One accent signal for the active row: the soft accent
-                      pill + club-ink text (icon inherits the row color).
-                      No left strip, no icon tile, no shadow — the quiet
-                      treatment leaves the club accent room to breathe. */}
-                  <Icon className="h-4 w-4 shrink-0" />
+                  {/* Active row — the Linear-style recipe: a neutral secondary
+                      fill, a 3px club-accent bar on the LEFT edge, a
+                      foreground label, a club-ink icon, and a whisper inset
+                      highlight. Everything rides theme tokens (secondary /
+                      club), so any per-club accent and dark mode keep reading
+                      correctly. Inactive rows stay muted and only pick up a
+                      whisper of neutral fill on hover. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute left-0 top-1/2 -translate-y-1/2 h-[18px] w-[3px] rounded-full bg-club transition-opacity duration-150",
+                      active ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <Icon className={cn("h-4 w-4 shrink-0", active && "text-club-ink")} />
                   <span className="flex-1 truncate">{item.label}</span>
                   {item.view === "announcements" &&
                     hasUnreadAnnouncements &&
@@ -724,7 +807,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // background looks identical for ~0 paint cost (same fix the bottom tab
   // bar got earlier).
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/80 bg-background/95 shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/70 bg-background/95 shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
       {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
           The wordmark competed with the club switcher in the sidebar.
           Mobile nav is via the bottom tab bar's "More" button — no hamburger
@@ -733,19 +816,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <h1 className="truncate font-semibold" style={{ fontFamily: "var(--font-display)", fontSize: "1.125rem", lineHeight: "1.5rem", letterSpacing: "-0.018em" }}>{pageTitle}</h1>
       </div>
 
-      {/* Search (center, desktop) — bordered trigger styled to match a real
-          input. The previous outline/ring mismatched the dimensions; this
-          uses a single border + matching py-1.5 so the focus ring sits
-          flush on the box instead of offset. */}
+      {/* Search (center, desktop) — a full-round pill that reads bespoke, not
+          templated: the placeholder carries the club's OWN name ("Search
+          Robotics Club…"), and the ⌘K hint is a physical keycap floating on
+          the pill's right edge (opaque key + hairline border + elevation
+          shadow). The trigger blurs itself when it opens the palette so no
+          browser (Safari/Firefox included) can paint a focus ring on it while
+          the palette is up. */}
       <button
         type="button"
-        onClick={() => openGlobalSearch()}
+        onClick={(e) => { openGlobalSearch(); e.currentTarget.blur() }}
         disabled={!currentClubId}
-        className="hidden md:flex group items-center gap-2.5 h-9 rounded-md border border-input bg-muted/40 px-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
-        aria-label="Open search"
+        className="hidden md:flex group items-center gap-2.5 h-9 rounded-full border border-input bg-muted/40 px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
+        aria-label={currentClub ? `Search ${currentClub.clubName}` : "Open search"}
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left truncate">Search this club…</span>
+        <span className="flex-1 text-left truncate">{currentClub ? `Search ${currentClub.clubName}…` : "Search this club…"}</span>
         <SearchShortcutHint />
       </button>
 
@@ -762,7 +848,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="md:hidden"
           aria-label="Search"
           disabled={!currentClubId}
-          onClick={() => openGlobalSearch()}
+          onClick={(e) => { openGlobalSearch(); e.currentTarget.blur() }}
         >
           <SearchIcon className="h-4 w-4" />
         </Button>
@@ -789,16 +875,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {topBar}
       <div className="flex flex-1 min-h-0 p-3 gap-3">
         {/* Sidebar surface — one card formula with everything else in the app:
-            rounded-xl (12px), 1px border, quiet card shadow. "Glassier nav":
-            a translucent card body + backdrop saturation so the sidebar reads
+            rounded-2xl (16px), 1px hairline border, quiet card shadow.
+            "Glassier nav": a translucent card body + backdrop saturation so
+            the sidebar reads
             as frosted glass floating over the ambient background (the sidebar
             is only 240px wide, so the blur cost that disqualified the top bar
             doesn't apply). A lit top edge (inset 1px highlight) carries the
             physical elevation language. Club-switcher card pinned at the top,
             nav in the scrollable middle, theme toggle at the bottom. */}
-        <aside className="hidden md:flex md:w-[240px] flex-col rounded-xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
-          {/* Club switcher — bordered card at the top: accent logo, name,
-              role, chevron. */}
+        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
+          {/* Club switcher — hairline ghost row at the top (transparent at
+              rest, fill only on hover/open): accent logo, name, role,
+              chevron. */}
           <div className="p-3 shrink-0">{clubSwitcher}</div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
@@ -882,22 +970,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           executive club per browser (after the handbook is acknowledged,
           which also covers club creation and mid-session promotions), and
           replayable anytime via the `open-admin-tour` window event from
-          Settings → Security. Executives only. */}
-      <AdminTour />
+          Settings → Security. Executives only — so the ~100KB chunk is
+          gated on the role: regular members never download it. */}
+      {currentClub?.role === "executive" && <AdminTour />}
       {/* Executive Admin Handbook — the one-time acknowledgment popup for
           clubs the viewer runs that haven't confirmed it yet (typically the
           club they just created). Non-dismissible until confirmed. In REVIEW
           mode (opened from Settings → Security by an exec) the same content
-          renders dismissibly so the guide can be re-read anytime. */}
-      <ExecHandbookModal
-        club={
-          handbookReview ??
-          (handbookDue ? { clubId: handbookDue.clubId, clubName: handbookDue.clubName } : null)
-        }
-        mode={handbookReview ? "review" : "acknowledge"}
-        onConfirmed={handleHandbookConfirmed}
-        onClose={() => setHandbookReview(null)}
-      />
+          renders dismissibly so the guide can be re-read anytime. Only
+          mounted when there's actually something to show — the modal's
+          chunk stays unloaded otherwise. */}
+      {(handbookReview || handbookDue) && (
+        <ExecHandbookModal
+          club={
+            handbookReview ??
+            (handbookDue ? { clubId: handbookDue.clubId, clubName: handbookDue.clubName } : null)
+          }
+          mode={handbookReview ? "review" : "acknowledge"}
+          onConfirmed={handleHandbookConfirmed}
+          onClose={() => setHandbookReview(null)}
+        />
+      )}
     </div>
   )
 }
@@ -933,7 +1026,7 @@ function InstallHint() {
       <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium">Install ClubHub</p>
-          <p className="text-xs text-muted-foreground">Add to your home screen for quick access.</p>
+          <p className="text-xs text-muted-foreground">Add ClubHub to your home screen.</p>
         </div>
         <Button size="sm" variant="club" onClick={() => { promptEvent.prompt(); setPromptEvent(null) }}>Install</Button>
       </div>
@@ -960,10 +1053,13 @@ function InstallHint() {
  *  touch phones never see this trigger — it's desktop-only). */
 function SearchShortcutHint() {
   const { label } = useSearchShortcutHint()
+  // §Physical keycap — an opaque key resting on the pill: solid background
+  // (not the translucent muted of the old inline hint), hairline border, and
+  // a real two-stop elevation shadow so the cap reads as raised hardware.
   return (
     <kbd
       aria-hidden
-      className="ml-1 shrink-0 rounded border border-border/80 bg-muted px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-muted-foreground"
+      className="ml-1 shrink-0 rounded-md border border-border bg-background px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-muted-foreground shadow-[0_1px_0_rgba(0,0,0,0.05),0_2px_3px_-1px_rgba(0,0,0,0.18)] dark:border-white/15 dark:shadow-[0_1px_0_rgba(255,255,255,0.06)_inset,0_2px_3px_-1px_rgba(0,0,0,0.5)]"
     >
       {label ?? "Ctrl K"}
     </kbd>
@@ -1092,19 +1188,27 @@ function MobileTabBar() {
               onClick={() => setView(t.view)}
               className={cn(
                 "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,background-color,transform] active:scale-[0.96]",
-                active ? "text-club-ink" : "text-muted-foreground hover:text-foreground"
+                active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
               aria-current={active ? "page" : undefined}
             >
-              {/* Active indicator — ONE signal: a soft accent-tinted pill
-                  sits behind the icon (icon + label also take the club ink).
-                  No top edge strip, no icon scale pop — quieter and easier
-                  to read at a glance. */}
+              {/* Active indicator — same recipe as the desktop sidebar: the
+                  icon sits on a neutral secondary fill with club-ink glyphs,
+                  and a short club-accent bar rides the tab's top edge (the
+                  bottom-bar transpose of the sidebar's left-edge bar). No
+                  saturated accent blob. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] w-5 rounded-full bg-club transition-opacity duration-150",
+                  active ? "opacity-100" : "opacity-0"
+                )}
+              />
               <span
                 aria-hidden
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150",
-                  active ? "bg-club-muted" : ""
+                  active ? "bg-secondary/80 text-club-ink" : ""
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -1157,7 +1261,7 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
           if (items.length === 0) return null
           return (
             <div key={tier.id} className="space-y-0.5">
-              <div className="px-3 pb-0.5 text-xs font-medium text-muted-foreground/70">{tier.label}</div>
+              <div className="px-3 pb-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">{tier.label}</div>
               {items.map((item) => {
               const Icon = item.icon
               const active = view === item.view
@@ -1166,11 +1270,22 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
                   key={item.view}
                   onClick={() => onPick(item.view)}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm font-medium transition-[color,background-color,border-color,transform,translate,scale,rotate] active:scale-[0.98]",
-                    active ? "bg-club-subtle text-club-ink" : "text-foreground hover:bg-accent"
+                    "relative flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm transition-[color,background-color,border-color,transform,translate,scale,rotate] active:scale-[0.98]",
+                    active
+                      ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                      : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  {/* Same active recipe as the desktop sidebar: neutral fill
+                      + left-edge accent bar + club-ink icon. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-club transition-opacity duration-150",
+                      active ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <Icon className={cn("h-4 w-4", active && "text-club-ink")} />
                   <span className="flex-1 truncate">{item.label}</span>
                 </button>
               )
@@ -1182,7 +1297,7 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
       {/* Club switcher — pinned at the bottom of the "More" sheet, thumb-
           reachable, visually separated by a top border. */}
       <div className="border-t border-border px-2.5 pt-3 pb-4 shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-        <div className="px-3 pb-1 text-xs font-medium text-muted-foreground/70">Club</div>
+        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">Club</div>
         <ClubSwitcher
           clubs={clubs}
           currentClub={currentClub ?? null}
@@ -1437,11 +1552,10 @@ function BadgeConfettiPopup() {
         </div>
         <h2 className="text-lg font-semibold">You earned a badge! 🎉</h2>
         <p className="text-sm text-muted-foreground mt-1.5">
-          You were awarded the{" "}
           <span className="font-semibold text-foreground">
             {activeAward.badge.emoji} {activeAward.badge.name}
           </span>{" "}
-          badge by {activeAward.awardedByName}
+          from {activeAward.awardedByName}
           {activeAward.clubName ? ` in ${activeAward.clubName}` : ""}.
         </p>
         <Button variant="club" className="mt-4" onClick={dismiss}>
@@ -1570,7 +1684,7 @@ function UrgentBanner() {
       <AlertTriangle className="h-4 w-4 shrink-0 text-danger-foreground dark:text-danger-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-sm font-semibold truncate">
+          <span className="text-sm font-semibold line-clamp-2 sm:truncate">
             {announcement.title}
           </span>
           <span className="text-xs  opacity-70 shrink-0">
@@ -1613,22 +1727,31 @@ function ClubSwitcher({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="w-full justify-between h-auto py-2.5 px-3 rounded-xl gap-3">
+          {/* Hairline ghost at rest (transparent + hairline border, neutral
+              fill only on hover/open) — the club's accent logo tile carries
+              the color. */}
+          <Button
+            variant="ghost"
+            className="w-full justify-between h-auto py-2.5 px-3 rounded-xl gap-3 border border-border/80 bg-transparent text-foreground hover:bg-secondary/60 hover:text-foreground dark:hover:bg-secondary/60 data-[state=open]:bg-secondary/70 dark:data-[state=open]:bg-secondary/70"
+          >
             <div className="flex items-center gap-2.5 min-w-0">
               {/* Club tile — the club's actual logo when one exists (kept in
-                  sync via /api/me + patchCurrentClub), initials otherwise. */}
+                  sync via /api/me + patchCurrentClub), initials otherwise.
+                  §Resilient: retries a transiently-dropped request once, then
+                  clean initials — never the broken-image glyph. */}
               <div
                 className="flex h-10 w-10 items-center justify-center rounded-xl text-white text-sm font-bold shrink-0 overflow-hidden"
                 style={{ backgroundColor: currentClub?.accentColor ?? "#10b981" }}
               >
-                {currentClub?.logoUrl ? (
-                  <img
+                {currentClub ? (
+                  <ResilientImage
                     src={currentClub.logoUrl}
-                    alt=""
+                    alt={currentClub.clubName}
+                    name={currentClub.clubName}
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  currentClub ? initials(currentClub.clubName) : "?"
+                  "?"
                 )}
               </div>
               <div className="min-w-0 text-left">
@@ -1641,7 +1764,7 @@ function ClubSwitcher({
             <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent align="start" className="w-64 shadow-popover">
           <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Clubs</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {clubs.map((c) => (
@@ -1650,11 +1773,12 @@ function ClubSwitcher({
                 className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0 overflow-hidden"
                 style={{ backgroundColor: c.accentColor }}
               >
-                {c.logoUrl ? (
-                  <img src={c.logoUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  initials(c.clubName)
-                )}
+                <ResilientImage
+                  src={c.logoUrl}
+                  alt={c.clubName}
+                  name={c.clubName}
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{c.clubName}</div>
@@ -1771,37 +1895,69 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
             </Button>
           )}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align={compact ? "start" : "end"} className="w-56">
-          <DropdownMenuLabel className="truncate normal-case font-normal">
-            <div className="text-sm font-medium truncate">{user?.name}</div>
-            <div className="text-caption truncate">{user?.email}</div>
-          </DropdownMenuLabel>
+        {/* §Modern account menu — a refined identity header + grouped
+            sections with micro tier labels, in the same language as the
+            sidebar nav and the settings rail. Every item keeps its exact
+            handler; only the presentation changed. */}
+        <DropdownMenuContent align={compact ? "start" : "end"} className="w-64 shadow-popover">
+          {/* Identity header — avatar + name/email riding a quiet card. */}
+          <div className="flex items-center gap-3 px-2 pb-2 pt-2.5">
+            <DecoratedAvatar
+              decoration={user?.avatarDecoration}
+              src={user?.image ?? undefined}
+              name={user?.name ?? ""}
+              className="h-9 w-9 shrink-0"
+              avatarClassName="text-xs"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold leading-tight">{user?.name}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+          </div>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer">
-            <LogIn className="mr-2 h-4 w-4" /> Join a club
+
+          {/* CLUBS — membership actions */}
+          <div className="px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">
+            Clubs
+          </div>
+          <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer gap-2.5 rounded-lg py-2">
+            <LogIn className="h-4 w-4 shrink-0 text-muted-foreground" /> Join a club
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={openSettingsFromMenu} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" /> Account settings
+          <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer gap-2.5 rounded-lg py-2">
+            <Plus className="h-4 w-4 shrink-0 text-muted-foreground" /> Create a club
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setShowCreate(true)} className="cursor-pointer">
-            <Plus className="mr-2 h-4 w-4" /> Create a club
+
+          {/* ACCOUNT */}
+          <div className="px-2 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">
+            Account
+          </div>
+          <DropdownMenuItem onClick={openSettingsFromMenu} className="cursor-pointer gap-2.5 rounded-lg py-2">
+            <Settings className="h-4 w-4 shrink-0 text-muted-foreground" /> Account settings
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
+
+          {/* HELP */}
+          <div className="px-2 pb-1 pt-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">
+            Help
+          </div>
           <DropdownMenuItem
             onClick={() => window.dispatchEvent(new CustomEvent("open-onboarding-tour"))}
-            className="cursor-pointer"
+            className="cursor-pointer gap-2.5 rounded-lg py-2"
           >
-            <Sparkles className="mr-2 h-4 w-4" /> Replay introduction guide
+            <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" /> Replay introduction guide
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => window.dispatchEvent(new CustomEvent(OPEN_KEYBOARD_SHORTCUTS_EVENT))}
-            className="cursor-pointer"
+            className="cursor-pointer gap-2.5 rounded-lg py-2"
           >
-            <Keyboard className="mr-2 h-4 w-4" /> Keyboard shortcuts
+            <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" /> Keyboard shortcuts
           </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })} className="cursor-pointer text-danger-foreground focus:text-danger-foreground">
-            <LogOut className="mr-2 h-4 w-4" /> Sign out
+
+          <DropdownMenuSeparator className="my-1.5" />
+          <DropdownMenuItem
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="cursor-pointer gap-2.5 rounded-lg py-2 text-danger-foreground focus:text-danger-foreground"
+          >
+            <LogOut className="h-4 w-4 shrink-0" /> Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -1822,7 +1978,9 @@ function JoinClubInline({ onJoined }: { onJoined: (club?: JoinedClubInfo) => voi
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      {/* True ghost with a hairline ring — transparent at rest so the
+          onboarding card's solid club primary keeps the hierarchy. */}
+      <Button variant="ghost" className="border border-border" onClick={() => setOpen(true)}>
         Join a club
       </Button>
       <JoinClubDialog open={open} onOpenChange={setOpen} onJoined={onJoined} />
@@ -1831,23 +1989,28 @@ function JoinClubInline({ onJoined }: { onJoined: (club?: JoinedClubInfo) => voi
 }
 
 /**
- * JoinClubDialog — both ways in, always side by side (no mode switching):
+ * JoinClubDialog — the "room-code moment", redesigned as a two-segment
+ * dialog:
  *
- *   1. "Join with a code": type the club code. The dialog live-detects the
- *      club from the public API (its name appears under the input once a
- *      real ≥4-char code is typed), then offers BOTH paths together:
- *        - primary   → club password → instant join (POST /api/clubs/join)
- *        - secondary → "Don't have the code? Send a join request instead"
- *                      (POST /api/join-requests) in its own subtle accent
- *                      box — an executive approves it from Members → Join
- *                      requests. Optional 280-char note.
+ *   1. "Join with a code": the club-code input is the hero (centered, mono,
+ *      wide tracking) and the dialog live-detects the club from the public
+ *      API — a spinner / ✓ club-name / "No club found" answer row appears
+ *      right beneath it. Then BOTH paths together, split by a hairline "or":
+ *        - primary   → club password → instant join (POST /api/clubs/join),
+ *                      full-width emerald button
+ *        - secondary → a calm request card (POST /api/join-requests) an
+ *                      executive approves from Members → Join requests.
+ *                      Optional 280-char note.
  *      A wrong password gently points at the request path instead of
  *      dead-ending.
- *   2. "Explore clubs": redirects to the public landing page directory
- *      (/?landing=1) — the full browsing experience with photos and
- *      descriptions lives there, not in a cramped inline mini-list.
+ *   2. "Explore clubs": a live mini-directory of the public clubs (banner
+ *      cards with join mode + member counts). Each card's "Join" pre-fills
+ *      the code pane with that club's code; "View club" deep-links to the
+ *      public profile (same /?public=<code> route the landing directory
+ *      uses); the full landing-page directory stays one tap away as the
+ *      quiet bottom action.
  *
- * The public club endpoint is unauthenticated and cheap — keyed + cached by
+ * The public club endpoints are unauthenticated and cheap — keyed + cached by
  * TanStack Query so re-typing a code doesn't spam the server.
  */
 function JoinClubDialog({
@@ -1917,7 +2080,7 @@ function JoinClubDialog({
         method: "POST",
         json: { clubCode: codeKey, clubPassword },
       })
-      toast.success("Joined club successfully!")
+      toast.success("Joined!")
       setClubCode("")
       setClubPassword("")
       setMessage("")
@@ -1941,13 +2104,21 @@ function JoinClubDialog({
         method: "POST",
         json: { clubCode: codeKey, message: message.trim() || undefined },
       })
-      toast.success("Request sent — an executive will review it.")
+      toast.success("Request sent.")
       setRequested(true)
     } catch (err: any) {
       toast.error(err.message)
     } finally {
       setRequesting(false)
     }
+  }
+
+  // Explore-tab card "Join" → pre-fill the code pane with that club's code
+  // (the live lookup then confirms the club name under the hero input).
+  function pickCode(code: string) {
+    setClubCode(code.toUpperCase())
+    setPwFailed(false)
+    setTab("code")
   }
 
   return (
@@ -1960,33 +2131,40 @@ function JoinClubDialog({
           <DialogHeader>
             <DialogTitle>Join a club</DialogTitle>
             <DialogDescription>
-              Join with a code from an executive, or explore clubs to find one.
+              Join with a code, or explore clubs.
             </DialogDescription>
           </DialogHeader>
 
+          {/* Segmented tabs — a full-width pill control: two flex-1
+              triggers, active = floating bg-background pill. */}
           <Tabs value={tab} onValueChange={(v) => setTab(v as "code" | "explore")}>
-            <TabsList className="grid grid-cols-2 w-full">
-              <TabsTrigger value="code">
-                <KeyRound className="h-3.5 w-3.5 mr-1" /> Join with a code
+            <TabsList className="h-10 w-full rounded-full bg-muted p-1 ring-0 shadow-none">
+              <TabsTrigger
+                value="code"
+                className="h-8 gap-1.5 rounded-full px-3 text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+              >
+                <Link2 className="h-4 w-4" /> Join with a code
               </TabsTrigger>
-              <TabsTrigger value="explore">
-                <Compass className="h-3.5 w-3.5 mr-1" /> Explore clubs
+              <TabsTrigger
+                value="explore"
+                className="h-8 gap-1.5 rounded-full px-3 text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm"
+              >
+                <Compass className="h-4 w-4" /> Explore clubs
               </TabsTrigger>
             </TabsList>
 
-            {/* ── Tab 1: both join paths, always side by side ── */}
+            {/* ── Tab 1: both join paths, split by a hairline "or" ── */}
             <TabsContent value="code" className="mt-4">
               {requested ? (
-                <div className="flex flex-col items-center gap-3 py-6 text-center">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-club-subtle text-club">
-                    <UserCheck className="h-5 w-5" />
+                /* Calm confirmation card — the request is in. */
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-border/60 bg-muted/40 p-5 text-center">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CheckCircle2 className="h-5 w-5" />
                   </span>
                   <div>
                     <p className="text-sm font-semibold">Request sent</p>
-                    <p className="text-caption text-muted-foreground mt-1 max-w-xs mx-auto">
-                      An executive of {clubName ?? "the club"} will review your
-                      request. You&apos;ll get a notification the moment it&apos;s
-                      approved.
+                    <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
+                      You&apos;ll get a notification when it&apos;s approved.
                     </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
@@ -1994,12 +2172,12 @@ function JoinClubDialog({
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {/* Primary path — plain form: club code + password →
-                      instant join. */}
+                <div className="space-y-5">
+                  {/* Primary path — the room-code moment: club code +
+                      password → instant join. */}
                   <form onSubmit={handleJoin} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="join-club-code">Club code</Label>
+                      <Label htmlFor="join-club-code" className="text-sm font-medium">Club code</Label>
                       <Input
                         id="join-club-code"
                         value={clubCode}
@@ -2007,30 +2185,33 @@ function JoinClubDialog({
                           setClubCode(e.target.value.toUpperCase())
                           setPwFailed(false)
                         }}
-                        placeholder="e.g. AB3K9X"
+                        placeholder="AB3K9X"
                         maxLength={10}
-                        className="uppercase font-mono tracking-wider"
+                        className="h-11 text-center font-mono text-[17px] uppercase tracking-[0.2em]"
                         autoFocus
                       />
-                      {codeKey.length >= 4 && (
-                        <p className="text-caption text-muted-foreground min-h-4" aria-live="polite">
-                          {clubInfoLoading ? (
-                            "Checking that code…"
+                      {/* Live answer row — spinner while looking it up, the
+                          club's name once found, a quiet miss when not. */}
+                      <div className="min-h-5" aria-live="polite">
+                        {codeKey.length >= 4 && (
+                          clubInfoLoading ? (
+                            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                              Looking it up…
+                            </p>
                           ) : clubName ? (
-                            <span className="inline-flex items-center gap-1.5 font-medium text-club">
-                              <CheckCheck className="h-3.5 w-3.5" aria-hidden />
+                            <p className="flex items-center gap-1.5 text-sm font-medium text-primary">
+                              <Check className="h-4 w-4 shrink-0" aria-hidden />
                               {clubName}
-                            </span>
+                            </p>
                           ) : clubInfoError ? (
-                            "No club found with that code"
-                          ) : (
-                            ""
-                          )}
-                        </p>
-                      )}
+                            <p className="text-sm text-muted-foreground">No club found</p>
+                          ) : null
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="join-club-password">Club password</Label>
+                      <Label htmlFor="join-club-password" className="text-sm font-medium">Club password</Label>
                       <Input
                         id="join-club-password"
                         type="password"
@@ -2040,62 +2221,70 @@ function JoinClubDialog({
                           setPwFailed(false)
                         }}
                         placeholder="••••••••"
+                        className="h-11"
                       />
                       {pwFailed && (
-                        <p className="text-caption text-club-ink leading-relaxed">
-                          That password didn&apos;t work. You can also send a
-                          join request below — an executive will let you in.
+                        <p className="text-sm leading-relaxed text-destructive">
+                          That password didn&apos;t work. You can send a join request below.
                         </p>
                       )}
                     </div>
-                    <DialogFooter>
-                      <Button type="submit" variant="club" disabled={joining || requesting}>
-                        {joining ? "Joining..." : "Join club"}
-                      </Button>
-                    </DialogFooter>
+                    <Button
+                      type="submit"
+                      disabled={joining || requesting}
+                      className="h-11 w-full rounded-lg font-semibold"
+                    >
+                      {joining ? "Joining…" : "Join club"}
+                    </Button>
                   </form>
 
-                  {/* Secondary path — clearly separated accent box: don't
-                      have the code? Send a join request an executive
-                      approves instead. */}
-                  <div className="space-y-3 rounded-xl border border-club/20 bg-club-subtle p-4">
-                    <div className="flex items-start gap-2.5">
-                      <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-club" />
-                      <div>
-                        <p className="text-sm font-semibold">Don&apos;t have the code?</p>
-                        <p className="mt-0.5 text-caption text-muted-foreground leading-relaxed">
-                          Send a join request instead — an executive will
-                          review it and let you in.
+                  {/* Hairline divider — "or". */}
+                  <div className="flex items-center gap-3" aria-hidden="true">
+                    <span className="h-px flex-1 bg-border" />
+                    <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">or</span>
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+
+                  {/* Secondary path — a calm request card: don't have the
+                      code? Send a join request an executive approves. */}
+                  <div className="space-y-3.5 rounded-xl border border-border/60 bg-muted/40 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <UserPlus className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">Don&apos;t have the code?</p>
+                        <p className="text-sm text-muted-foreground">
+                          An executive reviews it and lets you in.
                         </p>
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="join-request-note" className="text-caption text-muted-foreground">
+                      <Label htmlFor="join-request-note" className="text-xs font-medium text-muted-foreground">
                         Note to the executives (optional)
                       </Label>
                       <Textarea
                         id="join-request-note"
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
-                        placeholder="e.g. I'm interested in photography and would love to help at events!"
+                        placeholder="e.g. I'd love to help at events!"
                         rows={3}
                         maxLength={280}
-                        className="resize-none bg-background/70"
+                        className="resize-none bg-background"
                       />
                     </div>
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full"
+                      className="w-full border-input bg-background hover:bg-accent"
                       disabled={requesting || joining || codeKey.length < 4}
                       onClick={handleRequest}
                     >
-                      {requesting ? "Sending..." : "Send join request"}
+                      {requesting ? "Sending…" : "Send join request"}
                     </Button>
                     {codeKey.length < 4 && (
-                      <p className="text-caption text-muted-foreground/70">
-                        Enter the club&apos;s code above first — it&apos;s shown
-                        on the club&apos;s public page.
+                      <p className="text-sm text-muted-foreground/80">
+                        Enter the club code above first.
                       </p>
                     )}
                   </div>
@@ -2103,9 +2292,12 @@ function JoinClubDialog({
               )}
             </TabsContent>
 
-            {/* ── Tab 2: explore clubs → the public landing page ── */}
+            {/* ── Tab 2: explore clubs → live mini-directory ── */}
             <TabsContent value="explore" className="mt-4">
-              <ExploreClubsRedirect onExplore={() => onOpenChange(false)} />
+              <ExploreClubsRedirect
+                onExplore={() => onOpenChange(false)}
+                onPickCode={pickCode}
+              />
             </TabsContent>
           </Tabs>
         </div>
@@ -2115,69 +2307,241 @@ function JoinClubDialog({
 }
 
 /**
- * "Explore clubs" tab panel — a friendly redirect to the public landing
- * page, which owns the FULL club directory (photos, descriptions, how to
- * join). Shows a couple of live club-name chips as a teaser (no images —
- * lightweight, cached by TanStack Query) and a big button that navigates to
- * /?landing=1, where app-shell renders the landing page even for signed-in
- * users (the landing page offers an "Open the app" way back).
+ * "Explore clubs" tab panel — a live mini-directory of the public clubs
+ * (GET /api/public/clubs): banner-first cards with member counts, join-mode
+ * chips, a club-accent "Join" button that pre-fills the code pane with that
+ * club's code, and a "View club" deep link to the public profile (the same
+ * /?public=<code> route the landing page directory uses). The FULL browsing
+ * experience still lives on the landing page — kept one tap away as the
+ * quiet "Browse the full directory" action at the bottom.
  *
  * Only fetched while the tab is mounted (TabsContent unmounts inactive tabs
  * by default in Radix, so the query is naturally gated).
  */
-function ExploreClubsRedirect({ onExplore }: { onExplore: () => void }) {
+function ExploreClubsRedirect({
+  onExplore,
+  onPickCode,
+}: {
+  /** Closes the join dialog before navigating away. */
+  onExplore: () => void
+  /** Pre-fills the code pane with a club's code (the card "Join" buttons). */
+  onPickCode: (code: string) => void
+}) {
   const router = useRouter()
-  const { data } = useQuery<{ clubs: { name: string }[] }>({
+  const { data, isLoading, isError } = useQuery<{ clubs: PublicClubMini[] }>({
     queryKey: ["public-clubs"],
-    queryFn: () => api<{ clubs: { name: string }[] }>("/api/public/clubs"),
+    queryFn: () => api<{ clubs: PublicClubMini[] }>("/api/public/clubs"),
     staleTime: 60_000,
     retry: 1,
   })
 
   const clubs = data?.clubs ?? []
-  const preview = clubs.slice(0, 3)
 
   return (
-    <div className="flex flex-col items-center gap-4 py-5 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-club-subtle text-club">
-        <Compass className="h-5 w-5" />
-      </span>
-      <div className="max-w-[17rem]">
-        <p className="text-sm font-semibold">Explore the full directory</p>
-        <p className="mt-1 text-caption text-muted-foreground leading-relaxed">
-          Browse every public club on the ClubHub home page — photos,
-          descriptions, and how to join.
-        </p>
-      </div>
-      {preview.length > 0 && (
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          {preview.map((c) => (
-            <span
-              key={c.name}
-              className="inline-flex items-center rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-caption text-muted-foreground"
-            >
-              {c.name}
-            </span>
-          ))}
-          {clubs.length > preview.length && (
-            <span className="text-caption text-muted-foreground/70">
-              +{clubs.length - preview.length} more
-            </span>
-          )}
+    <div className="space-y-3">
+      {isLoading && (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Loading clubs…
         </div>
       )}
+      {isError && (
+        <div className="rounded-xl border border-border/70 bg-card px-4 py-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load the directory right now.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            Try the full directory below.
+          </p>
+        </div>
+      )}
+      {clubs.map((club) => (
+        <ExploreClubCard key={club.clubCode} club={club} onPickCode={onPickCode} />
+      ))}
+      {!isLoading && !isError && clubs.length === 0 && (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No public clubs yet — check back soon.
+        </p>
+      )}
+      {/* Secondary action — the full landing-page directory (photos, search,
+          join info) stays one tap away. */}
       <Button
-        variant="club"
-        className="w-full"
+        variant="ghost"
+        size="sm"
+        className="w-full text-muted-foreground"
         onClick={() => {
           onExplore()
           router.push("/?landing=1")
         }}
       >
         <Compass className="h-4 w-4" />
-        Explore clubs
+        Browse the full directory
       </Button>
     </div>
+  )
+}
+
+/** One club card in the explore mini-directory — banner-first, quiet body,
+ *  join-mode chip, club-accent "Join" + public-profile deep link. */
+function ExploreClubCard({
+  club,
+  onPickCode,
+}: {
+  club: PublicClubMini
+  onPickCode: (code: string) => void
+}) {
+  // Same focal-point handling the landing directory uses for banners.
+  const focalPct = Math.round((club.bannerFocalY ?? 0.5) * 100)
+  const needsApproval = club.joinMode === "request"
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+      {/* Banner — real club banner where set (with its focal point), quiet
+          accent-wash fallback when there isn't one. */}
+      <div className="relative h-28 w-full overflow-hidden bg-muted">
+        {club.bannerUrl ? (
+          <img
+            src={club.bannerUrl}
+            alt=""
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{ objectPosition: `center ${focalPct}%` }}
+          />
+        ) : (
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(135deg, ${hexToRgba(club.accentColor, 0.32)} 0%, ${hexToRgba(club.accentColor, 0.08)} 100%)`,
+            }}
+          />
+        )}
+      </div>
+      <div className="p-3.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="min-w-0 truncate text-sm font-semibold text-foreground">{club.name}</p>
+          <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
+          </p>
+        </div>
+        <p className="mt-1 line-clamp-2 min-h-[2.4rem] text-sm leading-snug text-muted-foreground">
+          {club.description ?? "A ClubHub club."}
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {needsApproval ? (
+              <UserCheck className="h-3 w-3" aria-hidden />
+            ) : (
+              <KeyRound className="h-3 w-3" aria-hidden />
+            )}
+            {needsApproval ? "Approval" : "Code"}
+          </span>
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/?public=${encodeURIComponent(club.clubCode)}`}
+              prefetch={false}
+              className="text-xs font-medium text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              View club
+            </Link>
+            <button
+              type="button"
+              onClick={() => onPickCode(club.clubCode)}
+              className="inline-flex h-7 shrink-0 items-center rounded-md px-3 text-xs font-semibold shadow-sm transition-[filter,transform] duration-150 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
+              style={{ backgroundColor: club.accentColor, color: readableForeground(club.accentColor) }}
+            >
+              Join
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* Local color helpers (the landing page and public profile keep their own
+ * copies — duplicated here on purpose so this dialog doesn't pull their
+ * client-provider import graphs). */
+function readableForeground(hex: string): string {
+  let c = hex.replace("#", "").trim()
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("")
+  if (c.length !== 6) return "#ffffff"
+  const r = parseInt(c.slice(0, 2), 16) / 255
+  const g = parseInt(c.slice(2, 4), 16) / 255
+  const b = parseInt(c.slice(4, 6), 16) / 255
+  const lin = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4))
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+  return L > 0.55 ? "#1a1a1a" : "#ffffff"
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  let c = hex.replace("#", "").trim()
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("")
+  if (c.length !== 6) return `rgba(16,185,129,${alpha})`
+  const r = parseInt(c.slice(0, 2), 16)
+  const g = parseInt(c.slice(2, 4), 16)
+  const b = parseInt(c.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Settings — iOS/macOS System Settings style dialog
+
+   Two-pane on desktop (left rail + scrolling content pane, fixed ~640px
+   height) and a true iOS drill-down on mobile (root list → pushed pane with
+   a back header). The pane BODY renders once, shared by both layouts, so
+   in-progress edits survive pane switches.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** The settings dialog's sections — drives the desktop rail, the mobile
+ *  root list, and the pane headers. Order matters (it's the nav order). */
+type SettingsPaneId = "profile" | "security" | "appearance"
+
+const SETTINGS_PANES: {
+  id: SettingsPaneId
+  label: string
+  sub: string
+  description: string
+  icon: any
+}[] = [
+  { id: "profile", label: "Profile", sub: "Name, avatar, bio", description: "How you appear across ClubHub.", icon: User },
+  { id: "appearance", label: "Appearance", sub: "Theme, color, background", description: "Personalize the look of the app.", icon: Palette },
+  { id: "security", label: "Security", sub: "Password", description: "Keep your account safe.", icon: ShieldCheck },
+]
+
+/** Micro uppercase tier label above each grouped inset list. */
+const SETTINGS_TIER = "mb-2 px-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground"
+
+/** iOS-style switch — the small toggle used in the settings rail footer,
+ *  the mobile root list, and the appearance pane. Presentational only. */
+function IosSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+        checked ? "bg-primary" : "bg-muted-foreground/30"
+      )}
+    >
+      <span
+        className={cn(
+          "absolute left-0.5 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-200",
+          checked && "translate-x-4"
+        )}
+      />
+    </button>
   )
 }
 
@@ -2192,6 +2556,7 @@ function SettingsDialog({
 }) {
   const { data: session, update } = useSession()
   const { theme, setTheme } = useTheme()
+
   const [name, setName] = useState(session?.user?.name ?? "")
   const [bio, setBio] = useState("")
   const [avatarUrl, setAvatarUrl] = useState(session?.user?.image ?? "")
@@ -2214,6 +2579,32 @@ function SettingsDialog({
   const [decoSaving, setDecoSaving] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const avatarFileRef = useRef<HTMLInputElement>(null)
+
+  // ── iOS drill-down state ──
+  // "root" = the mobile settings list; a pane id = drilled into that pane.
+  // Desktop never shows "root" — it falls back to the external `tab`.
+  const [pane, setPane] = useState<"root" | SettingsPaneId>("root")
+
+  // Fresh open → back to the root list (the mobile drill-down entry point).
+  useEffect(() => {
+    if (open) setPane("root")
+  }, [open])
+
+  // External tab moves while the dialog is open (the `open-settings` event
+  // can retarget the dialog — e.g. the What's New "choose your effect" CTA)
+  // → drill straight to that pane. Our own navigation pushes onTabChange
+  // first, so this echo is a no-op then — both directions stay in sync.
+  useEffect(() => {
+    if (open) setPane(tab)
+  }, [tab])
+
+  const activePane: SettingsPaneId = pane === "root" ? tab : pane
+  const activeMeta = SETTINGS_PANES.find((p) => p.id === activePane) ?? SETTINGS_PANES[0]
+
+  function goTo(next: SettingsPaneId) {
+    setPane(next)
+    onTabChange(next) // keep the external tab prop in sync
+  }
 
   // Re-sync the picker with the freshest session value every time the dialog
   // opens (the initial useState may have run before the session hydrated, and
@@ -2341,321 +2732,511 @@ function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn(DIALOG_CLASS, "sm:max-w-lg")} showCloseButton>
-        {/* Mobile-padding wrapper — the DIALOG_CLASS uses `p-0` on mobile so
-            the dialog is full-screen. Without this wrapper, the header + tabs
-            + content would touch the screen edges (and the theme toggle's
-            border would sit AT the edge, making the knob look like it escapes
-            the "blob"). We add px-5 pt-5 pb-6 on mobile and zero on sm+ where
-            the dialog already has sm:p-6. */}
-        <div className="px-5 pt-5 pb-6 sm:px-0 sm:pt-0 sm:pb-0 flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Account settings</DialogTitle>
-            <DialogDescription>Update your profile, appearance, and password.</DialogDescription>
-          </DialogHeader>
-          {/* Theme toggle — mobile only (desktop has the sidebar toggle).
-              Compact on mobile: smaller text, the toggle pill is contained
-              within the row's padding so the knob never escapes the box. */}
-          <div className="md:hidden flex items-center justify-between rounded-lg border border-border bg-card/60 px-4 py-3">
-            <div className="flex items-center gap-2 min-w-0">
-              {theme === "dark" ? <Moon className="h-4 w-4 shrink-0" /> : <Sun className="h-4 w-4 shrink-0" />}
-              <span className="text-sm font-medium truncate">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="relative h-6 w-11 shrink-0 rounded-full bg-muted border border-border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ml-3"
-              aria-label="Toggle theme"
-            >
-              <span
-                className={cn(
-                  "absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full bg-foreground transition-transform",
-                  theme === "dark" ? "translate-x-[22px]" : "translate-x-[6px]"
-                )}
-              />
-            </button>
-          </div>
-          <Tabs value={tab} onValueChange={(v) => onTabChange(v as "profile" | "security" | "appearance")} className="w-full">
-            {/* Tab list — compact on mobile (smaller text + padding so all 3
-                tabs fit in the px-5 wrapper without overflowing). On sm+
-                they expand to normal size. Security is for EVERYONE now
-                (self-service password change); the Executive Admin Handbook
-                card inside it is exec-only. */}
-            <TabsList className="w-full grid grid-cols-3 sm:grid-cols-3">
-              <TabsTrigger value="profile" className="text-xs sm:text-sm px-1 sm:px-3">Profile</TabsTrigger>
-              <TabsTrigger value="security" className="text-xs sm:text-sm px-1 sm:px-3">Security</TabsTrigger>
-              <TabsTrigger value="appearance" className="text-xs sm:text-sm px-1 sm:px-3">Look</TabsTrigger>
-            </TabsList>
+      <DialogContent
+        className={cn(
+          DIALOG_CLASS,
+          // Two-pane shell: full-height sheet on mobile (the drill-down),
+          // fixed-height 720px modal on desktop with internal scrolling.
+          "gap-0 overflow-hidden p-0 sm:max-w-[720px] sm:h-[640px] sm:max-h-[80dvh] sm:rounded-xl sm:p-0 sm:gap-0 sm:overflow-hidden sm:shadow-dialog sm:flex-row"
+        )}
+        showCloseButton={false}
+      >
+        {/* Screen-reader-only dialog title/description — the visible pane
+            headers below are plain headings, so both the desktop two-pane
+            and the mobile drill-down keep exactly one accessible name. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>Account settings</DialogTitle>
+          <DialogDescription>Update your profile, appearance, and password.</DialogDescription>
+        </DialogHeader>
 
-            <TabsContent value="profile" className="mt-4">
-              {/* Install ClubHub hint (PWA) */}
-              <InstallHint />
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Display name</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Avatar</Label>
-                  {/* §44 — Drop zone wrapper. The dashed border + tinted bg
-                      appear only when avatarDragging. NOTE: the negative
-                      margin (`-m-2`) only applies on sm+ (where the dialog
-                      has sm:p-6); on mobile it's removed so the dropzone
-                      can't overflow the screen edges. */}
-                  <div
+        {/* The visible shell — rail + content on desktop, root/pushed panes
+            on mobile. The pane BODY renders once (shared by both layouts)
+            so profile/security drafts survive pane switches. */}
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          {/* ═══ Left rail (desktop only) — identity, sections, theme ═══ */}
+          <aside className="hidden w-60 shrink-0 flex-col border-r border-border/70 bg-muted/30 sm:flex">
+            {/* Identity header */}
+            <div className="flex items-center gap-3 border-b border-border/70 px-4 py-4">
+              <DecoratedAvatar
+                decoration={session?.user?.avatarDecoration}
+                src={session?.user?.image ?? undefined}
+                name={session?.user?.name ?? ""}
+                className="h-10 w-10 shrink-0"
+                avatarClassName="text-xs"
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold leading-tight">{session?.user?.name}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{session?.user?.email}</p>
+              </div>
+            </div>
+            {/* Section nav — the Linear-style active row the app sidebar
+                uses: neutral secondary fill, 3px club-accent bar on the left
+                edge, foreground label, club-ink icon. */}
+            <nav className="flex-1 overflow-y-auto p-2" aria-label="Settings sections">
+              {SETTINGS_PANES.map((p) => {
+                const Icon = p.icon
+                const active = activePane === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => goTo(p.id)}
+                    aria-current={active ? "true" : undefined}
                     className={cn(
-                      "flex items-center gap-4 rounded-md p-2 sm:-m-2 transition-colors",
-                      avatarDragging && "border-2 border-dashed border-club bg-club-muted/20"
+                      "relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-[background-color,color] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                      active ? "bg-secondary/80" : "hover:bg-secondary/50"
                     )}
-                    onDragOver={onAvatarDragOver}
-                    onDragLeave={onAvatarDragLeave}
-                    onDrop={onAvatarDrop}
                   >
-                    <Avatar className="h-16 w-16 shrink-0 border">
-                      {avatarUrl ? (
-                        <AvatarImage src={avatarUrl} alt={name || "Your avatar"} />
-                      ) : null}
-                      <AvatarFallback className="text-lg font-semibold">
-                        {avatarUploading ? (
-                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                        ) : (
-                          initials(name || session?.user?.name || "?")
-                        )}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex flex-wrap items-center gap-2 min-w-0">
-                      <input
-                        ref={avatarFileRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAvatarUpload}
-                        className="hidden"
-                        aria-hidden
-                      />
-                      <Button
+                    {active && (
+                      <span aria-hidden className="absolute -left-2 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-full bg-club" />
+                    )}
+                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-club-ink" : "text-muted-foreground")} />
+                    <span className="min-w-0 flex-1">
+                      <span className={cn("block truncate text-sm leading-tight", active ? "font-medium text-foreground" : "text-foreground/90")}>{p.label}</span>
+                      <span className="mt-0.5 block truncate text-xs leading-tight text-muted-foreground">{p.sub}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </nav>
+            {/* Rail footer — quick light/dark toggle (iOS switch). */}
+            <div className="border-t border-border/70 p-2">
+              <div className="flex h-11 items-center gap-2.5 rounded-lg px-3">
+                {theme === "dark" ? (
+                  <Moon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                ) : (
+                  <Sun className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+                <span className="flex-1 truncate text-sm">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+                <IosSwitch
+                  checked={theme === "dark"}
+                  onChange={(v) => setTheme(v ? "dark" : "light")}
+                  label="Toggle dark mode"
+                />
+              </div>
+            </div>
+          </aside>
+
+          {/* ═══ Mobile root — the iOS settings list ═══ */}
+          {pane === "root" ? (
+            <div key="settings-mobile-root" className="flex min-h-0 flex-1 animate-in flex-col slide-in-from-left duration-200 sm:hidden">
+              <div
+                className="flex shrink-0 items-center justify-between border-b border-border/70 px-4"
+                style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
+              >
+                <span className="text-base font-semibold">Settings</span>
+                <DialogClose asChild>
+                  <button
+                    type="button"
+                    aria-label="Close settings"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </DialogClose>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                {/* Identity card */}
+                <div className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card px-4 py-3.5">
+                  <DecoratedAvatar
+                    decoration={session?.user?.avatarDecoration}
+                    src={session?.user?.image ?? undefined}
+                    name={session?.user?.name ?? ""}
+                    className="h-12 w-12 shrink-0"
+                    avatarClassName="text-sm"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold leading-tight">{session?.user?.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{session?.user?.email}</p>
+                  </div>
+                </div>
+                {/* Section list — iOS inset grouped rows with chevrons. */}
+                <div className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-card">
+                  {SETTINGS_PANES.map((p, i) => {
+                    const Icon = p.icon
+                    return (
+                      <button
+                        key={p.id}
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => avatarFileRef.current?.click()}
-                        disabled={avatarUploading}
-                      >
-                        {avatarUploading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Upload className="h-4 w-4" />
+                        onClick={() => goTo(p.id)}
+                        className={cn(
+                          "flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60",
+                          i > 0 && "border-t border-border/60"
                         )}
-                        <span>{avatarUploading ? "Uploading…" : "Upload"}</span>
+                      >
+                        <Icon className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium leading-tight">{p.label}</span>
+                          <span className="mt-0.5 block truncate text-xs leading-tight text-muted-foreground">{p.sub}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* Theme quick toggle — same switch as the desktop rail. */}
+                <div className="mt-4 flex items-center justify-between rounded-2xl border border-border/70 bg-card px-4 py-3.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    {theme === "dark" ? (
+                      <Moon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    ) : (
+                      <Sun className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    )}
+                    <span className="truncate text-sm font-medium">{theme === "dark" ? "Dark mode" : "Light mode"}</span>
+                  </div>
+                  <IosSwitch
+                    checked={theme === "dark"}
+                    onChange={(v) => setTheme(v ? "dark" : "light")}
+                    label="Toggle dark mode"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* ═══ Content pane — always on desktop, pushed on mobile ═══ */}
+          {/* NO key on this div — a keyed remount here previously COLLIDED
+              with the mobile root's key (both were "root" when pane was
+              "root"), which made React's reconciler keep the stale root
+              node alive while mounting the drilled pane next to it — the
+              panes stacked (½ screen, then ⅓…) on every tap. One persistent
+              instance also preserves scroll position across pane switches. */}
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 animate-in flex-col slide-in-from-right duration-200 sm:animate-none",
+              pane === "root" ? "hidden sm:flex" : "flex"
+            )}
+          >
+            {/* Desktop pane header — title + one-line description + close. */}
+            <div className="hidden shrink-0 items-start justify-between gap-4 px-7 pb-4 pt-6 sm:flex">
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold tracking-tight">{activeMeta.label}</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">{activeMeta.description}</p>
+              </div>
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  aria-label="Close settings"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </DialogClose>
+            </div>
+
+            {/* Mobile back header — iOS drill-down chrome. */}
+            <div
+              className="relative flex shrink-0 items-center border-b border-border/70 px-2 sm:hidden"
+              style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}
+            >
+              <button
+                type="button"
+                onClick={() => setPane("root")}
+                className="flex h-9 items-center gap-1 rounded-lg pl-2 pr-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+                Settings
+              </button>
+              <span className="pointer-events-none absolute inset-x-0 truncate px-16 text-center text-base font-semibold">
+                {activeMeta.label}
+              </span>
+            </div>
+
+            {/* Scrollable pane body — grouped inset lists. */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-8 sm:px-7 sm:pb-7 sm:pt-0">
+              {activePane === "profile" ? (
+                <div className="space-y-6">
+                  {/* Install ClubHub hint (PWA) */}
+                  <InstallHint />
+
+                  {/* ── Account ── */}
+                  <section>
+                    <p className={SETTINGS_TIER}>Account</p>
+                    <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card">
+                      <div className="px-4 py-3">
+                        <Label htmlFor="settings-name" className="text-sm font-medium">Display name</Label>
+                        <Input
+                          id="settings-name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          maxLength={80}
+                          className="mt-1.5"
+                        />
+                      </div>
+                      <div className="px-4 py-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <Label htmlFor="settings-bio" className="text-sm font-medium">Bio</Label>
+                          <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
+                            {bio.length}/500
+                          </span>
+                        </div>
+                        <Textarea
+                          id="settings-bio"
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          rows={3}
+                          maxLength={500}
+                          className="mt-1.5 resize-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <Button onClick={saveProfile} disabled={loading} className="rounded-full px-5">
+                        {loading ? "Saving…" : "Save profile"}
                       </Button>
-                      {avatarUrl && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-muted-foreground hover:text-destructive"
-                          onClick={handleAvatarRemove}
-                          disabled={avatarUploading}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span>Remove</span>
-                        </Button>
+                    </div>
+                  </section>
+
+                  {/* ── Avatar (upload + drag-drop + crop) ── */}
+                  <section>
+                    <p className={SETTINGS_TIER}>Avatar</p>
+                    {/* §44 — the whole card is the drop zone; the dashed
+                        accent ring + tint appear only while dragging. */}
+                    <div
+                      className={cn(
+                        "rounded-2xl border border-border/70 bg-card transition-colors",
+                        avatarDragging && "border-2 border-dashed border-club bg-club-muted/20"
+                      )}
+                      onDragOver={onAvatarDragOver}
+                      onDragLeave={onAvatarDragLeave}
+                      onDrop={onAvatarDrop}
+                    >
+                      <div className="flex items-center gap-4 px-4 py-3.5">
+                        <Avatar className="h-16 w-16 shrink-0 border">
+                          {avatarUrl ? (
+                            <AvatarImage src={avatarUrl} alt={name || "Your avatar"} />
+                          ) : null}
+                          <AvatarFallback className="text-lg font-semibold">
+                            {avatarUploading ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            ) : (
+                              initials(name || session?.user?.name || "?")
+                            )}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <input
+                            ref={avatarFileRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleAvatarUpload}
+                            className="hidden"
+                            aria-hidden
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => avatarFileRef.current?.click()}
+                            disabled={avatarUploading}
+                          >
+                            {avatarUploading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4" />
+                            )}
+                            <span>{avatarUploading ? "Uploading…" : "Upload"}</span>
+                          </Button>
+                          {avatarUrl && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={handleAvatarRemove}
+                              disabled={avatarUploading}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span>Remove</span>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="px-4 pb-3.5 text-xs text-muted-foreground">PNG, JPG, or WebP.</p>
+                    </div>
+                  </section>
+
+                  {/* ── Avatar effect — same decoration picker as the
+                      onboarding tour, reachable anytime from settings.
+                      Circular previews; the selection saves instantly (no
+                      "Save profile" needed). ── */}
+                  <section>
+                    <div className="flex items-center justify-between">
+                      <p className={SETTINGS_TIER}>Avatar effect</p>
+                      {decoSaving && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving…
+                        </span>
                       )}
                     </div>
-                  </div>
-                  <p className="text-caption text-muted-foreground">
-                    PNG, JPG, or WebP. You can crop &amp; rotate after picking a file.
-                  </p>
-                </div>
-                {/* Avatar effect — same decoration picker as the onboarding
-                    tour, reachable anytime from settings. Tiles preview the
-                    effect on the user's real avatar at a size where the
-                    effect actually reads (the v7 tiles were so small the
-                    effect was invisible — "barely useable"); the selection
-                    saves instantly (no "Save profile" needed). */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Avatar effect</Label>
-                    {decoSaving && (
-                      <span className="flex items-center gap-1 text-caption text-muted-foreground">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Saving…
-                      </span>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-border bg-card/60 p-3 sm:p-4">
-                    <div className="flex items-center gap-3.5">
-                      {/* key on decoration → the soft pop replays on change */}
-                      <DecoratedAvatar
-                        key={decoration}
-                        decoration={decoration}
-                        src={avatarUrl || null}
-                        name={name || session?.user?.name || "You"}
-                        className="ch-tour-pop h-16 w-16 shrink-0"
-                        avatarClassName="border-2 border-card shadow-card"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-tight text-foreground">
-                          {DECORATION_LABELS[decoration]}
-                        </p>
-                        <p className="text-caption leading-relaxed text-muted-foreground mt-0.5">
-                          An animated effect that frames your avatar everywhere you
-                          show up — chat, announcements, the members list, your
-                          profile. Tap a tile to apply it instantly.
-                        </p>
+                    <div className="rounded-2xl border border-border/70 bg-card px-4 py-4">
+                      <div className="flex items-center gap-3.5">
+                        {/* key on decoration → the soft pop replays on change */}
+                        <DecoratedAvatar
+                          key={decoration}
+                          decoration={decoration}
+                          src={avatarUrl || null}
+                          name={name || session?.user?.name || "You"}
+                          className="ch-tour-pop h-12 w-12 shrink-0"
+                          avatarClassName="border-2 border-card shadow-card"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold leading-tight text-foreground">
+                            {DECORATION_LABELS[decoration]}
+                          </p>
+                          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                            Tap a frame to wear it everywhere.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        {DECORATION_IDS.map((id) => {
+                          const active = decoration === id
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              aria-pressed={active}
+                              aria-label={`Avatar effect: ${DECORATION_LABELS[id]}`}
+                              disabled={decoSaving}
+                              onClick={() => selectDecoration(id)}
+                              className={cn(
+                                "relative flex h-14 w-14 items-center justify-center rounded-full transition-[box-shadow,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-60",
+                                active
+                                  ? "ring-2 ring-primary ring-offset-2 ring-offset-card"
+                                  : "ring-1 ring-border/70 hover:ring-primary/40"
+                              )}
+                            >
+                              <DecoratedAvatar
+                                decoration={id}
+                                src={avatarUrl || null}
+                                name={name || session?.user?.name || "You"}
+                                className="h-10 w-10"
+                                avatarClassName="border-2 border-card"
+                              />
+                              {active && (
+                                <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-card">
+                                  <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
-                      {DECORATION_IDS.map((id) => {
-                        const active = decoration === id
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            aria-pressed={active}
-                            aria-label={`Avatar effect: ${DECORATION_LABELS[id]}`}
-                            disabled={decoSaving}
-                            onClick={() => selectDecoration(id)}
-                            className={cn(
-                              "relative flex flex-col items-center gap-1.5 rounded-xl border p-2 transition-[border-color,background-color,box-shadow] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
-                              active
-                                ? "border-club bg-club-muted/40 shadow-card ring-1 ring-club/30"
-                                : "border-border/70 bg-card hover:border-club/30 hover:shadow-card",
-                            )}
-                          >
-                            {active && (
-                              <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-club text-club-foreground">
-                                <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                              </span>
-                            )}
-                            <DecoratedAvatar
-                              decoration={id}
-                              src={avatarUrl || null}
-                              name={name || session?.user?.name || "You"}
-                              className="h-14 w-14"
-                              avatarClassName="border-2 border-card"
-                            />
-                            <span className="text-center text-[0.6875rem] font-medium leading-tight text-foreground/80">
-                              {DECORATION_LABELS[id]}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Bio</Label>
-                  <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} />
-                </div>
-                <Button variant="club" onClick={saveProfile} disabled={loading}>
-                  {loading ? "Saving..." : "Save profile"}
-                </Button>
+                  </section>
 
-                <DangerZoneSection isExec={isExec} />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="security" className="mt-4">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Change password</Label>
-                  <Input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Current password"
-                    autoComplete="current-password"
-                  />
-                  <p className="text-caption text-muted-foreground">
-                    Required if you already have a password. Google accounts can set a first password without one.
-                  </p>
-                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (8+ chars, letter + number)" autoComplete="new-password" />
-                  <Button variant="club" onClick={changePassword} disabled={loading}>
-                    {loading ? "Saving..." : "Change password"}
-                  </Button>
+                  {/* ── Danger zone (leave / delete this club) ── */}
+                  <DangerZoneSection isExec={isExec} />
                 </div>
-                {/* ── Executive Admin Handbook (execs of this club only) ──────
-                    The one-time acknowledgment popup is gone once confirmed,
-                    but the guide itself stays available here — clicking
-                    closes Settings and re-opens the handbook in dismissible
-                    REVIEW mode (same content + Google-Docs link). */}
-                {isExec && (
-                  <div className="rounded-xl border border-border bg-card/60 p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        <BookOpenCheck className="h-5 w-5" aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-tight">Executive Admin Handbook</p>
-                        <p className="mt-1 text-caption leading-relaxed text-muted-foreground">
-                          Your guide to running the club — responsibilities, member
-                          management, hour reviews, and policies. Re-readable anytime
-                          for executives.
+              ) : activePane === "appearance" ? (
+                <AppearancePane />
+              ) : (
+                <div className="space-y-6">
+                  {/* ── Password ── */}
+                  <section>
+                    <p className={SETTINGS_TIER}>Password</p>
+                    <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card">
+                      <div className="px-4 py-3">
+                        <Label htmlFor="settings-current-password" className="text-sm font-medium">Current password</Label>
+                        <Input
+                          id="settings-current-password"
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Current password"
+                          autoComplete="current-password"
+                          className="mt-1.5"
+                        />
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          Needed only if you already have a password.
                         </p>
                       </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="mt-3 w-full"
-                      onClick={() => {
-                        // Same hand-off the "Replay introduction guide" button
-                        // uses: close Settings first, then open the overlay —
-                        // never stack a fixed modal on a Radix dialog.
-                        window.dispatchEvent(new CustomEvent("close-settings"))
-                        window.dispatchEvent(new CustomEvent("open-exec-handbook"))
-                      }}
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      View guide
-                    </Button>
-                  </div>
-                )}
-                {/* ── Executive introduction guide (execs of this club only) ──
-                    The full admin walkthrough — branding, invites, approvals,
-                    day-to-day running, records, oversight — each shown as a
-                    fast demo preview with sample data and a "try it now"
-                    jump. Finishing hands off to the member guide (avatar,
-                    decorations, profile). It auto-shows once per club; this
-                    is the "do the introduction again" button. Same
-                    close-settings hand-off as the handbook. */}
-                {isExec && (
-                  <div className="rounded-xl border border-club/25 bg-club-muted/30 p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-club-muted text-club">
-                        <GraduationCap className="h-5 w-5" aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-tight">Executive introduction guide</p>
-                        <p className="mt-1 text-caption leading-relaxed text-muted-foreground">
-                          Every admin power in eight short stops — quick demo
-                          previews (sample data) and one-tap jumps to try each
-                          one for real. Leave mid-tour and it waits in a
-                          floating pill up top. Ends with your member guide.
-                        </p>
+                      <div className="px-4 py-3">
+                        <Label htmlFor="settings-new-password" className="text-sm font-medium">New password</Label>
+                        <Input
+                          id="settings-new-password"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="New password (8+ chars, letter + number)"
+                          autoComplete="new-password"
+                          className="mt-1.5"
+                        />
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="mt-3 w-full border-club/30 hover:border-club/50 hover:bg-club-subtle"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent("close-settings"))
-                        setTimeout(
-                          () => window.dispatchEvent(new CustomEvent("open-admin-tour")),
-                          50
-                        )
-                      }}
-                    >
-                      <PlayCircle className="h-4 w-4" />
-                      Replay executive guide
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
+                    <div className="mt-3 flex justify-end">
+                      <Button onClick={changePassword} disabled={loading} className="rounded-full px-5">
+                        {loading ? "Saving…" : "Change password"}
+                      </Button>
+                    </div>
+                  </section>
 
-            <TabsContent value="appearance" className="mt-4">
-              <AppearanceTab />
-            </TabsContent>
-          </Tabs>
+                  {/* ── For executives (execs of this club only) ── */}
+                  {isExec && (
+                    <section>
+                      <p className={SETTINGS_TIER}>For executives</p>
+                      <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card">
+                        {/* Executive Admin Handbook — the one-time
+                            acknowledgment popup is gone once confirmed, but
+                            the guide itself stays available here: clicking
+                            closes Settings and re-opens the handbook in
+                            dismissible REVIEW mode (same content +
+                            Google-Docs link). */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Same hand-off the "Replay introduction guide"
+                            // button uses: close Settings first, then open the
+                            // overlay — never stack a fixed modal on a Radix
+                            // dialog.
+                            window.dispatchEvent(new CustomEvent("close-settings"))
+                            window.dispatchEvent(new CustomEvent("open-exec-handbook"))
+                          }}
+                          className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+                        >
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                            <BookOpenCheck className="h-5 w-5" aria-hidden />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium leading-tight">Executive Admin Handbook</span>
+                            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">Your guide to running the club.</span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+                        </button>
+                        {/* Executive introduction guide — the full admin
+                            walkthrough (branding, invites, approvals,
+                            day-to-day running, records, oversight). It
+                            auto-shows once per club; this is the "do the
+                            introduction again" row. Same close-settings
+                            hand-off as the handbook. */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent("close-settings"))
+                            setTimeout(
+                              () => window.dispatchEvent(new CustomEvent("open-admin-tour")),
+                              50
+                            )
+                          }}
+                          className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+                        >
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-club-muted text-club">
+                            <GraduationCap className="h-5 w-5" aria-hidden />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium leading-tight">Executive introduction guide</span>
+                            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">Every admin power in eight quick stops.</span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+                        </button>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </DialogContent>
       {/* Crop-then-upload dialog: opens when a file is picked/dropped. The
@@ -2673,14 +3254,13 @@ function SettingsDialog({
 }
 
 /**
- * AppearanceTab — user-level visual personalization. Lets the user change
- * their ambient background effect, theme color (with an "override club color"
- * toggle), and the ambient intensity. Also offers a "Replay introduction
- * guide" button so the tour is discoverable from settings, not just the
- * account menu. All changes apply live (the CustomizationProvider in the
+ * AppearancePane — user-level visual personalization (absorbs the old
+ * AppearanceTab). Color mode, theme color (with an "override club color"
+ * switch), ambient background effect + intensity, plus the replay-intro and
+ * reset actions. All changes apply live (the CustomizationProvider in the
  * layout reads the same store).
  */
-function AppearanceTab() {
+function AppearancePane() {
   const ambient = useCustomizationStore((s) => s.ambient)
   const setAmbient = useCustomizationStore((s) => s.setAmbient)
   const themeColor = useCustomizationStore((s) => s.themeColor)
@@ -2693,175 +3273,181 @@ function AppearanceTab() {
   const { theme, setTheme } = useTheme()
 
   return (
-    <div className="space-y-5">
-      {/* Light / Dark mode — desktop doesn't have the mobile-only toggle that
-          sits above the tabs, so we expose it here for all viewport sizes.
-          (The mobile-only toggle is still there for quick access without
-          diving into Appearance.) */}
-      <div className="space-y-2">
-        <Label>Color mode</Label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setTheme("light")}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors",
-              theme !== "dark" ? "border-club bg-club-muted text-club-ink" : "border-border bg-card text-muted-foreground hover:bg-accent/40"
-            )}
-          >
-            <Sun className="h-4 w-4" /> Light
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme("dark")}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors",
-              theme === "dark" ? "border-club bg-club-muted text-club-ink" : "border-border bg-card text-muted-foreground hover:bg-accent/40"
-            )}
-          >
-            <Moon className="h-4 w-4" /> Dark
-          </button>
-        </div>
-      </div>
-
-      {/* Theme color */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Theme color</Label>
-          <label className="flex items-center gap-1.5 text-caption text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={override}
-              onChange={(e) => setOverride(e.target.checked)}
-              className="h-3.5 w-3.5 rounded accent-club"
-            />
-            Override club color
-          </label>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {THEME_COLOR_PRESETS.map((c) => (
+    <div className="space-y-6">
+      {/* ── Color mode — segmented control ── */}
+      <section>
+        <p className={SETTINGS_TIER}>Color mode</p>
+        <div className="rounded-2xl border border-border/70 bg-card p-2">
+          <div className="flex rounded-full bg-muted p-1" role="radiogroup" aria-label="Color mode">
             <button
-              key={c.id}
               type="button"
-              onClick={() => setThemeColor(c.hex)}
-              aria-label={`Theme color ${c.label}`}
+              role="radio"
+              aria-checked={theme !== "dark"}
+              onClick={() => setTheme("light")}
               className={cn(
-                "h-8 w-8 rounded-full border-2 transition-all hover:scale-110",
-                themeColor.toLowerCase() === c.hex.toLowerCase() && override
-                  ? "border-foreground ring-2 ring-club/40 scale-110"
-                  : "border-card"
-              )}
-              style={{ background: c.hex }}
-            />
-          ))}
-          <label
-            className="relative h-8 w-8 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:bg-accent/40 transition-colors overflow-hidden"
-            title="Pick a custom color"
-          >
-            <input
-              type="color"
-              value={themeColor}
-              onChange={(e) => setThemeColor(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            />
-            <Palette className="h-3.5 w-3.5 text-muted-foreground" />
-          </label>
-        </div>
-        <p className="text-caption text-muted-foreground">
-          {override
-            ? "Your theme color overrides the club's accent everywhere."
-            : "Off — each club's own accent color is used."}
-        </p>
-      </div>
-
-      {/* Ambient background effect */}
-      <div className="space-y-2">
-        <Label>Background effect</Label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          {AMBIENT_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setAmbient(p.id)}
-              aria-pressed={ambient === p.id}
-              className={cn(
-                "group relative flex flex-col gap-1.5 rounded-xl border p-2 text-center transition-[border-color,background-color,box-shadow] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                ambient === p.id
-                  ? "border-club bg-club-muted ring-1 ring-club/30 shadow-card"
-                  : "border-border/70 bg-card hover:border-club/25 hover:shadow-card",
+                "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-sm transition-[background-color,box-shadow,color] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                theme !== "dark"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {/* Live mini preview — the same tile the onboarding tour uses,
-                  so you SEE the effect you're picking, not just its name. */}
-              <AmbientPreviewMini effect={p.id} active={ambient === p.id} />
-              <span className={cn("text-caption-medium font-medium", ambient === p.id ? "text-club-ink" : "text-foreground")}>
-                {p.label}
-              </span>
+              <Sun className="h-4 w-4" aria-hidden /> Light
             </button>
-          ))}
-        </div>
-        {ambient !== "none" && (
-          <p className="text-caption text-muted-foreground mt-1">
-            {AMBIENT_PRESETS.find((p) => p.id === ambient)?.description}
-          </p>
-        )}
-      </div>
-
-      {/* Intensity slider — only when an effect is active */}
-      {ambient !== "none" && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Effect intensity</Label>
-            <span className="text-caption text-muted-foreground tabular-nums">{intensity}%</span>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={theme === "dark"}
+              onClick={() => setTheme("dark")}
+              className={cn(
+                "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-sm transition-[background-color,box-shadow,color] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                theme === "dark"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Moon className="h-4 w-4" aria-hidden /> Dark
+            </button>
           </div>
-          <input
-            type="range"
-            min={10}
-            max={100}
-            value={intensity}
-            onChange={(e) => setIntensity(parseInt(e.target.value, 10))}
-            className="w-full accent-club"
-            aria-label="Effect intensity"
-          />
         </div>
-      )}
+      </section>
 
-      {/* Replay introduction guide */}
-      <div className="pt-2 border-t border-border">
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => {
-            // Close the settings dialog first, then open the tour, so the
-            // tour isn't buried behind the modal.
-            window.dispatchEvent(new CustomEvent("close-settings"))
-            setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 50)
-          }}
-        >
-          <Sparkles className="h-4 w-4" /> Replay introduction guide
-        </Button>
-      </div>
+      {/* ── Theme color ── */}
+      <section>
+        <p className={SETTINGS_TIER}>Theme color</p>
+        <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card">
+          <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Override club color</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Use your own accent in every club.</p>
+            </div>
+            <IosSwitch checked={override} onChange={setOverride} label="Override club color" />
+          </div>
+          <div className="px-4 py-3.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {THEME_COLOR_PRESETS.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setThemeColor(c.hex)}
+                  aria-label={`Theme color ${c.label}`}
+                  className={cn(
+                    "h-7 w-7 rounded-full border-2 border-card transition-[transform,box-shadow] duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                    themeColor.toLowerCase() === c.hex.toLowerCase() && override &&
+                      "ring-2 ring-primary ring-offset-2 ring-offset-card"
+                  )}
+                  style={{ background: c.hex }}
+                />
+              ))}
+              <label
+                className="relative flex h-7 w-7 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border transition-colors hover:bg-accent/40"
+                title="Pick a custom color"
+              >
+                <input
+                  type="color"
+                  value={themeColor}
+                  onChange={(e) => setThemeColor(e.target.value)}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+                <Palette className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+              </label>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {override
+                ? "Your color overrides the club's accent."
+                : "Each club's own accent is used."}
+            </p>
+          </div>
+        </div>
+      </section>
 
-      {/* Reset */}
-      <div className="pt-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full text-muted-foreground"
-          onClick={() => {
-            reset()
-            toast.success("Appearance reset to defaults")
-          }}
-        >
-          Reset to defaults
-        </Button>
-      </div>
+      {/* ── Background effect — live mini previews ── */}
+      <section>
+        <p className={SETTINGS_TIER}>Background effect</p>
+        <div className="rounded-2xl border border-border/70 bg-card p-3">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {AMBIENT_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setAmbient(p.id)}
+                aria-pressed={ambient === p.id}
+                className={cn(
+                  "group flex flex-col gap-1.5 rounded-xl border p-2 text-center transition-[border-color,box-shadow] duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                  ambient === p.id
+                    ? "border-primary/60 ring-2 ring-primary"
+                    : "border-border/70 hover:border-primary/30"
+                )}
+              >
+                {/* Live mini preview — the same tile the onboarding tour
+                    uses, so you SEE the effect you're picking. */}
+                <AmbientPreviewMini effect={p.id} active={ambient === p.id} />
+                <span className={cn("text-xs font-medium", ambient === p.id ? "text-primary" : "text-foreground")}>
+                  {p.label}
+                </span>
+              </button>
+            ))}
+          </div>
+          {ambient !== "none" && (
+            <div className="mt-3 space-y-2 px-1">
+              <p className="text-xs text-muted-foreground">
+                {AMBIENT_PRESETS.find((p) => p.id === ambient)?.description}
+              </p>
+              {/* Intensity slider — only when an effect is active */}
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 text-xs font-medium">Intensity</span>
+                <input
+                  type="range"
+                  min={10}
+                  max={100}
+                  value={intensity}
+                  onChange={(e) => setIntensity(parseInt(e.target.value, 10))}
+                  className="h-1.5 flex-1 accent-club"
+                  aria-label="Effect intensity"
+                />
+                <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{intensity}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Quiet actions — replay the intro guide, reset ── */}
+      <section>
+        <div className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/70 bg-card">
+          <button
+            type="button"
+            onClick={() => {
+              // Close the settings dialog first, then open the tour, so the
+              // tour isn't buried behind the modal.
+              window.dispatchEvent(new CustomEvent("close-settings"))
+              setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 50)
+            }}
+            className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+          >
+            <Sparkles className="h-4.5 w-4.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="min-w-0 flex-1 text-sm font-medium">Replay introduction guide</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              reset()
+              toast.success("Appearance reset.")
+            }}
+            className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors hover:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+          >
+            <RefreshCw className="h-4.5 w-4.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="min-w-0 flex-1 text-sm font-medium">Reset to defaults</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+          </button>
+        </div>
+      </section>
     </div>
   )
 }
 
 /**
- * Danger Zone — appears at the bottom of the Profile tab. Groups the two
+ * Danger Zone — the bottom group of the Profile pane. Groups the two
  * destructive club-level actions (leave + delete) inside a red-tinted panel
  * so they're visually separated from the rest of the settings. Both actions
  * reuse the existing API endpoints (`/api/clubs/[id]/leave` and
@@ -2898,7 +3484,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
 
   async function handleDelete() {
     if (!deletePassword.trim()) {
-      toast.error("Enter the club password to confirm deletion")
+      toast.error("Enter the club password first.")
       return
     }
     setDeleting(true)
@@ -2907,7 +3493,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
         method: "DELETE",
         json: { confirmPassword: deletePassword },
       })
-      toast.success(`Club "${clubName}" has been permanently deleted`)
+      toast.success(`Club "${clubName}" deleted.`)
       setDeleteOpen(false)
       setTimeout(() => window.location.reload(), 500)
     } catch (e: any) {
@@ -2917,87 +3503,86 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
   }
 
   return (
-    <div className="border border-danger/30 dark:border-danger/40/50 rounded-xl p-4 mt-4">
-      <div className="flex items-center gap-2 mb-1">
-        <AlertTriangle className="h-4 w-4 text-danger-foreground dark:text-danger-foreground" />
-        <h3 className="text-sm font-semibold text-danger-foreground dark:text-danger-foreground">
-          Danger Zone
-        </h3>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        These actions are permanent and cannot be undone.
+    <section>
+      <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-widest text-danger-foreground/80">
+        Danger zone
       </p>
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium">Leave this club</p>
-          <p className="text-xs text-muted-foreground">
-            You&apos;ll lose access immediately and can rejoin later with the club code.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-danger/40 text-danger-foreground hover:bg-danger-subtle dark:border-danger/30 dark:text-danger-foreground dark:hover:bg-danger-subtle shrink-0"
-          onClick={() => setLeaveOpen(true)}
-        >
-          <LogOut className="mr-1.5 h-4 w-4" /> Leave club
-        </Button>
-      </div>
-
-      {isExec && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 border-t border-danger/30/60 dark:border-danger/40/40 mt-1">
+      <div className="divide-y divide-danger/20 rounded-2xl border border-danger/30 bg-danger-subtle/40 dark:border-danger/40">
+        {/* Leave — quiet destructive row. */}
+        <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-medium">Delete this club</p>
-            <p className="text-xs text-muted-foreground">
-              Permanently removes &quot;{clubName}&quot; and all of its data.
+            <p className="text-sm font-medium">Leave this club</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              You can rejoin later with the club code.
             </p>
           </div>
-          <AlertDialog open={deleteOpen} onOpenChange={(v) => { setDeleteOpen(v); if (!v) setDeletePassword("") }}>
-            <AlertDialogTrigger asChild>
-              <button
-                type="button"
-                className="text-xs text-muted-foreground/70 hover:text-danger-foreground dark:hover:text-danger-foreground transition-colors underline-offset-2 hover:underline shrink-0"
-              >
-                Delete this club
-              </button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-danger-foreground" />
-                  Delete &quot;{clubName}&quot;?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently deletes the club, all members, teams, tasks, hours, and messages.
-                  This cannot be undone. Enter the club password to confirm.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <Input
-                type="password"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                placeholder="Club password"
-                className="mt-2"
-              />
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    handleDelete()
-                  }}
-                  disabled={deleting}
-                >
-                  {deleting ? "Deleting…" : "Delete club"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-danger/40 text-danger-foreground hover:bg-danger-subtle hover:text-danger-foreground dark:border-danger/30"
+            onClick={() => setLeaveOpen(true)}
+          >
+            <LogOut className="h-4 w-4" /> Leave club
+          </Button>
         </div>
-      )}
+
+        {/* Delete — exec-only, the quietest row (a quiet link that only
+            turns destructive on hover), with the password confirmation
+            dialog unchanged. */}
+        {isExec && (
+          <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Delete this club</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Permanently removes &quot;{clubName}&quot; and all of its data.
+              </p>
+            </div>
+            <AlertDialog open={deleteOpen} onOpenChange={(v) => { setDeleteOpen(v); if (!v) setDeletePassword("") }}>
+              <AlertDialogTrigger asChild>
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-muted-foreground/80 underline-offset-2 transition-colors hover:text-danger-foreground hover:underline"
+                >
+                  Delete this club
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-danger-foreground" />
+                    Delete &quot;{clubName}&quot;?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes everything. Enter the club password to confirm.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <Input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Club password"
+                  className="mt-2"
+                />
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleDelete()
+                    }}
+                    disabled={deleting}
+                  >
+                    {deleting ? "Deleting…" : "Delete club"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        )}
+      </div>
+      <p className="mt-2 px-1 text-xs text-muted-foreground/80">These actions can&apos;t be undone.</p>
 
       {/* Leave confirm */}
       <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
@@ -3005,8 +3590,8 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Leave this club?</AlertDialogTitle>
             <AlertDialogDescription>
-              You will lose access to this club immediately. If you are the only executive, you must
-              promote another member first. You can rejoin later with the club code and password.
+              You&apos;ll lose access immediately. If you&apos;re the only executive,
+              promote another member first. You can rejoin later with the club code.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -3024,7 +3609,7 @@ function DangerZoneSection({ isExec }: { isExec: boolean }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </section>
   )
 }
 
@@ -3067,15 +3652,43 @@ function NotificationBell() {
   // closed). Clicking it re-opens the modal instead of navigating.
   const { notif: releaseNotif, dismiss: dismissReleaseNotif } = useWhatsNewNotif()
 
+  // §Dwell-read sequence guard — a stale 20s poll resolving AFTER an
+  // optimistic mutation (mark-all / clear / single read / dwell-read) used
+  // to clobber the fresh state and resurrect the unread badge. Every
+  // optimistic mutator bumps the sequence; refresh only applies its result
+  // when the sequence hasn't moved since its request started.
+  const seqRef = useRef(0)
+  const bumpSeq = useCallback(() => { seqRef.current += 1 }, [])
+
   const refresh = useCallback(async () => {
+    const seq = seqRef.current
     try {
       const data = await api<NotifListResponse>("/api/notifications?pageSize=10")
+      if (seqRef.current !== seq) return // superseded by a local mutation
       setItems(data.items)
       setUnread(data.unread)
     } catch {
       /* noop — silent failure for the bell preview */
     }
   }, [])
+
+  // §Dwell-read — iOS behavior: when the bell stays open for a beat
+  // (~1.2s), everything you're looking at flips to read and the badge
+  // clears while you watch — no click required. Re-arms on every open.
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(() => {
+      if (unread <= 0) return
+      bumpSeq()
+      setItems((prev) => prev.map((i) => ({ ...i, isRead: true })))
+      setUnread(0)
+      api("/api/notifications/read-all", { method: "POST" }).catch(() => {
+        // Re-fetch on failure so we don't lie about state.
+        refresh()
+      })
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [open, unread, bumpSeq, refresh])
 
   useEffect(() => {
     refresh()
@@ -3093,6 +3706,7 @@ function NotificationBell() {
   async function markAllRead() {
     if (markingAll) return
     setMarkingAll(true)
+    bumpSeq()
     // Optimistic — flip everything immediately for snappy UX.
     setItems((prev) => prev.map((i) => ({ ...i, isRead: true })))
     setUnread(0)
@@ -3109,6 +3723,7 @@ function NotificationBell() {
   async function clearAll() {
     if (clearingAll) return
     setClearingAll(true)
+    bumpSeq()
     // Optimistic — empty the list + reset the unread badge immediately.
     const prevItems = items
     setItems([])
@@ -3117,7 +3732,7 @@ function NotificationBell() {
     dismissReleaseNotif()
     try {
       await api("/api/notifications", { method: "DELETE" })
-      toast.success("All notifications cleared")
+      toast.success("Notifications cleared")
     } catch (err) {
       // Roll back on failure so we don't lie about state.
       setItems(prevItems)
@@ -3131,6 +3746,7 @@ function NotificationBell() {
   }
 
   async function markRead(id: string) {
+    bumpSeq()
     // Optimistic — only flip the targeted row.
     setItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, isRead: true } : i))
@@ -3208,7 +3824,7 @@ function NotificationBell() {
         open={open}
         onOpenChange={(o) => { setOpen(o); if (o) refresh() }}
         ariaLabel="Recent notifications"
-        className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl"
+        className="p-0 gap-0 max-h-[90dvh] flex flex-col rounded-t-xl shadow-dialog"
         trigger={triggerButton}
       >
         {body}
@@ -3221,7 +3837,7 @@ function NotificationBell() {
       <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-[360px] max-w-[calc(100vw-1.5rem)] p-0"
+        className="w-[360px] max-w-[calc(100vw-1.5rem)] p-0 shadow-popover"
         aria-label="Recent notifications"
       >
         {body}
@@ -3314,7 +3930,7 @@ function BellBody({
           </div>
           <p className="text-sm font-medium">No notifications yet</p>
           <p className="text-caption text-muted-foreground mt-1 max-w-[240px] mx-auto">
-            When something happens in your clubs, it&apos;ll show up here.
+            Club activity shows up here.
           </p>
         </div>
       ) : (
@@ -3372,7 +3988,7 @@ function NotifSection({
 }) {
   return (
     <section>
-      <div className="px-3 pt-2.5 pb-1 text-xs font-medium text-muted-foreground text-muted-foreground">
+      <div className="px-3 pt-2.5 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
         {label}
       </div>
       <div className="divide-y">{children}</div>

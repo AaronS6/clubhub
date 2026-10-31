@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { useReducedMotion } from "framer-motion"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import { useAppStore, type View } from "@/lib/store"
@@ -25,6 +26,7 @@ import {
   Camera,
 } from "lucide-react"
 import { BannerEditDialog } from "@/components/views/dashboard/banner-edit-dialog"
+import { ResilientImage } from "@/components/ui/resilient-image"
 import dynamic from "next/dynamic"
 
 // The banner's 30-day hours trend is the only recharts consumer left, so it
@@ -132,6 +134,56 @@ const TILE_COMPACT =
   "border border-border/80 bg-card rounded-xl p-4 shadow-card transition-[box-shadow,border-color,background-color] duration-200 hover:shadow-card-hover hover:border-club/15"
 
 // =========================================================================
+// Aurora greeting — the soft color band that drifts across the greeting
+// line once every 12s. The element styles are applied INLINE and the band
+// is driven by a rAF loop (below in the component) that writes
+// backgroundPosition per frame — NOT by a CSS animation.
+// WHY rAF (verified by live pixel-diff bisection in this environment):
+// Chromium freezes the painted raster of background-clip:text elements
+// driven by CSS background-position animations — computed style keeps
+// advancing but the pixels never repaint (12s/15s durations, ±2.6s/3.25s
+// delays, layered/unlayered keyframes ALL froze on the real greeting; even
+// post-hoc style mutations can't thaw an element rasterized frozen).
+// JS-driven per-frame inline backgroundPosition updates on a freshly
+// mounted element repaint flawlessly (2,816 px of verified sweep motion) —
+// the rAF driver IS the animation. Side benefits: rAF auto-pauses when the
+// tab is hidden, and the wall-clock phase resumes exactly on return.
+// The band (club accent → teal → violet, each mixed toward the ink so it
+// never goes neon) rides a 260%-wide gradient: most of the cycle the glyphs
+// read as plain ink, and roughly once per 12s the colorful core crosses
+// left→right — noticeable when it passes, invisible when it doesn't. The
+// WIDENED band (40→62%, up from 42→60%) is the "slower, lingers longer"
+// tuning: the colorful core spends ~2.9s per crossing instead of ~2.4s.
+// START-FAST: the driver starts with a 2.6s virtual head start, so the
+// band is already across the leading glyphs at the greeting's first paint
+// (position ≈ 78% — color within ~0.05s, not after a run-up).
+// =========================================================================
+const AURORA_GRADIENT =
+  "linear-gradient(110deg, " +
+  "var(--foreground) 0%, var(--foreground) 40%, " +
+  "color-mix(in oklab, var(--foreground) 62%, var(--club-accent)) 47%, " +
+  "color-mix(in oklab, var(--foreground) 22%, #14b8a6) 52%, " +
+  "color-mix(in oklab, var(--foreground) 60%, #a78bfa) 57%, " +
+  "var(--foreground) 62%, var(--foreground) 100%)"
+
+/** Aurora cycle length + the virtual head start (see comment above). */
+const AURORA_CYCLE_S = 12
+const AURORA_HEAD_START_S = 2.6
+
+const auroraTextStyle = (): CSSProperties => ({
+  backgroundImage: AURORA_GRADIENT,
+  backgroundSize: "260% 100%",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "100% 0",
+  WebkitBackgroundClip: "text",
+  backgroundClip: "text",
+  color: "transparent",
+  WebkitTextFillColor: "transparent",
+  // NOTE: no CSS `animation` here — see the block comment above. The rAF
+  // effect inside DashboardView drives backgroundPosition every frame.
+})
+
+// =========================================================================
 // Main component
 // =========================================================================
 export function DashboardView() {
@@ -143,11 +195,16 @@ export function DashboardView() {
   const [memberOnboardingDismissed, setMemberOnboardingDismissed] = useState(false)
 
   // ── Time-based greeting (§ v7.2) ──────────────────────────────────────────
-  // "Good morning/afternoon/evening, <first name> — here's where things
-  // stand." The hour is computed ONCE on mount (lazy initializer — no
-  // interval, no re-greeting mid-session); the NAME is read from the
-  // next-auth session user (re-renders resolve once it hydrates) and falls
-  // back to a nameless greeting when unavailable.
+  // "Good morning/afternoon/evening, <first name>." The hour is computed ONCE
+  // on mount (lazy initializer — no interval, no re-greeting mid-session); the
+  // NAME is read from the next-auth session user (re-renders resolve once it
+  // hydrates) and falls back to a nameless greeting when unavailable. The whole
+  // line wears the inline aurora styles (see AURORA_GRADIENT above): a soft
+  // aurora band in the club's accent quietly drifts across the letters. Under
+  // prefers-reduced-motion the animation is skipped and the line is plain ink.
+  const prefersReducedMotion = useReducedMotion() ?? false
+  const auroraRef = useRef<HTMLParagraphElement | null>(null)
+
   const [greetingWord] = useState(() => {
     const h = new Date().getHours()
     return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"
@@ -190,12 +247,40 @@ export function DashboardView() {
     if (error) toast.error((error as Error).message || "Failed to load dashboard")
   }, [error])
 
+  // §Aurora rAF driver — THE animation (see the AURORA comment block for why
+  // this is JS-driven and not a CSS animation). Writes backgroundPosition on
+  // the greeting element every frame with a 2.6s virtual head start so the
+  // band is already on the glyphs at first paint. rAF pauses when the tab is
+  // hidden and the wall-clock phase resumes exactly on return.
+  // Lives AFTER the query + re-runs on `isLoading` because the greeting
+  // element only mounts once data lands (the skeleton early-return below
+  // renders first) — a mount-only effect would see a null ref and never
+  // re-arm.
+  useEffect(() => {
+    if (prefersReducedMotion || isLoading) return
+    const el = auroraRef.current
+    if (!el) return
+    let raf = 0
+    const t0 = performance.now()
+    const tick = (now: number) => {
+      const t =
+        (((now - t0) / 1000 + AURORA_HEAD_START_S) % AURORA_CYCLE_S +
+          AURORA_CYCLE_S) %
+        AURORA_CYCLE_S
+      const pos = 100 - (t / AURORA_CYCLE_S) * 100
+      el.style.backgroundPosition = `${pos.toFixed(3)}% 0`
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [prefersReducedMotion, isLoading])
+
   if (!clubId) {
     return (
       <EmptyState
         icon={<Users className="h-8 w-8" />}
         title="No club selected"
-        description="Pick a club from the sidebar to view its dashboard."
+        description="Pick a club to get started."
       />
     )
   }
@@ -266,7 +351,6 @@ export function DashboardView() {
         delay={idx++ * 50}
         icon={<Hourglass className="h-4 w-4" />}
         title={`${fmtHours(data.myStats.pendingHours)}h awaiting review`}
-        description="Your submitted service hours"
         onClick={() => setView("hours")}
       />
     )
@@ -299,8 +383,8 @@ export function DashboardView() {
         title={n > 0 ? `${n} overdue task${n === 1 ? "" : "s"}` : "Tasks due soon"}
         description={
           n > 0
-            ? "Needs your attention"
-            : `${data.myStats.tasksAssigned} open task${data.myStats.tasksAssigned === 1 ? "" : "s"} assigned`
+            ? undefined
+            : `${data.myStats.tasksAssigned} open task${data.myStats.tasksAssigned === 1 ? "" : "s"}`
         }
         onClick={() => setView("tasks")}
         urgent={n > 0}
@@ -349,7 +433,7 @@ export function DashboardView() {
         delay={idx++ * 50}
         icon={<Pin className="h-4 w-4" />}
         title="Pinned announcement"
-        description={pinned.length > 1 ? `${pinned.length} pinned posts` : "From your club"}
+        description={pinned.length > 1 ? `${pinned.length} pinned` : undefined}
         onClick={() => setView("announcements")}
       >
         <ul className="mt-2.5 space-y-1.5">
@@ -408,7 +492,6 @@ export function DashboardView() {
         <EmptyState
           icon={<Trophy className="h-8 w-8" />}
           title="No hours logged yet"
-          description="Approved service hours will populate the leaderboard."
         />
       ) : (
         /* The leaderboard card is full-width now — entries flow in a
@@ -564,7 +647,6 @@ export function DashboardView() {
         <EmptyState
           icon={<Megaphone className="h-8 w-8" />}
           title="No announcements yet"
-          description="Share updates with your club to keep members in the loop."
         />
       ) : (
         <ul className="space-y-2">
@@ -611,7 +693,6 @@ export function DashboardView() {
         <EmptyState
           icon={<CalendarDays className="h-8 w-8" />}
           title="No upcoming meetings"
-          description="Schedule a meeting to get the team together."
         />
       ) : (
         <ul className="space-y-2">
@@ -675,15 +756,16 @@ export function DashboardView() {
   return (
     <div className="space-y-4 sm:space-y-5 min-w-0">
       {/* Row 0 — Time-based greeting header. Sits above the banner as the
-          dashboard's page header: greeting word + first name in the display
-          face, the trailing "here's where things stand" in muted body ink.
-          Mobile matches the banner's 20px identity scale; sm+ matches the
-          app's 28px page-title scale. */}
+          dashboard's page header. Mobile matches the banner's 20px identity
+          scale; sm+ matches the app's 28px page-title scale. */}
       <header className="min-w-0">
-        <p className="font-display text-[1.25rem] sm:text-[1.75rem] leading-tight font-semibold tracking-[-0.022em] text-foreground">
+        <p
+          ref={auroraRef}
+          style={auroraTextStyle()}
+          className="aurora-fallback font-display text-[1.25rem] sm:text-[1.75rem] leading-tight font-semibold tracking-[-0.022em]"
+        >
           {greetingWord}
-          {firstName ? `, ${firstName}` : ""}
-          <span className="font-normal text-muted-foreground"> — here's where things stand.</span>
+          {firstName ? `, ${firstName}` : ""}.
         </p>
       </header>
 
@@ -691,7 +773,10 @@ export function DashboardView() {
           chart lives INSIDE this card now, below the identity — part of the
           banner, not another nested tile. On mobile the banner is compact
           (h-36, tight identity) and the hours block is a single tight stack:
-          number + growth chip, goal progress, then a small chart. */}
+          number + growth chip, goal progress, then a small chart.
+          §Load choreography — first block of the staggered entrance
+          (banner → hours → attention → bento → strips, ~70ms apart). */}
+      <div className="dash-rise">
       <ClubBannerCard
         clubId={data.club.id}
         name={data.club.name}
@@ -710,10 +795,12 @@ export function DashboardView() {
         hoursTrend={data.hoursTrend}
         onViewHours={() => setView("hours")}
       />
+      </div>
 
       {/* Row 2 — Approved hours panel (sm+ only; on mobile the banner's
           hours block IS the hours surface — two stacked progress rows for
           the same number read as clutter). Click → Service Hours view. */}
+      <div className="dash-rise" style={{ "--dash-d": "70ms" } as CSSProperties}>
       <ApprovedHoursPanel
         className="hidden sm:flex"
         approvedHours={data.myStats.approvedHours}
@@ -723,8 +810,11 @@ export function DashboardView() {
         hoursPct={hoursPct}
         onViewHours={() => setView("hours")}
       />
+      </div>
 
-      {/* Row 2 — Tier 1 attention items (or onboarding banner) ---------------- */}
+      {/* Row 2 — Tier 1 attention items (or onboarding banner) ----------------
+          §Choreography: third block of the staggered entrance. */}
+      <div className="dash-rise" style={{ "--dash-d": "140ms" } as CSSProperties}>
       {showOnboarding ? (
         <OnboardingBanner
           clubCode={currentClub?.clubCode ?? null}
@@ -742,10 +832,14 @@ export function DashboardView() {
       ) : attentionItems.length === 0 ? (
         <AllCaughtUpCard />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        /* §Mobile — attention cards stack FULL-WIDTH on phones: half-width
+           cells can't fit titles like "Pinned: …" / "Pending approvals" and
+           the two cards visually collide. Two-up from sm, four-up from lg. */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {attentionItems}
         </div>
       )}
+      </div>
 
       {/* Rows 3+4 — Supporting tiles in asymmetric bento grid.
           Role-aware: members get snapshot → announcements → meetings →
@@ -758,30 +852,30 @@ export function DashboardView() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
           {/* Your snapshot — first */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-1 lg:order-1")}
-           
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-1 dash-rise")}
+            style={{ "--dash-d": "210ms" } as CSSProperties}
           >
             {snapshotBody}
           </section>
           {/* Announcements — second */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-2 lg:order-2")}
-           
+            className={cn(TILE, "lg:col-span-4 order-2 lg:order-2 dash-rise")}
+            style={{ "--dash-d": "280ms" } as CSSProperties}
           >
             {announcementsBody}
           </section>
           {/* Upcoming meetings — third */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-3 lg:order-3")}
-           
+            className={cn(TILE, "lg:col-span-4 order-3 lg:order-3 dash-rise")}
+            style={{ "--dash-d": "350ms" } as CSSProperties}
           >
             {meetingsBody}
           </section>
           {/* Leaderboard — fourth (full width; entries flow in a responsive
               grid since the card is wide now). */}
           <section
-            className={cn(TILE, "lg:col-span-12 order-4 lg:order-4")}
-           
+            className={cn(TILE, "lg:col-span-12 order-4 lg:order-4 dash-rise")}
+            style={{ "--dash-d": "420ms" } as CSSProperties}
           >
             {leaderboardBody}
           </section>
@@ -791,32 +885,32 @@ export function DashboardView() {
           {/* Leaderboard (club pulse) — desktop: row 1 full width; mobile:
               after snapshot. */}
           <section
-            className={cn(TILE, "lg:col-span-12 order-2 lg:order-1")}
-           
+            className={cn(TILE, "lg:col-span-12 order-2 lg:order-1 dash-rise")}
+            style={{ "--dash-d": "210ms" } as CSSProperties}
           >
             {leaderboardBody}
           </section>
 
           {/* Your snapshot (Tier 2) — desktop: row 2, cols 1-4; mobile: first */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-1 lg:order-2")}
-           
+            className={cn(TILE, "lg:col-span-4 order-1 lg:order-2 dash-rise")}
+            style={{ "--dash-d": "280ms" } as CSSProperties}
           >
             {snapshotBody}
           </section>
 
           {/* Recent announcements (Tier 3) — desktop: row 2, cols 5-8 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-4 lg:order-3")}
-           
+            className={cn(TILE, "lg:col-span-4 order-4 lg:order-3 dash-rise")}
+            style={{ "--dash-d": "350ms" } as CSSProperties}
           >
             {announcementsBody}
           </section>
 
           {/* Upcoming meetings (Tier 3) — desktop: row 2, cols 9-12 */}
           <section
-            className={cn(TILE, "lg:col-span-4 order-5 lg:order-4")}
-           
+            className={cn(TILE, "lg:col-span-4 order-5 lg:order-4 dash-rise")}
+            style={{ "--dash-d": "420ms" } as CSSProperties}
           >
             {meetingsBody}
           </section>
@@ -826,8 +920,8 @@ export function DashboardView() {
       {/* Row 5 — Club-wide stats mini-strip (exec only) --------------------- */}
       {isExec && (
         <section
-          className={cn(TILE_COMPACT, "")}
-         
+          className={cn(TILE_COMPACT, "dash-rise")}
+          style={{ "--dash-d": "490ms" } as CSSProperties}
         >
           {clubStatsBody}
         </section>
@@ -836,8 +930,8 @@ export function DashboardView() {
       {/* Row 6 (execs only) — Executive insights wide strip ---------------- */}
       {isExec && data.execStats && (
         <section
-          className={cn(TILE_COMPACT, "")}
-         
+          className={cn(TILE_COMPACT, "dash-rise")}
+          style={{ "--dash-d": "560ms" } as CSSProperties}
         >
           <div className="flex items-center gap-2 mb-3">
             <ShieldCheck className="h-4 w-4 text-club-ink" />
@@ -1044,11 +1138,6 @@ function HoursMilestoneCelebration({
           <PartyPopper className="h-10 w-10 text-club" />
         </div>
         <h2 className="text-lg font-semibold">{milestone} service hours! 🎉</h2>
-        <p className="text-sm text-muted-foreground mt-1.5">
-          You&apos;ve crossed the{" "}
-          <span className="font-semibold text-foreground">{milestone}-hour</span>{" "}
-          milestone in this club. Thank you for your contributions.
-        </p>
         <Button variant="club" className="mt-4" onClick={dismiss}>
           Nice!
         </Button>
@@ -1103,6 +1192,17 @@ function ClubBannerCard({
   const hasBanner = !!bannerUrl && !imgFailed
   const focalPct = Math.round((bannerFocalY ?? 0.5) * 100)
 
+  // §Retry-once — a single dropped request (tunnel hiccup, momentary 5xx)
+  // used to latch the fallback forever. Before giving up we retry the image
+  // ONCE with a cache-busting parameter; only a second failure shows the
+  // fallback. data: URLs fail deterministically, so they skip the retry.
+  const [bannerAttempt, setBannerAttempt] = useState(0)
+  const bannerBustable = !!bannerUrl && !bannerUrl.startsWith("data:")
+  const bannerSrc =
+    bannerAttempt > 0 && bannerBustable && bannerUrl
+      ? `${bannerUrl}${bannerUrl.includes("?") ? "&" : "?"}r=${bannerAttempt}`
+      : (bannerUrl ?? "")
+
   // Reset the failure flag when the banner changes (upload, club switch,
   // realtime update) so a previously-broken image doesn't hide a new valid
   // one. Official "adjust state when props change" pattern — no effect
@@ -1111,6 +1211,7 @@ function ClubBannerCard({
   if (prevBannerUrl !== bannerUrl) {
     setPrevBannerUrl(bannerUrl)
     setImgFailed(false)
+    setBannerAttempt(0)
   }
 
   return (
@@ -1122,11 +1223,14 @@ function ClubBannerCard({
       <div className="relative h-36 sm:h-52 lg:h-56">
         {bannerUrl && !imgFailed ? (
           <img
-            src={bannerUrl}
+            src={bannerSrc}
             alt={`${name} banner`}
             className="absolute inset-0 h-full w-full object-cover"
             style={{ objectPosition: `center ${focalPct}%` }}
-            onError={() => setImgFailed(true)}
+            onError={() => {
+              if (bannerBustable && bannerAttempt === 0) setBannerAttempt(1)
+              else setImgFailed(true)
+            }}
           />
         ) : (
           /* Fallback — no banner (or failed to load): a quiet accent wash +
@@ -1212,15 +1316,15 @@ function ClubBannerCard({
                 hasBanner && "ring-1 ring-white/30"
               )}
             >
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt={`${name} logo`}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials(name)
-              )}
+              {/* §Resilient logo — retries a transiently-dropped request once
+                  (cache-busted), then falls back to clean initials. Never the
+                  browser's broken-image glyph. */}
+              <ResilientImage
+                src={logoUrl}
+                alt={`${name} logo`}
+                name={name}
+                className="h-full w-full object-cover"
+              />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -1315,7 +1419,7 @@ function ClubBannerCard({
               type="button"
               onClick={onViewHours}
               className="w-full text-left rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 -mx-1 px-1"
-              aria-label="Your service hours — open Service Hours view"
+              aria-label="Your service hours"
             >
               <MobileHoursSummary
                 approvedHours={approvedHours}
@@ -1342,7 +1446,7 @@ function ClubBannerCard({
               <div className="h-full flex items-center justify-center">
                 <p className="text-caption inline-flex items-center gap-1.5">
                   <BarChart3 className="h-3.5 w-3.5" />
-                  30-day trend appears here after your first approved hours.
+                  30-day trend appears after your first hours.
                 </p>
               </div>
             ) : (
@@ -1384,7 +1488,7 @@ function ClubBannerCard({
               <div className="h-full flex items-center justify-center">
                 <p className="text-caption inline-flex items-center gap-1.5">
                   <BarChart3 className="h-3.5 w-3.5" />
-                  No hours logged yet — the 30-day trend appears here.
+                  No hours logged yet.
                 </p>
               </div>
             ) : (
@@ -1611,7 +1715,7 @@ function AttentionCard({
           {icon}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-card-title truncate">{title}</p>
+          <p className="text-card-title line-clamp-2">{title}</p>
           {description && <p className="text-caption mt-0.5">{description}</p>}
           {children}
         </div>
@@ -1677,9 +1781,6 @@ function OnboardingBanner({
         <PartyPopper className="h-4 w-4 text-club shrink-0" />
         <h2 className="text-section-title">Welcome! Let&apos;s set up your club</h2>
       </div>
-      <p className="text-caption text-muted-foreground mb-4">
-        A few quick steps will get your members engaged.
-      </p>
       <ul className="grid sm:grid-cols-2 gap-2">
         {items.map((it, i) => (
           <li key={i}>
@@ -1738,9 +1839,6 @@ function MemberOnboardingCard({
         <Target className="h-4 w-4 text-club shrink-0" />
         <h2 className="text-section-title">Getting started</h2>
       </div>
-      <p className="text-caption text-muted-foreground mb-4">
-        New here? A few quick links to get you up to speed.
-      </p>
       <ul className="grid sm:grid-cols-3 gap-2">
         {MEMBER_ONBOARDING_ITEMS.map((it) => (
           <li key={it.view}>
@@ -1891,7 +1989,7 @@ function DashboardSkeleton() {
       {/* Row 2 — approved hours panel */}
       <div className={cn(tile, "h-[72px]")} />
       {/* Tier 1 strip — 4 tighter tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <StatCardSkeleton key={i} />
         ))}

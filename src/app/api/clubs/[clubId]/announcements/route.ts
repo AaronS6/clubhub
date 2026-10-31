@@ -4,6 +4,7 @@ import { clubStorageFullResponse } from "@/lib/storage-guard"
 import { logActivity, notifyClub } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
 import { rateLimit } from "@/lib/rate-limit"
+import { isAccentKey, MAX_ANNOUNCEMENT_TAG_LENGTH } from "@/lib/announcement-style"
 
 const PAGE_SIZE = 20
 
@@ -90,6 +91,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ clubId: string 
       body: a.body,
       isPinned: a.isPinned,
       isUrgent: a.isUrgent,
+      accent: a.accent,
+      tag: a.tag,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
       authorId: a.authorId,
@@ -142,6 +145,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
   const text = typeof body.body === "string" ? body.body.trim() : ""
   const isPinned = typeof body.isPinned === "boolean" ? body.isPinned : false
   const isUrgent = typeof body.isUrgent === "boolean" ? body.isUrgent : false
+  const accent = isAccentKey(body.accent) ? body.accent : null
+  let tag: string | null = null
+  if (typeof body.tag === "string") {
+    const t = body.tag.trim()
+    tag = t ? t.slice(0, MAX_ANNOUNCEMENT_TAG_LENGTH) : null
+  }
   if (!title) return error("Title is required", 400)
   if (title.length > 200) return error("Title must be 200 characters or fewer", 400)
   if (!text) return error("Body is required", 400)
@@ -155,6 +164,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       body: text,
       isPinned,
       isUrgent,
+      accent,
+      tag,
     },
     include: {
       author: { select: { id: true, name: true, avatarUrl: true, avatarDecoration: true } },
@@ -214,6 +225,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ clubId: string
       body: created.body,
       isPinned: created.isPinned,
       isUrgent: created.isUrgent,
+      accent: created.accent,
+      tag: created.tag,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
       authorId: created.authorId,

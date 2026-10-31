@@ -20,8 +20,9 @@ import { cn } from "@/lib/utils"
  *    even on another device or after a reinstall (the DB is the source of truth,
  *    not localStorage).
  *
- *    One-tap confirm: there are NO checkboxes to tick — a single "I confirm"
- *    button acknowledges the handbook immediately.
+ *    One-tap confirm: there are NO checkboxes to tick and NO need to open
+ *    the handbook link first — a single "I confirm" button acknowledges the
+ *    handbook immediately. The link is there whenever the exec wants it.
  *
  *    The dialog is intentionally NON-DISMISSIBLE until confirmed: no X button,
  *    no scrim-click close, no Escape. This guarantees the handbook was
@@ -177,15 +178,12 @@ export function ExecHandbookModal({
             {/* Body */}
             <div className="max-h-[52dvh] overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
               <p className="text-sm leading-relaxed text-foreground/90">
-                As a ClubHub executive, you&apos;re responsible for managing your
-                club&apos;s workspace, supporting members, and keeping records
-                accurate. Before using the admin features, please take a few
-                minutes to read our Executive Admin Handbook.
+                You&apos;re responsible for this workspace, its members, and
+                its records.
               </p>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                The guide covers your responsibilities, member management,
-                service-hour reviews, record keeping, and important policies
-                every executive should understand.
+                The handbook covers members, hour reviews, records, and key
+                policies.
               </p>
 
               {/* The important warning callout */}
@@ -193,17 +191,16 @@ export function ExecHandbookModal({
                 <ShieldAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
                 <p className="text-[13px] leading-relaxed text-foreground/90">
                   <span className="font-bold">Important:</span> ClubHub does{" "}
-                  <span className="font-bold">NOT</span> submit service hours to
-                  your school. Members must export their records and submit them
-                  through their school&apos;s own process. School requirements and
-                  eligibility rules still apply.
+                  <span className="font-bold">NOT</span> submit hours to your
+                  school. Members export and submit them through the
+                  school&apos;s own process — school rules still apply.
                 </p>
               </div>
 
-              <p className="mt-4 text-sm leading-relaxed text-foreground/90">
+              <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                 {review
-                  ? "A quick reference while you run your club — jump back here anytime from Settings → Security."
-                  : "Please read the handbook before continuing."}
+                  ? "A quick reference — reopen from Settings → Security."
+                  : "Optional — you don&apos;t need to open it to confirm."}
               </p>
 
               {/* Handbook link */}
@@ -219,7 +216,7 @@ export function ExecHandbookModal({
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[13px] font-semibold">
-                      Read the ClubHub Executive Admin Handbook
+                      Read the Executive Admin Handbook
                     </span>
                     <span className="block truncate text-[11px] text-muted-foreground">
                       docs.google.com · opens in a new tab
@@ -238,8 +235,8 @@ export function ExecHandbookModal({
             <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/40 px-5 py-3.5 sm:px-6">
               <p className="hidden text-xs text-muted-foreground sm:block">
                 {review
-                  ? "Re-readable anytime — Settings → Security."
-                  : "Shown once per club — you won't see this again."}
+                  ? "Reopen anytime — Settings → Security."
+                  : "Shown once per club."}
               </p>
               {review ? (
                 <button

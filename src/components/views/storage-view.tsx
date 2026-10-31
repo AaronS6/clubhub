@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react"
 import { useAppStore, type View } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,6 @@ import {
   RefreshCw,
   AlertTriangle,
   Shield,
-  CheckCircle2,
   Sparkles,
   MessageSquare,
   Megaphone,
@@ -35,13 +34,15 @@ import {
   Copy,
   Check,
   ArrowUpCircle,
-  Zap,
   Info,
+  ChevronRight,
   type LucideIcon,
 } from "lucide-react"
 
 /* =========================================================================
-   Storage — executive-only club footprint view.
+   Storage — executive-only club footprint view, presented as a pure
+   iCloud-style storage page: one usage dial in a glass hero, then calm
+   glass panes of clean jump-rows per category.
    Backed by GET /api/clubs/[clubId]/storage (live-content-only math: deleted
    & tombstoned content contributes zero bytes, so the numbers drop the
    moment content is removed). Quota is 15 MB shared by the whole club.
@@ -89,9 +90,9 @@ const IMPACT_RANK: Record<CleanupImpact, number> = { none: 0, low: 1, medium: 2,
 interface CategoryMeta {
   icon: LucideIcon
   /** Set when deleting/trimming this category's content is actionable from
-   *  a real view — drives the ranked "free up space" suggestion cards. */
+   *  a real view — drives the ranked "free up space" suggestion rows. */
   view?: View
-  /** Concrete, useful copy for the suggestion card. */
+  /** Concrete, useful copy for the suggestion row. */
   hint?: string
   /** Clearing-impact tier for the suggestion ranking (see CleanupImpact). */
   impact?: CleanupImpact
@@ -102,49 +103,49 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
     icon: MessageSquare,
     view: "chat",
     impact: "low",
-    hint: "Old threads and banter — pure conversation, no club records. Hover any message to delete it, or clear a whole old conversation.",
+    hint: "Old threads. Hover any message to delete it.",
   },
   announcements: {
     icon: Megaphone,
     view: "announcements",
     impact: "medium",
-    hint: "Outdated posts and their comments — members have long since seen them. Deleting frees the space instantly.",
+    hint: "Outdated posts. Deleting frees space instantly.",
   },
   tasks: {
     icon: ListTodo,
     view: "tasks",
     impact: "medium",
-    hint: "Finished tasks from past projects — titles, descriptions and comments all stop counting once cleared.",
+    hint: "Finished tasks stop counting once cleared.",
   },
   notes: {
     icon: StickyNote,
     view: "notes",
     impact: "low",
-    hint: "Old notes and scratch pads — they stop counting the second they're gone and are easy to re-create if ever needed.",
+    hint: "Old notes stop counting once deleted.",
   },
   meetings: {
     icon: CalendarDays,
     view: "meetings",
     impact: "low",
-    hint: "Past meetings you no longer need — their details and RSVP history free up the moment they're deleted.",
+    hint: "Past meetings free up space once deleted.",
   },
   finance: {
     icon: Wallet,
     view: "financials",
     impact: "high",
-    hint: "Official records — clear last, and only entries you're certain you'll never need.",
+    hint: "Official records. Clear last.",
   },
   activity: {
     icon: History,
     view: "activity",
     impact: "none",
-    hint: "A pure feed of what happened — clearing it changes nothing else in the club, and old entries are the easiest bytes you'll ever free.",
+    hint: "A pure feed. Clearing it changes nothing else.",
   },
   images: {
     icon: ImageIcon,
     view: "members",
     impact: "low",
-    hint: "Re-upload a smaller logo or banner — only the newest file counts, and the old one stops the moment it's replaced.",
+    hint: "Re-upload a smaller logo or banner; only the newest counts.",
   },
   people: { icon: Users },
   profile: { icon: Building2 },
@@ -156,19 +157,38 @@ function metaFor(id: string): CategoryMeta {
   return CATEGORY_META[id] ?? FALLBACK_META
 }
 
-// Monochrome shade ladder for the stacked composition bar — assigned by rank
-// (largest category gets the strongest ink), skipping zero-byte segments.
-const SHADES = [
-  "bg-foreground/85",
-  "bg-foreground/70",
-  "bg-foreground/55",
-  "bg-foreground/40",
-  "bg-foreground/30",
-  "bg-foreground/22",
-  "bg-foreground/16",
-  "bg-foreground/11",
-  "bg-foreground/7",
-  "bg-foreground/4",
+// ── Category color identities (presentation only) ──────────────────────────
+// Each category's iOS-style tinted squircle chip: the color at ~10% behind
+// the icon (kept whisper-quiet so no chip reads as a heavy colored box),
+// the color itself for the icon. Deliberately NO blue/indigo —
+// meetings carries the club accent instead.
+
+const CATEGORY_TILE: Record<string, string> = {
+  chat: "bg-teal-500/10 text-teal-600 dark:bg-teal-400/10 dark:text-teal-300",
+  announcements: "bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300",
+  tasks: "bg-orange-500/10 text-orange-600 dark:bg-orange-400/10 dark:text-orange-300",
+  notes: "bg-yellow-500/10 text-yellow-700 dark:bg-yellow-400/10 dark:text-yellow-300",
+  meetings: "bg-club-muted text-club-ink",
+  finance: "bg-lime-600/10 text-lime-700 dark:bg-lime-400/10 dark:text-lime-300",
+  activity: "bg-purple-500/10 text-purple-600 dark:bg-purple-400/10 dark:text-purple-300",
+  images: "bg-rose-500/10 text-rose-600 dark:bg-rose-400/10 dark:text-rose-300",
+  people: "bg-stone-500/10 text-stone-600 dark:bg-stone-400/10 dark:text-stone-300",
+  profile: "bg-stone-600/10 text-stone-700 dark:bg-stone-300/10 dark:text-stone-200",
+}
+
+const FALLBACK_TILE = "bg-muted text-muted-foreground"
+
+function tileFor(id: string): string {
+  return CATEGORY_TILE[id] ?? FALLBACK_TILE
+}
+
+// ── Category grouping into glass panes (presentation only) ─────────────────
+
+const CATEGORY_GROUPS: { id: string; title: string; ids: string[] }[] = [
+  { id: "conversations", title: "Conversations", ids: ["chat"] },
+  { id: "content", title: "Club content", ids: ["announcements", "tasks", "notes", "meetings"] },
+  { id: "identity", title: "Images & identity", ids: ["images", "people", "profile"] },
+  { id: "records", title: "Records", ids: ["finance", "activity"] },
 ]
 
 // ── Formatting helpers ─────────────────────────────────────────────────────
@@ -224,6 +244,172 @@ function useCountUp(target: number | null, replayKey: number, durationMs = 600):
   return value
 }
 
+// ── Presentation primitives ────────────────────────────────────────────────
+
+/** iOS-style tinted squircle chip — a category's color identity. */
+function CategoryTile({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
+  return (
+    <span
+      className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", className)}
+    >
+      <Icon className="h-[18px] w-[18px]" aria-hidden />
+    </span>
+  )
+}
+
+/** A clean hairline row whose whole surface is the jump control. */
+function JumpRow({
+  icon,
+  tileClass,
+  label,
+  detail,
+  aside,
+  onOpen,
+}: {
+  icon: LucideIcon
+  tileClass: string
+  label: string
+  detail?: ReactNode
+  aside?: string
+  onOpen?: () => void
+}) {
+  const body = (
+    <>
+      <CategoryTile icon={icon} className={tileClass} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">{label}</span>
+        {detail && (
+          <span className="mt-0.5 block truncate text-caption tabular-nums text-muted-foreground">
+            {detail}
+          </span>
+        )}
+      </span>
+      {aside && <span className="shrink-0 text-caption tabular-nums">{aside}</span>}
+      {onOpen && (
+        <ChevronRight
+          aria-hidden
+          className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform duration-200 group-hover:translate-x-0.5"
+        />
+      )}
+    </>
+  )
+  if (!onOpen) {
+    return <div className="flex w-full items-center gap-3.5 px-5 py-3.5 sm:px-6">{body}</div>
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex w-full items-center gap-3.5 px-5 py-3.5 text-left transition-colors duration-150 hover:bg-foreground/[0.035] focus-visible:bg-foreground/[0.035] dark:hover:bg-white/[0.05] dark:focus-visible:bg-white/[0.05] sm:px-6"
+    >
+      {body}
+    </button>
+  )
+}
+
+// ── Usage dial — the page's single meter ───────────────────────────────────
+
+const DIAL_RADIUS = 74
+const DIAL_CIRCUMFERENCE = 2 * Math.PI * DIAL_RADIUS
+
+function UsageDial({
+  label,
+  fraction,
+  tone,
+  mounted,
+  valueNow,
+}: {
+  /** The big numeral (already formatted). */
+  label: string
+  /** 0..1 share of the quota the arc should cover. */
+  fraction: number
+  tone: "ink" | "warn" | "danger"
+  mounted: boolean
+  valueNow: number
+}) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "")
+  const safeFraction = Math.min(Math.max(fraction, 0), 1)
+  const targetOffset = DIAL_CIRCUMFERENCE * (1 - safeFraction)
+  return (
+    <div
+      role="progressbar"
+      aria-label="Club storage used"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={valueNow}
+      className="relative mx-auto size-40 sm:size-[168px]"
+    >
+      <svg viewBox="0 0 168 168" className="size-full" aria-hidden>
+        <defs>
+          {/* Metallic ink — the resting arc. */}
+          <linearGradient id={`${uid}-ink`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="var(--foreground)" stopOpacity="0.85" />
+            <stop offset="1" stopColor="var(--foreground)" stopOpacity="0.55" />
+          </linearGradient>
+          <linearGradient id={`${uid}-warn`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="var(--warning)" stopOpacity="0.95" />
+            <stop offset="1" stopColor="var(--warning)" stopOpacity="0.7" />
+          </linearGradient>
+          <linearGradient id={`${uid}-danger`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="var(--danger)" stopOpacity="0.95" />
+            <stop offset="1" stopColor="var(--danger)" stopOpacity="0.7" />
+          </linearGradient>
+        </defs>
+        {/* Recessed channel — a low-contrast neutral track. */}
+        <circle
+          cx="84"
+          cy="84"
+          r={DIAL_RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="12"
+          className="text-muted-foreground/20 dark:text-white/[0.12]"
+        />
+        {/* Progress arc — draws itself in after mount (1150ms Apple-settle,
+            driven by the .storage-dial-arc transition in globals.css). */}
+        <g transform="rotate(-90 84 84)">
+          <circle
+            cx="84"
+            cy="84"
+            r={DIAL_RADIUS}
+            fill="none"
+            stroke={`url(#${uid}-${tone})`}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={DIAL_CIRCUMFERENCE}
+            strokeDashoffset={mounted ? targetOffset : DIAL_CIRCUMFERENCE}
+            className="storage-dial-arc"
+          />
+        </g>
+        {/* Hairline specular glint near the top of the ring. */}
+        <circle
+          cx="84"
+          cy="84"
+          r={DIAL_RADIUS}
+          fill="none"
+          stroke="rgba(255,255,255,0.4)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray={`${DIAL_CIRCUMFERENCE * 0.055} ${DIAL_CIRCUMFERENCE}`}
+          transform="rotate(-116 84 84)"
+        />
+      </svg>
+      <div aria-hidden className="absolute inset-0 flex flex-col items-center justify-center">
+        <span
+          className="text-[28px] font-semibold leading-none tracking-tight tabular-nums text-foreground sm:text-[32px]"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {label}
+          <span className="ml-0.5 text-[0.55em] font-medium text-muted-foreground">%</span>
+        </span>
+        <span className="mt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          used
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function StorageView() {
@@ -239,6 +425,9 @@ export function StorageView() {
   const [increaseOpen, setIncreaseOpen] = useState(false)
   // Bumps on every completed fetch so the count-up replays on refresh.
   const [fetchStamp, setFetchStamp] = useState(0)
+  // Flips true right after mount (double rAF) so the dial's arc draws itself
+  // in via its stroke-dashoffset transition.
+  const [dialMounted, setDialMounted] = useState(false)
 
   const load = useCallback(
     async (mode: "initial" | "refresh") => {
@@ -281,6 +470,17 @@ export function StorageView() {
     void load("initial")
   }, [load])
 
+  useEffect(() => {
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setDialMounted(true))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [])
+
   const shown = data && data.clubId === clubId ? data : null
   const busy = loading || refreshing
   const animatedBytes = useCountUp(shown?.usedBytes ?? null, fetchStamp)
@@ -298,7 +498,7 @@ export function StorageView() {
   // nobody feels (old chat, the activity feed, past meetings) beats a bigger
   // number that takes club records with it — then by size within each tier.
   // High-impact categories (finance) are never suggested; they get a
-  // dedicated "last resort" note under the grid instead.
+  // dedicated "last resort" note in the cleanup pane instead.
   const actionable = useMemo(
     () =>
       composition
@@ -314,14 +514,32 @@ export function StorageView() {
         .slice(0, 3),
     [composition],
   )
+  // Visible categories grouped into glass panes (fixed section order, bytes
+  // rank within each pane). Zero-byte categories are filtered out of the
+  // visible list here but still count toward every total above.
+  const grouped = useMemo(() => {
+    const groups = CATEGORY_GROUPS.map((g) => ({ ...g, cats: [] as StorageCategory[] }))
+    const other: { id: string; title: string; ids: string[]; cats: StorageCategory[] } = {
+      id: "other",
+      title: "Other",
+      ids: [],
+      cats: [],
+    }
+    for (const cat of composition) {
+      const group = groups.find((g) => g.ids.includes(cat.id))
+      if (group) group.cats.push(cat)
+      else other.cats.push(cat)
+    }
+    return [...groups, other].filter((g) => g.cats.length > 0)
+  }, [composition])
 
   // ── Guard states ────────────────────────────────────────────────────────
+
   if (!clubId) {
     return (
       <EmptyState
         icon={<Users className="h-8 w-8" />}
         title="No club selected"
-        description="Pick a club from the sidebar to view its storage."
       />
     )
   }
@@ -333,7 +551,6 @@ export function StorageView() {
       <EmptyState
         icon={<Shield className="h-8 w-8" />}
         title="Executives only"
-        description="Club storage is an executive tool — ask a club executive if you need a footprint report."
       />
     )
   }
@@ -372,34 +589,25 @@ export function StorageView() {
         ? { kind: "pending" as const, label: "Filling up" }
         : { kind: "approved" as const, label: "Healthy" }
 
-  // Meter fill escalates with the same thresholds as the status chip.
-  const meterFill = percent >= 90 ? "bg-danger" : percent >= 70 ? "bg-warning" : "bg-club"
+  // Dial ink escalates with the same thresholds as the status chip (this is
+  // the old linear meter's fill escalation, reborn as the arc's gradient).
+  const arcTone: "ink" | "warn" | "danger" =
+    percent >= 90 ? "danger" : percent >= 70 ? "warn" : "ink"
 
   // Pace: how many times the current content fits before the quota is full.
   const paceRatio = used > 0 ? Math.floor(quota / used) : 0
 
+  // Big numeral for the dial — one decimal while small, whole thereafter,
+  // and it never claims 100% before the quota is actually reached.
+  const pctLabel = isFull
+    ? "100"
+    : pctClamped < 10
+      ? pctClamped.toFixed(1)
+      : String(Math.min(99, Math.round(pctClamped)))
+
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Storage"
-        description="Your current storage for your club."
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void load("refresh")}
-            disabled={busy}
-            className="text-muted-foreground shrink-0"
-          >
-            {busy ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
-        }
-      />
+    <div className="space-y-4 overflow-x-clip sm:space-y-5">
+      <PageHeader title="Storage" />
 
       {/* ── 0. Storage-full pause notice ───────────────────────────────────
           At 100% the whole club's storage-taking writes are paused (see
@@ -408,7 +616,7 @@ export function StorageView() {
       {isFull && (
         <section
           role="alert"
-          className="animate-fade-in relative overflow-hidden rounded-xl border border-danger/40 bg-danger-subtle p-4 sm:p-5"
+          className="storage-rise relative overflow-hidden rounded-[1.75rem] border border-danger/40 bg-danger-subtle/80 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] backdrop-blur-xl sm:p-6 dark:border-danger/30 dark:bg-danger-subtle/50 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-danger/10 text-danger [&_svg]:size-5">
@@ -419,27 +627,24 @@ export function StorageView() {
                 Storage is full — new content is paused
               </h2>
               <p className="mt-1 max-w-2xl text-body leading-relaxed text-danger-foreground/80">
-                Messages, posts, notes, tasks, meetings and uploads are paused
-                for <span className="font-medium">everyone</span> in {clubName}
-                until an executive clears some room. Deleting frees space
-                instantly — members are being told to message executives to
-                clear it.
+                New content is paused for everyone in {clubName} until an executive clears
+                room. Deleting frees space instantly.
               </p>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2 sm:ml-[3.25rem]">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="border-danger/40 text-danger-foreground hover:bg-danger/10"
+              className="rounded-full border border-danger/30 px-4 text-danger-foreground hover:bg-danger/10 dark:border-danger/25 dark:hover:bg-danger/20"
               onClick={() => setView("chat")}
             >
               <MessageSquare className="h-3.5 w-3.5" /> Clear old messages
             </Button>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="text-muted-foreground"
+              className="rounded-full px-4 text-muted-foreground"
               onClick={() => setIncreaseOpen(true)}
             >
               <ArrowUpCircle className="h-3.5 w-3.5" /> Increase storage capacity
@@ -452,286 +657,208 @@ export function StorageView() {
       {!isFull && percent >= 90 && (
         <section
           role="status"
-          className="animate-fade-in flex items-start gap-3 rounded-xl border border-warning/40 bg-warning-subtle/60 p-4"
+          className="storage-rise flex items-start gap-3 rounded-[1.75rem] border border-warning/40 bg-warning-subtle/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] backdrop-blur-xl dark:border-warning/30 dark:bg-warning-subtle/50 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
         >
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning [&_svg]:size-4">
             <AlertTriangle aria-hidden />
           </span>
           <p className="text-body leading-relaxed text-foreground/80">
-            <span className="font-medium">Almost full.</span> At 100%, new
-            content pauses club-wide until someone clears room — tidy the big
-            categories below now and it never comes to that.
+            <span className="font-medium">Almost full.</span> At 100%, new content pauses
+            club-wide — clear the big categories below now.
           </p>
         </section>
       )}
 
-      {/* ── 1. Usage hero ─────────────────────────────────────────────────── */}
-      <section className="card-quiet p-5 sm:p-6">
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2 flex-wrap">
+      {/* ── 1. Usage hero — the dial, on glass, with a club-accent halo ──── */}
+      <section className="relative">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -inset-3 rounded-[2.5rem] bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--club-accent)_13%,transparent),transparent)] blur-2xl sm:-inset-6"
+        />
+        <div className="storage-glass storage-rise">
+          <div className="flex flex-col items-center px-5 pt-7 text-center sm:px-8 sm:pt-9">
+            <UsageDial
+              label={pctLabel}
+              fraction={pctClamped / 100}
+              tone={arcTone}
+              mounted={dialMounted}
+              valueNow={Math.round(percent)}
+            />
+
+            <p className="mt-5 text-sm tabular-nums text-muted-foreground">
               <span
-                className="text-4xl font-semibold tracking-tight tabular-nums text-balance"
+                className="font-medium text-foreground/85"
                 style={{ fontFamily: "var(--font-display)" }}
               >
                 {formatBytes(animatedBytes)}
-              </span>
-              <span className="text-body text-muted-foreground">
-                of {(quota / 1024 / 1024).toFixed(0)} MB used
-              </span>
-            </div>
-            <p className="mt-1 text-caption text-muted-foreground tabular-nums">
-              {percent.toFixed(2)}% of your club&apos;s storage
+              </span>{" "}
+              of {(quota / 1024 / 1024).toFixed(0)} MB used
             </p>
-          </div>
-          <StatusBadge status={status.kind} label={status.label} />
-        </div>
-
-        {/* Gradient meter with labeled 70% / 90% ticks (hairlines live inside
-            the track — no overshoot) and tiny labels below. */}
-        <div className="mt-5">
-          <div
-            className="relative h-3 rounded-full bg-muted overflow-hidden"
-            role="progressbar"
-            aria-label="Club storage used"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(percent)}
-          >
-            <div
-              className={cn(
-                "absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out",
-                meterFill,
-                used > 0 && "min-w-[3px]",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]",
+            <div className="mt-3">
+              <StatusBadge status={status.kind} label={status.label} />
+            </div>
+            <p className="mt-2.5 text-caption tabular-nums">
+              {over > 0
+                ? `Over quota by ${formatBytes(over)}`
+                : `${formatBytes(free)} free`}
+              {paceRatio > 0 && (
+                <>
+                  {" "}· ≈ {paceRatio >= 99999 ? "99,999×+" : `${formatCount(paceRatio)}×`} more
+                  content before full
+                </>
               )}
-              style={{ width: `${pctClamped}%` }}
-            />
-            <span aria-hidden className="absolute inset-y-0 left-[70%] w-px bg-border" />
-            <span aria-hidden className="absolute inset-y-0 left-[90%] w-px bg-border" />
-          </div>
-          <div className="relative mt-1.5 h-3.5 text-[10px] leading-none text-muted-foreground/80 tabular-nums">
-            <span className="absolute left-[70%] -translate-x-1/2">70%</span>
-            <span className="absolute left-[90%] -translate-x-1/2">90%</span>
-          </div>
-        </div>
+            </p>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
-          <span className="tabular-nums">
-            {over > 0
-              ? `Over quota by ${formatBytes(over)}`
-              : `${formatBytes(free)} free`}
-          </span>
-          {paceRatio > 0 && (
-            <span className="tabular-nums">
-              ≈{" "}
-              {paceRatio >= 99999
-                ? "99,999×+"
-                : `${formatCount(paceRatio)}×`}{" "}
-              more content before full
-            </span>
-          )}
-        </div>
-
-        {/* ── 2. Monochrome stacked composition bar ──────────────────────── */}
-        {composition.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-border/60">
-            <div className="flex h-2 items-stretch gap-[2px]" aria-hidden>
-              {composition.map((cat, i) => (
-                <div
-                  key={cat.id}
-                  className={cn(
-                    "min-w-[2px] rounded-[3px]",
-                    SHADES[i % SHADES.length],
-                  )}
-                  style={{ flexGrow: cat.bytes, flexBasis: 0 }}
-                />
-              ))}
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
-              {composition.map((cat, i) => (
-                <span
-                  key={cat.id}
-                  className="inline-flex items-center gap-1.5 text-caption text-muted-foreground"
-                >
-                  <span
-                    aria-hidden
-                    className={cn("size-2 rounded-[3px]", SHADES[i % SHADES.length])}
-                  />
-                  {cat.label}
-                  <span className="tabular-nums text-muted-foreground/70">
-                    {sharePct(cat.bytes, used)}%
-                  </span>
-                </span>
-              ))}
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void load("refresh")}
+              disabled={busy}
+              className="mt-4 rounded-full px-4 text-muted-foreground"
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Refresh
+            </Button>
           </div>
-        )}
 
-        {/* Hero footer — the capacity escape hatch, always one tap away. */}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-          <p className="text-caption text-muted-foreground">
-            {quota / 1024 / 1024} MB shared by the whole club — messages, posts,
-            notes, uploads and more.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0"
-            onClick={() => setIncreaseOpen(true)}
-          >
-            <ArrowUpCircle className="h-4 w-4" />
-            Increase storage capacity
-          </Button>
+          {/* Hero footer — the capacity escape hatch, always one tap away. */}
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/60 px-5 py-4 sm:px-8">
+            <p className="text-caption text-muted-foreground">
+              {quota / 1024 / 1024} MB shared by the whole club.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-full px-4 text-muted-foreground"
+              onClick={() => setIncreaseOpen(true)}
+            >
+              <ArrowUpCircle className="h-3.5 w-3.5" /> Increase storage capacity
+            </Button>
+          </div>
         </div>
       </section>
 
-      {/* ── 4. Ranked "what to clear" suggestions — safe wins first ─────────
-          Top 3 categories ranked by clearing-impact (things nobody will miss)
-          then by size, with concrete instructions. Finance is deliberately
-          NOT here — see the last-resort note under the grid. */}
+      {/* ── 2. Cleanup pane — directly beneath the usage hero, per user ────
+          Top 3 categories ranked by clearing-impact (things nobody will
+          miss) then by size, with concrete instructions. Finance is
+          deliberately NOT here — see the last-resort note at the bottom. */}
       {actionable.length > 0 && (
-        <section id="free-up-space" className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-muted-foreground shrink-0" />
-            <h2 className="text-section-title">
+        <section
+          id="free-up-space"
+          className="storage-glass storage-glass--warm storage-rise"
+          style={{ animationDelay: "80ms" }}
+        >
+          <div className="flex items-center gap-2 px-5 pb-2 pt-4 sm:px-6">
+            <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+            <h2
+              className="text-card-title tracking-[-0.01em]"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
               {percent >= 70 ? "Free up space" : "Keep it tidy"}
             </h2>
-            <span className="text-caption text-muted-foreground">
-              · safe wins first
-            </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {actionable.map((cat, rank) => {
+          <div className="divide-y divide-border/60">
+            {actionable.map((cat) => {
               const meta = metaFor(cat.id)
-              const share = sharePct(cat.bytes, used)
+              const targetView = meta.view
               return (
-                <div
+                <JumpRow
                   key={cat.id}
-                  className={cn(
-                    "card-quiet animate-fade-in p-4 flex flex-col gap-3",
-                    isFull
-                      ? "border-danger/50"
-                      : percent >= 90
-                        ? "border-warning/50"
-                        : rank === 0 && percent >= 70 && "border-warning/30",
-                  )}
-                  style={{ animationDelay: `${Math.min(rank * 60, 180)}ms` }}
-                >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">
-                      <meta.icon />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-body-medium">
-                        {cat.label} ·{" "}
-                        <span className="tabular-nums font-medium">
-                          {formatBytes(cat.bytes)}
-                        </span>
-                        <span className="text-muted-foreground tabular-nums">
-                          ({share}% of usage)
-                        </span>
-                        {rank === 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-club-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-club">
-                            <Zap className="h-2.5 w-2.5" aria-hidden />
-                            Easiest win
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
-                        {meta.impact === "none" && "Clears with zero impact on your club"}
-                        {meta.impact === "low" && "Low impact — nothing official lives here"}
-                        {meta.impact === "medium" && "Medium impact — members lose some history"}
-                      </p>
-                      <p className="mt-1 text-caption leading-relaxed text-muted-foreground">
-                        {meta.hint}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="self-start mt-auto text-muted-foreground"
-                    onClick={() => meta.view && setView(meta.view)}
-                  >
-                    Open {cat.label}
-                  </Button>
-                </div>
+                  icon={meta.icon}
+                  tileClass={tileFor(cat.id)}
+                  label={cat.label}
+                  detail={meta.hint}
+                  aside={formatBytes(cat.bytes)}
+                  onOpen={targetView ? () => setView(targetView) : undefined}
+                />
               )
             })}
           </div>
+
+          {/* The one direct danger action — a soft, calm pill, offered only
+              once the quota is at risk (90%+) or already exhausted. */}
+          {(isFull || percent >= 90) && (
+            <div className="px-5 pt-4 sm:px-6">
+              <button
+                type="button"
+                onClick={() => setView("chat")}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-600 transition-colors duration-150 hover:bg-red-500/15 focus-visible:bg-red-500/15 dark:bg-red-500/15 dark:text-red-300 dark:hover:bg-red-500/20 dark:focus-visible:bg-red-500/20"
+              >
+                <MessageSquare className="h-4 w-4" aria-hidden />
+                Clear old messages
+              </button>
+            </div>
+          )}
+
           {/* Last-resort note — finance is intentionally never suggested
               above: transactions and service hours are the club's official
               records. Say so once, plainly, so nobody clears their books to
               free a few kilobytes. */}
-          <p className="flex items-start gap-2 text-caption leading-relaxed text-muted-foreground">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
-            <span>
-              One thing to avoid clearing unless you truly must:{" "}
-              <strong className="font-semibold text-foreground/80">Finance</strong>{" "}
-              — transactions and service hours are your club&apos;s official
-              record, and future executives will need that history.
-            </span>
-          </p>
+          <div className="border-t border-border/60 px-5 py-4 sm:px-6">
+            <p className="flex items-start gap-2 text-caption leading-relaxed text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+              <span>
+                Avoid clearing{" "}
+                <strong className="font-semibold text-foreground/80">Finance</strong> unless you
+                must; it&apos;s the club&apos;s official record.
+              </span>
+            </p>
+          </div>
         </section>
       )}
 
-      {/* ── 3. Ranked category rows ──────────────────────────────────────── */}
-      <section className="card-quiet overflow-hidden">
-        <div className="px-4 sm:px-5 pt-4 pb-1 flex items-center gap-2">
-          <h2 className="text-card-title">What&apos;s taking space</h2>
+      {/* ── 3. Category panes — clean jump-rows, honest (bytes > 0 only) ─── */}
+      {grouped.length > 0 && (
+        <div
+          className="storage-rise flex items-baseline gap-2"
+          style={{ animationDelay: "160ms" }}
+        >
+          <h2
+            className="text-card-title tracking-[-0.01em]"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            What&apos;s taking space
+          </h2>
           <span className="text-caption text-muted-foreground tabular-nums">
             · {formatCount(shown.categories.reduce((a, c) => a + c.items, 0))} live rows
           </span>
         </div>
-        <div className="divide-y divide-border">
-          {ranked.map((cat, i) => {
-            const meta = metaFor(cat.id)
-            const share = sharePct(cat.bytes, used)
-            return (
-              <div
-                key={cat.id}
-                className="flex items-center gap-3 px-4 sm:px-5 py-3.5 animate-fade-in"
-                style={{ animationDelay: `${Math.min(i * 40, 320)}ms` }}
-              >
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">
-                  <meta.icon />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-body-medium truncate">{cat.label}</span>
-                    <span className="tabular-nums font-medium text-sm whitespace-nowrap">
-                      {formatBytes(cat.bytes)}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-caption text-muted-foreground truncate">
-                      {cat.detail}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
-                      {formatCount(cat.items)} {cat.items === 1 ? "item" : "items"}
-                      {share > 0 && <> · {share}%</>}
-                    </span>
-                  </div>
-                  {/* No overflow-hidden here so the fill's soft glow can
-                      breathe just past the track edges. */}
-                  <div className="mt-2 h-1 rounded-full bg-muted">
-                    <div
-                      className={cn(
-                        "h-full rounded-full",
-                        meterFill,
-                        cat.bytes > 0 && "min-w-[3px]",
-                        "shadow-[0_0_6px_color-mix(in_oklab,var(--club-accent)_25%,transparent)]",
-                      )}
-                      style={{ width: `${share}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
+      )}
+      {grouped.map((group, gi) => (
+        <section
+          key={group.id}
+          className="storage-glass storage-glass--quiet storage-rise"
+          style={{ animationDelay: `${160 + 80 * (gi + 1)}ms` }}
+        >
+          <h2 className="px-5 pb-2 pt-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:px-6">
+            {group.title}
+          </h2>
+          <div className="divide-y divide-border/60">
+            {group.cats.map((cat) => {
+              const meta = metaFor(cat.id)
+              const share = sharePct(cat.bytes, used)
+              const targetView = meta.view
+              return (
+                <JumpRow
+                  key={cat.id}
+                  icon={meta.icon}
+                  tileClass={tileFor(cat.id)}
+                  label={cat.label}
+                  detail={`${formatBytes(cat.bytes)} · ${formatCount(cat.items)} ${
+                    cat.items === 1 ? "item" : "items"
+                  }`}
+                  aside={share > 0 ? `${share}%` : undefined}
+                  onOpen={targetView ? () => setView(targetView) : undefined}
+                />
+              )
+            })}
+          </div>
+        </section>
+      ))}
 
       {/* ── Increase-storage dialog ──────────────────────────────────────── */}
       <IncreaseStorageDialog
@@ -783,8 +910,7 @@ function IncreaseStorageDialog({
             </div>
             <DialogTitle>Increase storage capacity</DialogTitle>
             <DialogDescription>
-              Message {STORAGE_CONTACT_EMAIL} to increase your storage
-              capacity if needed.
+              Email {STORAGE_CONTACT_EMAIL} to request more space.
             </DialogDescription>
           </DialogHeader>
 
@@ -805,7 +931,7 @@ function IncreaseStorageDialog({
                 {STORAGE_CONTACT_EMAIL}
               </span>
               <span className="block text-caption text-muted-foreground">
-                Opens your mail app with the request pre-filled
+                Pre-fills your mail app
               </span>
             </span>
           </a>
@@ -835,7 +961,7 @@ function IncreaseStorageDialog({
             </Button>
           </div>
           <p className="text-caption text-muted-foreground">
-            Include your club name and code so the request is quick to action.
+            Your club name is already included.
           </p>
         </div>
       </DialogContent>
@@ -843,75 +969,49 @@ function IncreaseStorageDialog({
   )
 }
 
-// ── Loading skeleton — content-shaped (hero + rows) ─────────────────────────
+// ── Loading skeleton — content-shaped (dial hero + glass panes) ────────────
 
 function StorageSkeleton() {
   return (
-    <div className="space-y-4">
-      {/* Header row with a ghost refresh button */}
-      <div className="flex items-end justify-between gap-4">
-        <div className="space-y-2">
-          <div className="h-7 w-32 rounded skeleton-shimmer" />
-          <div className="h-3.5 w-72 max-w-full rounded skeleton-shimmer" />
+    <div className="space-y-4 sm:space-y-5">
+      {/* Header ghost */}
+      <div className="h-7 w-32 rounded skeleton-shimmer" />
+
+      {/* Hero glass — dial + captions + footer pill */}
+      <div className="storage-glass">
+        <div className="flex flex-col items-center px-5 pt-8 sm:px-8">
+          <div className="size-40 rounded-full skeleton-shimmer sm:size-[168px]" />
+          <div className="mt-5 h-4 w-44 max-w-full rounded skeleton-shimmer" />
+          <div className="mt-3 h-5 w-20 rounded-full skeleton-shimmer" />
+          <div className="mt-4 h-3.5 w-64 max-w-full rounded skeleton-shimmer" />
+          <div className="mb-5 mt-5 h-9 w-24 rounded-full skeleton-shimmer" />
         </div>
-        <div className="h-8 w-24 rounded-md skeleton-shimmer" />
+        <div className="flex w-full items-center justify-between gap-4 border-t border-border/60 px-5 py-4 sm:px-8">
+          <div className="h-3 w-40 max-w-full rounded skeleton-shimmer" />
+          <div className="h-8 w-36 rounded-full skeleton-shimmer" />
+        </div>
       </div>
 
-      {/* Hero block */}
-      <div className="card-quiet p-5 sm:p-6 space-y-5">
-        <div className="flex items-end justify-between gap-4">
-          <div className="space-y-2">
-            <div className="h-9 w-44 rounded skeleton-shimmer" />
+      {/* Category panes */}
+      {[3, 2].map((rows, i) => (
+        <div key={i} className="storage-glass">
+          <div className="px-5 pt-4 pb-2 sm:px-6">
             <div className="h-3 w-28 rounded skeleton-shimmer" />
           </div>
-          <div className="h-6 w-20 rounded-full skeleton-shimmer" />
-        </div>
-        <div className="h-3 w-full rounded-full skeleton-shimmer" />
-        <div className="h-3 w-1/2 rounded skeleton-shimmer" />
-        <div className="pt-4 border-t border-border/60 space-y-2.5">
-          <div className="h-2 w-full rounded-full skeleton-shimmer" />
-          <div className="h-3 w-2/3 rounded skeleton-shimmer" />
-        </div>
-      </div>
-
-      {/* Suggestion cards */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="card-quiet p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="size-9 rounded-lg skeleton-shimmer shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3.5 w-3/4 rounded skeleton-shimmer" />
-                <div className="h-2.5 w-full rounded skeleton-shimmer" />
+          <div className="divide-y divide-border/60">
+            {Array.from({ length: rows }).map((_, r) => (
+              <div key={r} className="flex items-center gap-3.5 px-5 py-3.5 sm:px-6">
+                <div className="h-10 w-10 shrink-0 rounded-2xl skeleton-shimmer" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-3.5 w-1/3 rounded skeleton-shimmer" />
+                  <div className="h-2.5 w-1/2 rounded skeleton-shimmer" />
+                </div>
+                <div className="h-4 w-4 rounded-full skeleton-shimmer" />
               </div>
-            </div>
-            <div className="h-8 w-24 rounded-md skeleton-shimmer" />
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Ranked rows */}
-      <div className="card-quiet overflow-hidden">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-3 px-4 sm:px-5 py-3.5 border-b border-border last:border-0"
-          >
-            <div className="size-9 rounded-lg skeleton-shimmer shrink-0" />
-            <div className="flex-1 space-y-2 min-w-0">
-              <div className="flex justify-between gap-3">
-                <div className="h-3.5 w-1/4 rounded skeleton-shimmer" />
-                <div className="h-4 w-14 rounded skeleton-shimmer" />
-              </div>
-              <div className="flex justify-between gap-3">
-                <div className="h-2.5 w-1/3 rounded skeleton-shimmer" />
-                <div className="h-2.5 w-16 rounded skeleton-shimmer" />
-              </div>
-              <div className="h-1 w-1/2 rounded-full skeleton-shimmer" />
-            </div>
-          </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   )
 }

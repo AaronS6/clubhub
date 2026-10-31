@@ -60,9 +60,6 @@ export function AllCaughtUpCard() {
       </div>
       <div className="min-w-0">
         <p className="text-card-title">You&apos;re all caught up</p>
-        <p className="text-caption mt-0.5">
-          Nothing needs your attention right now.
-        </p>
       </div>
     </div>
   )

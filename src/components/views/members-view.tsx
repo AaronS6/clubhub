@@ -211,7 +211,6 @@ export function MembersView() {
       <div className="hidden sm:block sticky top-0 z-20 bg-background/45 backdrop-blur-xl -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
         <PageHeader
           title="Members"
-          description="Browse, search, and manage everyone in this club."
           actions={
             <div className="flex items-center gap-2 flex-wrap">
               {isExec && (
@@ -230,7 +229,6 @@ export function MembersView() {
       <div className="sm:hidden">
         <PageHeader
           title="Members"
-          description="Browse, search, and manage everyone in this club."
           actions={
             <div className="flex items-center gap-2 flex-wrap">
               {isExec && (
@@ -319,13 +317,12 @@ export function MembersView() {
         <EmptyState
           illustration={<MembersEmptyIllustration />}
           title="No members yet"
-          description="Share your club code to invite people."
         />
       ) : filtered.length === 0 ? (
         <EmptyState
           illustration={<MembersEmptyIllustration />}
           title="No matches"
-          description={`No members match “${search}”. Try a different search.`}
+          description={`No members match “${search}”.`}
         />
       ) : (
         (() => {
@@ -402,8 +399,7 @@ export function MembersView() {
             <AlertDialogDescription>
               Remove{" "}
               <span className="font-medium text-foreground">{removeTarget?.user.name}</span> from
-              this club? They will lose access immediately. This action can be reverted later by
-              re-adding them.
+              this club? They lose access immediately. You can re-add them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -439,7 +435,7 @@ export function MembersView() {
                           toast.success(`${target.user.name} was re-added`)
                           refetch()
                         } catch (e: any) {
-                          toast.error(e.message || "Couldn't undo — re-add the member manually.")
+                          toast.error(e.message || "Couldn't undo. Re-add them manually.")
                         }
                       },
                     },
@@ -642,7 +638,7 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
         </div>
       </div>
       <p className="text-caption text-muted-foreground mt-3">
-        Shown on the dashboard, sidebar, and public club profile. PNG, JPG, or WebP — we&apos;ll resize it to 256×256.
+        PNG, JPG, or WebP. We&apos;ll resize it to 256×256.
       </p>
     </div>
   )
@@ -657,7 +653,6 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
 // ---------------------------------------------------------------------------
 
 function ClubDescriptionSection({ clubId }: { clubId: string }) {
-  const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ club: { description: string | null } }>({
     queryKey: ["club-description", clubId],
@@ -699,8 +694,7 @@ function ClubDescriptionSection({ clubId }: { clubId: string }) {
         Club description
       </h3>
       <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
-        What {clubName} is about — shown on your public profile and in the
-        Explore directory. Leave it empty to remove it.
+        Shown on your public profile and in Explore. Leave empty to remove.
       </p>
       <div className="mt-3">
         <Textarea
@@ -709,7 +703,7 @@ function ClubDescriptionSection({ clubId }: { clubId: string }) {
           disabled={isLoading || saving}
           rows={4}
           maxLength={1000}
-          placeholder="e.g. We build and compete with robots every season — no experience required."
+          placeholder="e.g. We build robots and compete every season."
           aria-label="Club description"
           className="resize-y bg-background"
         />
@@ -783,12 +777,8 @@ function PublicListingSection({ clubId }: { clubId: string }) {
             <Globe className="h-4 w-4" /> Public directory
           </h3>
           <p className="text-body text-muted-foreground mt-1.5 max-w-lg">
-            List “{clubName}” on ClubHub&apos;s public Explore page so students
-            can discover it before joining. Your code + password still gate
-            membership.
-          </p>
-          <p className="text-caption text-muted-foreground/70 mt-1.5">
-            The shareable public profile ({`?public=`} link) works either way.
+            Show “{clubName}” on ClubHub&apos;s public Explore page. Your code
+            and password still gate joining.
           </p>
         </div>
         <div className="shrink-0 pt-1">
@@ -835,7 +825,7 @@ function ClubGoalSection({ clubId }: { clubId: string }) {
     setSaving(true)
     try {
       await api(`/api/clubs/${clubId}`, { method: "PATCH", json: { hoursGoal: next } })
-      toast.success(next > 0 ? `Club goal set — ${next}h for everyone` : "Club goal cleared")
+      toast.success(next > 0 ? `Club goal set to ${next}h` : "Club goal cleared")
       await qc.invalidateQueries({ queryKey: ["club-goal", clubId] })
       await qc.invalidateQueries({ queryKey: ["dashboard", clubId] })
       await qc.invalidateQueries({ queryKey: ["hours", clubId] })
@@ -855,15 +845,10 @@ function ClubGoalSection({ clubId }: { clubId: string }) {
         {goal > 0 ? (
           <>
             Everyone in {clubName} is working toward{" "}
-            <span className="font-semibold text-foreground tabular-nums">{goal}h</span>{" "}
-            right now. Members without a personal goal chart progress against
-            this number.
+            <span className="font-semibold text-foreground tabular-nums">{goal}h</span>.
           </>
         ) : (
-          <>
-            A shared target for every member — set one and it appears on each
-            member&apos;s dashboard with a progress bar.
-          </>
+          <>A shared target shown on every member&apos;s dashboard.</>
         )}
       </p>
       <div className="mt-3.5 flex flex-wrap items-center gap-2">
@@ -953,9 +938,7 @@ function JoinRequestsSection({ clubId }: { clubId: string }) {
       }),
     onSuccess: (_d, vars) => {
       toast.success(
-        vars.action === "approve"
-          ? "Request approved — they're in the club now"
-          : "Request declined",
+        vars.action === "approve" ? "Request approved" : "Request declined",
       )
       qc.invalidateQueries({ queryKey: ["join-requests", clubId] })
       qc.invalidateQueries({ queryKey: ["members", clubId] })
@@ -1038,8 +1021,7 @@ function JoinRequestsSection({ clubId }: { clubId: string }) {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Decline this request?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      {r.user.name} won&apos;t be added to the club. They can
-                      send a new request later if they still want in.
+                      They can send a new request later.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -1060,7 +1042,7 @@ function JoinRequestsSection({ clubId }: { clubId: string }) {
         </ul>
       ) : (
         <p className="mt-2 text-body text-muted-foreground">
-          No pending requests right now.
+          No pending requests.
         </p>
       )}
 
@@ -1218,9 +1200,8 @@ function ClubCodeSection({
       </div>
       <div className="space-y-4">
         <p className="text-body text-muted-foreground">
-          Share this code (and your club&apos;s password) with new members so they can join via the
-          &quot;Join a club&quot; dialog. The password is stored encrypted; reveal it here when you
-          need to share it.
+          Share this code and password with new members. The password is
+          encrypted — reveal it here when needed.
         </p>
 
         {/* Club code row */}
@@ -1399,9 +1380,8 @@ function CustomCodeDialog({
           <DialogHeader>
             <DialogTitle>Customize club code</DialogTitle>
             <DialogDescription>
-              Pick a memorable code for members to join with — like a word or
-              abbreviation (e.g. ROBOTIX). Current members are unaffected; only
-              new joiners need the new code.
+              Current members are unaffected — only new joiners need the new
+              code.
             </DialogDescription>
           </DialogHeader>
 
@@ -1506,9 +1486,6 @@ function ChangePasswordDialog({
           <DialogTitle className="flex items-center gap-2">
             <Lock className="h-4 w-4" /> Change club password
           </DialogTitle>
-          <DialogDescription>
-            Set a new password members will use to join this club.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -1547,7 +1524,7 @@ function ChangePasswordDialog({
             )}
             {tooLong && (
               <p className="text-xs text-danger-foreground dark:text-danger-foreground">
-                Password must be 60 characters or fewer.
+                Password too long (max 60).
               </p>
             )}
           </div>
@@ -1555,8 +1532,8 @@ function ChangePasswordDialog({
           <div className="rounded-md border border-warning/30 bg-warning-subtle dark:border-amber-900/60 dark:bg-warning-subtle px-3 py-2.5 text-xs text-warning-foreground flex gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
-              Anyone with the old password will no longer be able to join. Make
-              sure to share the new one with anyone you&apos;ve invited.
+              Anyone with the old password can no longer join. Share the new
+              one with anyone you&apos;ve invited.
             </span>
           </div>
         </div>
@@ -1599,7 +1576,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
         method: "DELETE",
         json: { confirmPassword: password },
       })
-      toast.success(`Club "${clubName}" has been permanently deleted`)
+      toast.success(`Club "${clubName}" deleted`)
       setTimeout(() => window.location.reload(), 500)
     } catch (e: any) {
       toast.error(e.message || "Failed to delete club")
@@ -1625,7 +1602,7 @@ function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: str
               Delete "{clubName}"?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the club and all its data — members, hours, tasks, meetings, announcements, and chat. This cannot be undone.
+              This permanently deletes the club and all its data.
               <br /><br />
               Enter the club's join password to confirm:
             </AlertDialogDescription>
@@ -2066,7 +2043,7 @@ function BadgesSection({ clubId, userId }: { clubId: string; userId: string }) {
                 <DropdownMenuSeparator />
                 {badges.length === 0 ? (
                   <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                    No badges yet — create one first.
+                    No badges yet.
                   </div>
                 ) : (
                   badges.map((b) => (
@@ -2219,10 +2196,6 @@ function CreateBadgeDialog({
           <DialogTitle className="flex items-center gap-2">
             <Award className="h-4 w-4" /> Create a new badge
           </DialogTitle>
-          <DialogDescription>
-            Custom badges can be awarded to any member of this club. You can
-            create as many as you like.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 sm:p-0 space-y-4">
@@ -2232,7 +2205,7 @@ function CreateBadgeDialog({
               id="badge-name"
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 60))}
-              placeholder="e.g. Best Member, MVP, Top Volunteer"
+              placeholder="e.g. MVP, Top Volunteer"
               maxLength={60}
               autoFocus
             />
@@ -2270,7 +2243,7 @@ function CreateBadgeDialog({
                 aria-label="Custom emoji"
               />
               <p className="text-xs text-muted-foreground">
-                Or paste your own emoji.
+                Or paste your own.
               </p>
             </div>
           </div>
@@ -2372,7 +2345,7 @@ function ImportCsvDialog({
 
   async function handleUpload() {
     if (!file) {
-      toast.error("Please choose a CSV file first")
+      toast.error("Choose a CSV file first")
       return
     }
     setUploading(true)
@@ -2415,9 +2388,8 @@ function ImportCsvDialog({
             <Upload className="h-4 w-4" /> Import members from CSV
           </DialogTitle>
           <DialogDescription>
-            Upload a CSV with <code className="font-mono">name,email</code> columns. Existing
-            accounts will be added as members; emails without accounts will be listed as pending
-            invites — share your club code with them so they can sign up.
+            Upload a CSV with <code className="font-mono">name,email</code> columns. Emails without
+            accounts become pending invites.
           </DialogDescription>
         </DialogHeader>
 
@@ -2581,8 +2553,8 @@ function ImportResults({
                 <UserPlus className="h-3.5 w-3.5" /> Pending invites ({result.pendingInvites.length})
               </h4>
               <p className="text-xs text-warning-foreground dark:text-warning-foreground mt-1">
-                These people need to create an account first. Share your club code with them so they
-                can sign up and join.
+                They need an account first. Share your club code so they can
+                sign up and join.
               </p>
             </div>
           </div>
@@ -2641,7 +2613,7 @@ function ImportResults({
       )}
 
       <p className="text-xs text-muted-foreground text-center">
-        Processed {total} row{total === 1 ? "" : "s"} in total.
+        Processed {total} row{total === 1 ? "" : "s"}.
       </p>
 
       <DialogFooter>
@@ -2730,8 +2702,8 @@ function LeaveClubDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Leave this club?</AlertDialogTitle>
           <AlertDialogDescription>
-            You will lose access to this club immediately. If you are the only executive, you must
-            promote another member first. You can rejoin later with the club code and password.
+            You can rejoin later with the club code. If you&apos;re the only
+            executive, promote another member first.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2 py-2">
@@ -2756,7 +2728,7 @@ function LeaveClubDialog({
             }}
           />
           <p className="text-xs text-muted-foreground">
-            This action is permanent — your membership, tasks, and access are removed instantly.
+            Your membership, tasks, and access are removed instantly.
           </p>
         </div>
         <AlertDialogFooter>

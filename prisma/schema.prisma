@@ -241,6 +241,8 @@ model Announcement {
   body      String
   isPinned  Boolean  @default(false)
   isUrgent  Boolean  @default(false) // exec-only banner flag — shows app-wide dismissible banner
+  accent    String?  // card accent color key (emerald|amber|rose|violet|teal|gray) — null = default
+  tag       String?  // short category label rendered as a pill (≤24 chars)
   deletedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

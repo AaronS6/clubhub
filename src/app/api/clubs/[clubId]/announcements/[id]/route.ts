@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { getClubContext, json, error } from "@/lib/server-auth"
 import { logActivity } from "@/lib/activity"
 import { emitClubEvent } from "@/lib/realtime-server"
+import { isAccentKey, MAX_ANNOUNCEMENT_TAG_LENGTH } from "@/lib/announcement-style"
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: string; id: string }> }) {
   const { clubId, id } = await ctx.params
@@ -42,6 +43,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
   if (typeof body.isUrgent === "boolean") {
     if (!isExec) return error("Only executives can mark announcements as urgent", 403)
     data.isUrgent = body.isUrgent
+  }
+  // Accent + tag — styling, editable by author or exec like the rest of the post
+  if (body.accent === null || isAccentKey(body.accent)) {
+    data.accent = body.accent ?? null
+  } else if (typeof body.accent === "string") {
+    return error("Invalid accent", 400)
+  }
+  if (typeof body.tag === "string" || body.tag === null) {
+    const t = typeof body.tag === "string" ? body.tag.trim() : ""
+    data.tag = t ? t.slice(0, MAX_ANNOUNCEMENT_TAG_LENGTH) : null
   }
 
   if (Object.keys(data).length === 0) return error("No valid fields to update", 400)
@@ -101,6 +112,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ clubId: strin
       body: updated.body,
       isPinned: updated.isPinned,
       isUrgent: updated.isUrgent,
+      accent: updated.accent,
+      tag: updated.tag,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
       authorId: updated.authorId,

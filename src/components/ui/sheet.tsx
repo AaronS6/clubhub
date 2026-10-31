@@ -44,6 +44,18 @@ function SheetOverlay({
   )
 }
 
+/** Static children-tree scan — see dialog.tsx for rationale. */
+function treeHasSheetDescription(children: React.ReactNode): boolean {
+  return React.Children.toArray(children).some((child) => {
+    if (!React.isValidElement(child)) return false
+    if (child.type === SheetDescription || child.type === SheetPrimitive.Description) {
+      return true
+    }
+    const grand = (child.props as { children?: React.ReactNode }).children
+    return grand != null && treeHasSheetDescription(grand)
+  })
+}
+
 function SheetContent({
   className,
   children,
@@ -57,6 +69,7 @@ function SheetContent({
    *  the header (avoids a duplicate close button). */
   showCloseButton?: boolean
 }) {
+  const bare = !treeHasSheetDescription(children) && props["aria-describedby"] === undefined
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -81,6 +94,7 @@ function SheetContent({
             "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t",
           className
         )}
+        {...(bare ? { "aria-describedby": undefined } : {})}
         {...props}
       >
         {children}

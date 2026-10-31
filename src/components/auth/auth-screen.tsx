@@ -131,7 +131,7 @@ function AuthScreenInner() {
       })
       if (res?.error) throw new Error("Login failed after signup")
       writeHasAccount()
-      toast.success("Account created! Welcome to ClubHub.")
+      toast.success("Account created!")
       setTimeout(() => window.location.reload(), 200)
     } catch (err: any) {
       toast.error(err.message || "Signup failed")
@@ -215,8 +215,8 @@ function AuthScreenInner() {
             </h2>
             <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1.5">
               {authView === "login"
-                ? "Sign in to manage your clubs, tasks, and service hours."
-                : "Join or create clubs to start collaborating."}
+                ? "Your clubs, tasks, and hours."
+                : "Join a club or create your own."}
             </p>
           </div>
 
@@ -447,7 +447,7 @@ function ForgotPasswordDialog({
       // the reset link directly so the flow is demoable before email is set up.
       if (res?.resetUrl) setDevResetUrl(res.resetUrl)
     } catch (err: any) {
-      setErrorMsg(err?.message || "Something went wrong — please try again.")
+      setErrorMsg(err?.message || "Something went wrong. Try again.")
     } finally {
       setLoading(false)
     }
@@ -476,8 +476,7 @@ function ForgotPasswordDialog({
         {!sent ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm leading-relaxed text-[#1a1815]/80 dark:text-[#f0ebe0]/80">
-              Enter the email you signed up with and we&apos;ll send you a link
-              to choose a new password. The link expires in 1 hour.
+              We&apos;ll email you a reset link. It expires in 1 hour.
             </p>
             <div className="space-y-2">
               <Label
@@ -526,15 +525,15 @@ function ForgotPasswordDialog({
             <p className="text-sm leading-relaxed">
               If an account exists for{" "}
               <strong className="font-bold break-all">{email.trim()}</strong>, a
-              password-reset link is on its way. It expires in 1 hour.
+              reset link is on its way.
             </p>
             <div className="flex items-start gap-2.5 rounded-none border border-[#1a1815]/15 dark:border-[#f0ebe0]/15 px-3.5 py-3 text-sm">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-club" />
               <div>
                 <p className="font-bold">Didn&apos;t get it?</p>
                 <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-0.5">
-                  Check your spam folder, double-check the address, then request
-                  another link. Nothing arrives if the email isn&apos;t registered.
+                  Check spam and the address, then try again. Nothing arrives if
+                  the email isn&apos;t registered.
                 </p>
               </div>
             </div>
@@ -545,8 +544,8 @@ function ForgotPasswordDialog({
                   Email not configured on this install
                 </p>
                 <p className="text-xs text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-1 leading-relaxed">
-                  Add your Resend API key (RESEND_API_KEY in .env) to send real
-                  emails — until then, use the link directly:
+                  Add RESEND_API_KEY in .env to send real emails. For now, use
+                  the link directly:
                 </p>
                 <Button
                   type="button"
@@ -607,11 +606,11 @@ function ResetPasswordScreen({
     e.preventDefault()
     setError(null)
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.")
+      setError("At least 8 characters.")
       return
     }
     if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      setError("Password must contain a letter and a number.")
+      setError("Needs a letter and a number.")
       return
     }
     if (password !== confirm) {
@@ -624,7 +623,7 @@ function ResetPasswordScreen({
         method: "POST",
         json: { token, password },
       })
-      toast.success("Password updated — sign in with your new password.")
+      toast.success("Password updated.")
       onDone()
     } catch (err: any) {
       setError(err.message || "Couldn't reset password. The link may have expired.")
@@ -649,9 +648,6 @@ function ResetPasswordScreen({
             <h1 className="text-3xl font-black tracking-tight leading-[1.05]">
               Set a new password.
             </h1>
-            <p className="text-sm text-[#1a1815]/60 dark:text-[#f0ebe0]/60 mt-2">
-              We emailed you this link. Choose a new password to sign back in.
-            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
