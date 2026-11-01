@@ -60,8 +60,9 @@ import { cn } from "@/lib/utils"
  * instead of destroying it. A small floating pill docks just below the top
  * bar (step counter + segmented progress + Resume) so the exec can pick up
  * exactly where they left off while they click around the real app. The
- * "seen" flag is only stamped by finishing the guide or explicitly
- * dismissing the pill — an interrupted guide never counts as done.
+ * "seen" flag is stamped by finishing the guide OR by any dismissal
+ * (per user request: a guide the user closed must never come back on its
+ * own) — the resume pill keeps it reachable for the rest of the session.
  *
  * FINISH → MEMBER GUIDE: executives are members too. Completing this guide
  * (final button, Enter, or → on the last step) chains straight into the
@@ -2090,8 +2091,10 @@ export function AdminTour() {
 
   /** Park the guide in the floating resume pill — every "leave early" path
    *  (try-it jump, Escape, X, scrim click) comes through here so the guide
-   *  NEVER disappears mid-tour. Does NOT stamp "seen": an interrupted guide
-   *  isn't finished, so it may legitimately re-offer itself next visit. */
+   *  NEVER disappears mid-tour. ALSO stamps "seen": the user asked that an
+   *  explicitly-dismissed guide never come back on its own, so dismissal
+   *  counts as acknowledgment. The pill keeps the guide resumable for the
+   *  REST of this session; a fresh visit won't re-offer it. */
   const suspend = useCallback(
     (target?: View) => {
       setOpen(false)
@@ -2099,9 +2102,16 @@ export function AdminTour() {
         setSuspendedCtx({ clubId, role })
         suspendedForRef.current = clubId
       }
+      if (seenKey) {
+        try {
+          localStorage.setItem(seenKey, "1")
+        } catch {
+          /* private mode etc. — worst case it re-offers next visit */
+        }
+      }
       if (target) setView(target)
     },
-    [setView, clubId, role],
+    [setView, clubId, role, seenKey],
   )
 
   /** Bring the suspended guide back — same step, same place. */

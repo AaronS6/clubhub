@@ -34,8 +34,8 @@ import type { NotifItem } from "@/components/views/notifications-view"
  */
 
 /** The release this announcement covers — the localStorage ack-key version.
- * "8.0" ≠ a display version you'll see anywhere else; see the note above. */
-export const WHATS_NEW_VERSION = "8.0"
+ * "9.0" ≠ a display version you'll see anywhere else; see the note above. */
+export const WHATS_NEW_VERSION = "9.0"
 
 const VISITED_KEY = "clubhub-visited"
 /** Marks the CURRENT browsing session so reloads (login/signup do a full
@@ -119,13 +119,13 @@ export function setWhatsNewNotif(on: boolean) {
 
 // ── Synthetic notification item (shared shape with server rows) ────────────
 
-export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v8-0"
+export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v9-0"
 
 export function buildReleaseNotesNotif(): NotifItem {
   return {
     id: RELEASE_NOTES_NOTIF_ID,
     type: "release_notes",
-    message: "ClubHub v8.0 — storage, guides & a glow-up. Tap to see what's new",
+    message: "ClubHub v9.0 — My Hub & one navigation for every club. Tap to see what's new",
     linkUrl: null,
     isRead: true,
     createdAt: new Date().toISOString(),

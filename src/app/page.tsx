@@ -6,8 +6,10 @@ import { useAppStore } from "@/lib/store"
 import { AppShell } from "@/components/app-shell"
 import { FeedSkeleton } from "@/components/shared/page-header"
 
-// The dashboard is the default landing view, so it stays eagerly imported —
-// its recharts dependency is needed on initial paint anyway.
+// §9 — My Hub is the student's default landing view, so it stays eagerly
+// imported (like the club dashboard: its initial-paint cost is lists, not
+// charts). Both home views share the shell's keyed content wrapper.
+import { HubView } from "@/components/views/hub-view"
 import { DashboardView } from "@/components/views/dashboard-view"
 
 // ---------------------------------------------------------------------------
@@ -15,17 +17,18 @@ import { DashboardView } from "@/components/views/dashboard-view"
 // ---------------------------------------------------------------------------
 //
 // Every non-default view is code-split via `next/dynamic` so its bundle is
-// only fetched when the user navigates to it. The dashboard view stays eager
-// because it's the initial landing view (lazy-loading it would just defer
-// the chart render — a regression, not a win).
+// only fetched when the user navigates to it. The two home views stay eager
+// because either can be the initial landing view (hub = default, club =
+// deep link / restored context); lazy-loading them would just defer the
+// first paint — a regression, not a win.
 //
 // `ssr: false` is intentional: these views are entirely client-side
 // (TanStack Query + Zustand + socket.io) and the default `view` state is
 // always "dashboard" on first paint (Zustand persist hydrates AFTER
 // hydration), so the server-rendered HTML never needs to render these.
 // This avoids any hydration mismatch while splitting each view into its own
-// chunk. The chat view alone is ~2400 LOC + cmdk/emoji helpers, so this is
-// a clear bundle-size win for the initial load.
+// chunk. The chat view alone is ~2400 LOC + cmdk/emoji helpers, so this is a
+// clear bundle-size win for the initial load.
 //
 // A content-shaped skeleton serves as the loading fallback for every view
 // — matches the app's skeleton language (ghost page title + description +
@@ -114,24 +117,55 @@ const StorageView = dynamic(
   () => import("@/components/views/storage-view").then((m) => m.StorageView),
   { loading: () => <ViewLoader />, ssr: false },
 )
+const ClubSettingsView = dynamic(
+  () => import("@/components/views/club-settings-view").then((m) => m.ClubSettingsView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
+
+// §9 — the My Hub variants of the shared pages (cross-club aggregation).
+// Lazy-loaded: they're reached from the default hub home, so their chunks
+// stream in parallel with the first interaction.
+const HubCalendarView = dynamic(
+  () => import("@/components/views/hub-calendar-view").then((m) => m.HubCalendarView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
+const HubTasksView = dynamic(
+  () => import("@/components/views/hub-tasks-view").then((m) => m.HubTasksView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
+const HubUpdatesView = dynamic(
+  () => import("@/components/views/hub-updates-view").then((m) => m.HubUpdatesView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
+const HubInboxView = dynamic(
+  () => import("@/components/views/hub-inbox-view").then((m) => m.HubInboxView),
+  { loading: () => <ViewLoader />, ssr: false },
+)
 
 export default function Home() {
   const view = useAppStore((s) => s.view)
+  const context = useAppStore((s) => s.context)
+  // §9 — the shared pages render their My Hub (aggregated) variant or the
+  // club workspace variant depending on the active context. Club-only views
+  // are unreachable in My Hub (the store's resolveView guard redirects them
+  // to the hub home), so they need no hub branch.
+  const isHub = context === "hub"
   return (
     <AppShell>
-      {view === "dashboard" && <DashboardView />}
-      {view === "announcements" && <AnnouncementsView />}
-      {view === "hours" && <HoursView />}
-      {view === "approvals" && <ApprovalsView />}
-      {view === "tasks" && <TasksView />}
-      {view === "meetings" && <MeetingsView />}
-      {view === "teams" && <TeamsView />}
-      {view === "members" && <MembersView />}
-      {view === "activity" && <ActivityView />}
-      {view === "chat" && <ChatView />}
-      {view === "financials" && <FinancialsView />}
-      {view === "notes" && <NotesView />}
-      {view === "storage" && <StorageView />}
+      {view === "dashboard" && (isHub ? <HubView /> : <DashboardView />)}
+      {view === "meetings" && (isHub ? <HubCalendarView /> : <MeetingsView />)}
+      {view === "tasks" && (isHub ? <HubTasksView /> : <TasksView />)}
+      {view === "announcements" && (isHub ? <HubUpdatesView /> : <AnnouncementsView />)}
+      {view === "chat" && (isHub ? <HubInboxView /> : <ChatView />)}
+      {view === "hours" && !isHub && <HoursView />}
+      {view === "approvals" && !isHub && <ApprovalsView />}
+      {view === "teams" && !isHub && <TeamsView />}
+      {view === "members" && !isHub && <MembersView />}
+      {view === "activity" && !isHub && <ActivityView />}
+      {view === "financials" && !isHub && <FinancialsView />}
+      {view === "notes" && !isHub && <NotesView />}
+      {view === "storage" && !isHub && <StorageView />}
+      {view === "settings" && !isHub && <ClubSettingsView />}
       {view === "notifications" && <NotificationsView />}
     </AppShell>
   )

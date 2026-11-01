@@ -200,7 +200,7 @@ export function ExecHandbookModal({
               <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                 {review
                   ? "A quick reference — reopen from Settings → Security."
-                  : "Optional — you don&apos;t need to open it to confirm."}
+                  : "Optional — you don\u2019t need to open it to confirm."}
               </p>
 
               {/* Handbook link */}

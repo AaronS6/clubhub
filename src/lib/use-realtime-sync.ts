@@ -54,7 +54,29 @@ export type ConnectionState = "connecting" | "connected" | "disconnected"
  *  - chat_message      → conversations, messages
  *  - chat_typing*      → no-op (ephemeral; ChatView subscribes directly)
  *  - presence_update   → presence, members
+ *
+ * §9 HUB QUERIES: every event also refreshes the My Hub aggregate caches
+ * (the ["hub"] family) — invalidating an unmounted query is free, and the
+ * hub is the default landing surface for multi-club students.
  */
+const HUB_QUERY_KEYS = [
+  ["hub"],
+  ["hub-tasks"],
+  ["hub-updates"],
+  ["hub-updates-unread-peek", "on"],
+  ["hub-meetings"],
+  ["hub-conversations"],
+  ["hub-search"],
+]
+
+// Event types that never change hub data (ephemeral presence/typing) —
+// excluded from the hub invalidation sweep.
+const HUB_IRRELEVANT_TYPES = new Set([
+  "chat_typing",
+  "chat_typing:stop",
+  "presence_update",
+])
+
 export function useRealtimeSync(): ConnectionState {
   const qc = useQueryClient()
   const currentClubId = useAppStore((s) => s.currentClubId)
@@ -95,6 +117,7 @@ export function useRealtimeSync(): ConnectionState {
         qc.invalidateQueries({ queryKey: ["notifications", cid] })
         qc.invalidateQueries({ queryKey: ["notes", cid] })
         qc.invalidateQueries({ queryKey: ["tags", cid] })
+        for (const key of HUB_QUERY_KEYS) qc.invalidateQueries({ queryKey: key })
       }
       wasConnectedRef.current = true
     }
@@ -133,6 +156,11 @@ export function useRealtimeSync(): ConnectionState {
       const cid = clubRef.current
       if (!cid) return
       const type = data?.type as string | undefined
+      // §9 — one sweep of the My Hub caches for anything that could change
+      // aggregated data (tasks, announcements, meetings, hours, chat…).
+      if (!HUB_IRRELEVANT_TYPES.has(type ?? "")) {
+        for (const key of HUB_QUERY_KEYS) qc.invalidateQueries({ queryKey: key })
+      }
       switch (type) {
         case "task_created":
         case "task_updated":

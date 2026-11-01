@@ -94,7 +94,13 @@ const DEFAULT_ACCENT = "#10b981"
  */
 export function ClubAccentProvider({ children }: { children: ReactNode }) {
   const currentClub = useAppStore((s) => s.currentClub)
-  const accent = currentClub?.accentColor || DEFAULT_ACCENT
+  const context = useAppStore((s) => s.context)
+  // §9 — the accent follows the ACTIVE context: the club's own brand color
+  // inside its workspace, the ClubHub brand default in My Hub (where many
+  // clubs' colors coexist and none should dominate). A user's personal
+  // theme-color override (customization store) is applied further up.
+  const accent =
+    (context === "club" ? currentClub?.accentColor : undefined) || DEFAULT_ACCENT
   const { resolvedTheme } = useTheme()
   const [vars, setVars] = useState<Record<string, string>>(() => computeVars(DEFAULT_ACCENT, false))
 

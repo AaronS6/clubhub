@@ -5,6 +5,8 @@ import { useAppStore, type View } from "@/lib/store"
 import { api } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
 import { openChatAt } from "@/lib/chat-deep-link"
+import { openInClub, openClubConversation } from "@/lib/hub-nav"
+import type { HubClubBadge } from "@/lib/hub-types"
 import { useSearchShortcutHint } from "@/hooks/use-platform"
 import {
   CommandDialog,
@@ -62,6 +64,9 @@ interface TaskHit {
   status: string
   dueDate: string | null
   type: "task"
+  /** §9 hub search — the club this hit lives in. */
+  clubId?: string
+  club?: HubClubBadge
 }
 interface AnnouncementHit {
   id: string
@@ -69,6 +74,8 @@ interface AnnouncementHit {
   createdAt: string
   isPinned: boolean
   type: "announcement"
+  clubId?: string
+  club?: HubClubBadge
 }
 interface MeetingHit {
   id: string
@@ -77,6 +84,8 @@ interface MeetingHit {
   endTime: string
   location: string
   type: "meeting"
+  clubId?: string
+  club?: HubClubBadge
 }
 interface MessageHit {
   id: string
@@ -89,6 +98,8 @@ interface MessageHit {
   conversationType: string
   conversationName: string
   type: "message"
+  clubId?: string
+  club?: HubClubBadge
 }
 interface SearchResponse {
   members: MemberHit[]
@@ -237,13 +248,16 @@ const QUICK_JUMPS: {
   label: string
   icon: typeof UsersIcon
   hint: string
+  /** §9 — shared-nav quick jumps render in BOTH contexts; club-only ones
+   *  only inside a club workspace. */
+  shared?: boolean
 }[] = [
-  { view: "chat", label: "Chat", icon: MessageSquare, hint: "c" },
+  { view: "chat", label: "Messages", icon: MessageSquare, hint: "c", shared: true },
+  { view: "tasks", label: "My Tasks", icon: CheckSquare, hint: "t", shared: true },
+  { view: "announcements", label: "Updates", icon: Megaphone, hint: "a", shared: true },
+  { view: "meetings", label: "Calendar", icon: CalendarDays, hint: "m", shared: true },
   { view: "hours", label: "Service Hours", icon: Clock, hint: "h" },
   { view: "members", label: "Members", icon: UsersIcon, hint: "m" },
-  { view: "tasks", label: "Tasks", icon: CheckSquare, hint: "t" },
-  { view: "announcements", label: "Announcements", icon: Megaphone, hint: "a" },
-  { view: "meetings", label: "Meetings", icon: CalendarDays, hint: "m" },
 ]
 
 // ---------------------------------------------------------------------------
@@ -273,12 +287,18 @@ export function openGlobalSearch() {
 export function GlobalSearch() {
   const clubId = useAppStore((s) => s.currentClubId)
   const currentClub = useAppStore((s) => s.currentClub)
+  const context = useAppStore((s) => s.context)
   const setView = useAppStore((s) => s.setView)
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [results, setResults] = React.useState<SearchResponse>(EMPTY)
   const [loading, setLoading] = React.useState(false)
   const shortcut = useSearchShortcutHint()
+
+  // §9 — the palette searches the ACTIVE context: My Hub aggregates across
+  // every club (/api/hub/search), a club workspace searches that club.
+  const isHub = context === "hub"
+  const activeClubId = isHub ? null : clubId
 
   // Expose an imperative opener for the header button.
   React.useEffect(() => {
@@ -308,12 +328,12 @@ export function GlobalSearch() {
       // Cmd/Ctrl + K
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault()
-        if (clubId) setOpen((o) => !o)
+        if (activeClubId || isHub) setOpen((o) => !o)
         return
       }
 
       // `/` opens — only when not typing and palette closed.
-      if (e.key === "/" && !isTyping && !open && clubId) {
+      if (e.key === "/" && !isTyping && !open && (activeClubId || isHub)) {
         e.preventDefault()
         setOpen(true)
       }
@@ -326,7 +346,7 @@ export function GlobalSearch() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, clubId])
+  }, [open, activeClubId, isHub])
 
   // Debounced search. We fire only when query has at least 1 non-space char and
   // the palette is open. Empty query clears results instantly.
@@ -338,16 +358,20 @@ export function GlobalSearch() {
       setLoading(false)
       return
     }
-    if (!clubId) return
+    if (!activeClubId && !isHub) return
     setLoading(true)
     const t = setTimeout(() => {
-      api<SearchResponse>(`/api/clubs/${clubId}/search?q=${encodeURIComponent(q)}`)
+      api<SearchResponse>(
+        isHub
+          ? `/api/hub/search?q=${encodeURIComponent(q)}`
+          : `/api/clubs/${activeClubId}/search?q=${encodeURIComponent(q)}`
+      )
         .then((data) => setResults({ ...EMPTY, ...data }))
         .catch(() => setResults(EMPTY))
         .finally(() => setLoading(false))
     }, 200)
     return () => clearTimeout(t)
-  }, [query, open, clubId])
+  }, [query, open, activeClubId, isHub])
 
   // Reset the input when the palette closes so reopening starts fresh.
   React.useEffect(() => {
@@ -364,13 +388,22 @@ export function GlobalSearch() {
   const hasQuery = query.trim().length > 0
   const trimmedQuery = query.trim()
 
-  // Navigation matches — instant (no server round-trip), ranked.
+  // Navigation matches — instant (no server round-trip), ranked. §9 — in
+  // My Hub, club-only destinations are hidden from the palette (they have
+  // no hub surface); they remain one g-chord or context switch away.
   const navMatches = React.useMemo(() => {
     if (!hasQuery) return []
-    return NAV_ITEMS.filter((item) => navItemMatches(item, trimmedQuery)).sort(
-      (a, b) => navItemRank(a, trimmedQuery) - navItemRank(b, trimmedQuery),
-    )
-  }, [hasQuery, trimmedQuery])
+    const clubOnlyViews = new Set([
+      "hours", "notes", "teams", "members", "financials", "approvals", "activity", "storage",
+    ])
+    return NAV_ITEMS.filter((item) => {
+      if (item.action.kind !== "view") return true
+      if (isHub && clubOnlyViews.has(item.action.view)) return false
+      return true
+    })
+      .filter((item) => navItemMatches(item, trimmedQuery))
+      .sort((a, b) => navItemRank(a, trimmedQuery) - navItemRank(b, trimmedQuery))
+  }, [hasQuery, trimmedQuery, isHub])
 
   const totalCount =
     navMatches.length +
@@ -395,6 +428,12 @@ export function GlobalSearch() {
 
   function goMessage(hit: MessageHit) {
     setOpen(false)
+    // §9 — in My Hub, jump into the message's club workspace and open the
+    // conversation there; inside a club, the existing in-club deep link.
+    if (isHub && hit.clubId) {
+      openClubConversation(hit.clubId, hit.conversationId, hit.id)
+      return
+    }
     setView("chat")
     // Slight delay so the chat view mounts before the deep-link event — the
     // chat-deep-link module also keeps a pending target for exactly this,
@@ -402,6 +441,20 @@ export function GlobalSearch() {
     requestAnimationFrame(() => {
       openChatAt(hit.conversationId, hit.id)
     })
+  }
+
+  /** §9 — task/announcement/meeting hits: in My Hub, deep-link into the
+   *  item's ORIGINAL club (with a flash highlight on the target card); in a
+   *  club workspace, the existing in-club navigation. */
+  function goHit(view: View, hit?: { id?: string; clubId?: string }) {
+    setOpen(false)
+    if (isHub && hit?.clubId) {
+      const focusType =
+        view === "tasks" ? "task" : view === "announcements" ? "announcement" : view === "meetings" ? "meeting" : undefined
+      openInClub(hit.clubId, view, focusType && hit.id ? { type: focusType, id: hit.id } : undefined)
+      return
+    }
+    setView(view)
   }
 
   const hasServerResults =
@@ -415,8 +468,12 @@ export function GlobalSearch() {
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Search this club"
-      description="Jump anywhere, find messages, members, tasks and more."
+      title={isHub ? "Search all your clubs" : "Search this club"}
+      description={
+        isHub
+          ? "Find your tasks, updates, meetings and messages across every club."
+          : "Jump anywhere, find messages, members, tasks and more."
+      }
       className="sm:max-w-xl rounded-xl shadow-dialog"
       commandProps={{ filter: smartFilter }}
     >
@@ -424,10 +481,16 @@ export function GlobalSearch() {
           esc cap right (visual only — cmdk handles the Escape key itself). */}
       <div className="relative">
         <CommandInput
-          placeholder={clubId ? "Search — try “settings”, “hours”, a message…" : "Select a club first"}
+          placeholder={
+            isHub
+              ? "Search all your clubs — try “updates”, “tasks”, a message…"
+              : clubId
+                ? "Search — try “settings”, “hours”, a message…"
+                : "Select a club first"
+          }
           value={query}
           onValueChange={setQuery}
-          disabled={!clubId}
+          disabled={!clubId && !isHub}
           className="pr-14 text-base"
         />
         <kbd
@@ -441,17 +504,17 @@ export function GlobalSearch() {
         </kbd>
       </div>
       <CommandList className="max-h-[min(70vh,420px)] pt-1.5 pb-1.5">
-        {!clubId ? (
+        {!clubId && !isHub ? (
           <CommandEmpty className="text-muted-foreground">
             Select a club first.
           </CommandEmpty>
         ) : !hasQuery ? (
           <>
-            {/* Empty query → "Jump to" quick navigation to the club's main
-                surfaces (same onSelect navigation the search results use),
-                with a quiet hint line to start typing below it. */}
+            {/* Empty query → "Jump to" quick navigation. §9 — in My Hub the
+                shared destinations; inside a club, the club's busiest
+                surfaces (keyboard-selectable like any search hit). */}
             <CommandGroup heading={<span className={GROUP_LABEL}>JUMP TO</span>}>
-              {QUICK_JUMPS.map((q) => {
+              {QUICK_JUMPS.filter((q) => !isHub || q.shared).map((q) => {
                 const Icon = q.icon
                 return (
                   <CommandItem
@@ -474,7 +537,7 @@ export function GlobalSearch() {
             </CommandGroup>
             <div className="flex items-center gap-1.5 py-2 pr-3 pl-5 text-xs text-muted-foreground">
               <Search className="h-3 w-3 shrink-0 opacity-60" />
-              <span>Type to search settings, views, messages, people…</span>
+              <span>Type to search settings, views, messages{isHub ? ", tasks…" : ", people…"}</span>
             </div>
           </>
         ) : loading && !hasServerResults ? (
@@ -523,7 +586,7 @@ export function GlobalSearch() {
                   {results.messages.map((m) => (
                     <CommandItem
                       key={`msg-${m.id}`}
-                      value={`message ${m.body} ${m.authorName} ${m.conversationName}`}
+                      value={`message ${m.body} ${m.authorName} ${m.conversationName} ${m.club?.clubName ?? ""}`}
                       onSelect={() => goMessage(m)}
                       className="gap-3 rounded-lg"
                       style={ITEM_PAD}
@@ -533,7 +596,11 @@ export function GlobalSearch() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium">
-                          {m.conversationName} · {m.authorName}
+                          {/* §9 — hub hits lead with the club identity; club
+                              hits keep the conversation · author line. */}
+                          {isHub
+                            ? `${m.club?.clubName ?? "Club"} · ${m.authorName || "Message"}`
+                            : `${m.conversationName} · ${m.authorName}`}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
                           <MessageSnippet body={m.body} query={trimmedQuery} />
@@ -548,8 +615,9 @@ export function GlobalSearch() {
               </>
             )}
 
-            {/* ── People (server) ── */}
-            {results.members.length > 0 && (
+            {/* ── People (server) — club workspace only: people live inside
+                a club's directory, so My Hub's palette omits the section. ── */}
+            {!isHub && results.members.length > 0 && (
               <>
                 {(navMatches.length > 0 || results.messages.length > 0) && <CommandSeparator />}
                 <CommandGroup heading={<span className={GROUP_LABEL}>PEOPLE</span>}>
@@ -596,8 +664,8 @@ export function GlobalSearch() {
                   {results.tasks.map((t) => (
                     <CommandItem
                       key={`t-${t.id}`}
-                      value={`task ${t.title}`}
-                      onSelect={() => go("tasks")}
+                      value={`task ${t.title} ${t.club?.clubName ?? ""}`}
+                      onSelect={() => goHit("tasks", t)}
                       className="gap-3 rounded-lg"
                       style={ITEM_PAD}
                     >
@@ -607,6 +675,7 @@ export function GlobalSearch() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{t.title}</div>
                         <div className="truncate text-xs text-muted-foreground">
+                          {isHub && t.club ? `${t.club.clubName} · ` : ""}
                           {t.dueDate
                             ? `Due ${new Date(t.dueDate).toLocaleDateString()}`
                             : "No due date"}
@@ -627,8 +696,8 @@ export function GlobalSearch() {
                   {results.announcements.map((a) => (
                     <CommandItem
                       key={`a-${a.id}`}
-                      value={`announcement ${a.title}`}
-                      onSelect={() => go("announcements")}
+                      value={`announcement ${a.title} ${a.club?.clubName ?? ""}`}
+                      onSelect={() => goHit("announcements", a)}
                       className="gap-3 rounded-lg"
                       style={ITEM_PAD}
                     >
@@ -638,6 +707,7 @@ export function GlobalSearch() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{a.title}</div>
                         <div className="truncate text-xs text-muted-foreground">
+                          {isHub && a.club ? `${a.club.clubName} · ` : ""}
                           {relativeTime(a.createdAt)}
                           {a.isPinned && " · Pinned"}
                         </div>
@@ -656,8 +726,8 @@ export function GlobalSearch() {
                   {results.meetings.map((m) => (
                     <CommandItem
                       key={`mt-${m.id}`}
-                      value={`meeting ${m.title}`}
-                      onSelect={() => go("meetings")}
+                      value={`meeting ${m.title} ${m.club?.clubName ?? ""}`}
+                      onSelect={() => goHit("meetings", m)}
                       className="gap-3 rounded-lg"
                       style={ITEM_PAD}
                     >
@@ -667,6 +737,7 @@ export function GlobalSearch() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{m.title}</div>
                         <div className="truncate text-xs text-muted-foreground">
+                          {isHub && m.club ? `${m.club.clubName} · ` : ""}
                           {formatMeetingTime(m.startTime, m.endTime)} · {m.location}
                         </div>
                       </div>

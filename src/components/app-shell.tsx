@@ -57,7 +57,7 @@ import {
   MessageSquare, CheckCheck, Check, ChevronRight, AlertTriangle, X, RefreshCw,
   Upload, Trash2, Palette, NotebookPen, KeyRound, Compass, UserCheck,
   BookOpen, BookOpenCheck, Keyboard, Database, GraduationCap, PlayCircle,
-  User, Link2, ChevronLeft, CheckCircle2, UserPlus,
+  User, Link2, ChevronLeft, CheckCircle2, UserPlus, Settings2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -205,34 +205,48 @@ const JUST_JOINED_KEY = "clubhub-just-joined"
 interface NavItem { view: View; label: string; icon: any; execOnly?: boolean }
 interface NavTier { id: string; label: string; items: NavItem[] }
 
-const NAV_TIERS: NavTier[] = [
+/**
+ * §9 — ONE navigation system, multiple club contexts.
+ *
+ * SHARED NAV renders in exactly the same position regardless of the selected
+ * context. In My Hub these pages aggregate across every club the student
+ * belongs to; inside a club workspace they scope to that club. The labels
+ * stay constant so muscle memory works everywhere.
+ */
+const SHARED_NAV: NavItem[] = [
+  { view: "dashboard", label: "Home", icon: LayoutDashboard },
+  { view: "announcements", label: "Updates", icon: Megaphone },
+  { view: "tasks", label: "My Tasks", icon: CheckSquare },
+  { view: "meetings", label: "Calendar", icon: CalendarDays },
+  { view: "chat", label: "Messages", icon: MessageSquare },
+]
+
+/**
+ * CLUB-WORKSPACE NAV — only rendered while an individual club context is
+ * active. Ordinary members see the "Club pages" tier; the "Manage" tier is
+ * executive-only (Approvals first, Club Settings second, then Activity
+ * Log and Storage). The tier label describes what the section CONTAINS —
+ * the club's own name is already pinned in the context switcher above,
+ * so repeating it as a header would be noise.
+ */
+const CLUB_NAV_TIERS: NavTier[] = [
   {
-    id: "home",
-    label: "Home",
+    id: "club",
+    label: "Club pages",
     items: [
-      { view: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { view: "announcements", label: "Announcements", icon: Megaphone },
-      { view: "chat", label: "Chat", icon: MessageSquare },
-    ],
-  },
-  {
-    id: "work",
-    label: "Work",
-    items: [
-      { view: "tasks", label: "Tasks", icon: CheckSquare },
-      { view: "notes", label: "Notes", icon: NotebookPen },
-      { view: "meetings", label: "Meetings", icon: CalendarDays },
+      { view: "members", label: "Members", icon: UserCog },
+      { view: "teams", label: "Teams", icon: Users },
       { view: "hours", label: "Service Hours", icon: Clock },
+      { view: "notes", label: "Notes", icon: NotebookPen },
+      { view: "financials", label: "Finances", icon: Wallet },
     ],
   },
   {
     id: "manage",
     label: "Manage",
     items: [
-      { view: "teams", label: "Teams", icon: Users },
-      { view: "members", label: "Members", icon: UserCog },
-      { view: "financials", label: "Financials", icon: Wallet },
       { view: "approvals", label: "Approvals", icon: ShieldCheck, execOnly: true },
+      { view: "settings", label: "Club Settings", icon: Settings2, execOnly: true },
       { view: "activity", label: "Activity Log", icon: ScrollText, execOnly: true },
       { view: "storage", label: "Storage", icon: Database, execOnly: true },
     ],
@@ -240,7 +254,14 @@ const NAV_TIERS: NavTier[] = [
 ]
 
 /** Flat list of every nav item (used for `?view=` validation + filtering). */
-const NAV: NavItem[] = NAV_TIERS.flatMap((t) => t.items)
+const NAV: NavItem[] = [...SHARED_NAV, ...CLUB_NAV_TIERS.flatMap((t) => t.items)]
+
+/** The hub-context page title for each shared view (club context keeps the
+ *  same labels — only Home differs: the club workspace's own dashboard). */
+function navLabel(view: View, context: "hub" | "club"): string {
+  if (context === "hub" && view === "dashboard") return "My Hub"
+  return NAV.find((n) => n.view === view)?.label ?? "Dashboard"
+}
 
 /** Refresh memberships and switch straight into the given club — the one
  *  just joined or created — instead of staying on the previously-open club
@@ -259,23 +280,28 @@ function landInClub(clubId?: string | null) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
-  const { clubs, currentClub, currentClubId, view, setView, setClubs, selectClub } = useAppStore()
+  const { clubs, currentClub, currentClubId, view, context, setView, setClubs, selectClub, selectHub } = useAppStore()
   const [bootstrapped, setBootstrapped] = useState(false)
   const [bootFailed, setBootFailed] = useState(false)
   const bootRef = useRef(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  /** §9 — the "Discover clubs" join dialog (sidebar row + hub CTAs), opened
+   *  straight on its Explore tab. */
+  const [discoverOpen, setDiscoverOpen] = useState(false)
   const params = useSearchParams()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark")
 
-  // §45 — Unread-announcements indicator. Polls the first page of the
-  // announcements list for the current club and compares the latest item's
-  // createdAt to a localStorage timestamp (`last-seen-announcements-<clubId>`).
-  // When newer, returns true so the Announcements nav item can show a
-  // small accent dot.
-  const hasUnreadAnnouncements = useUnreadAnnouncements(currentClubId ?? undefined)
+  // §45 — Unread-announcements indicator (club context): polls the first
+  // page of the CURRENT club's announcements and compares the latest
+  // createdAt to a per-club localStorage timestamp. In My Hub context the
+  // cross-club variant below drives the dot instead.
+  const hasUnreadAnnouncements = useUnreadAnnouncements(
+    context === "club" ? currentClubId ?? undefined : undefined
+  )
+  const hasUnreadHubUpdates = useUnreadHubUpdates(bootstrapped && context === "hub")
 
   // ── Session-loading timeout + manual session probe ──────────────────────
   // NextAuth v4's `useSession()` can intermittently get stuck in the "loading"
@@ -406,19 +432,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [bootstrapped, clubs, selectClub])
 
   // ── New-club-join detection ─────────────────────────────────────────────
-  // Whenever the user's club count INCREASES (joining a club, joining via a
-  // public profile, creating a club, or an exec approving their request),
-  // we auto-open the OnboardingTour so the introduction guide walks them
-  // through the club they just landed in — EVERY new club, not just the
-  // first one (per user request). The guide can always be dismissed, and
-  // it stays replayable from the account menu.
+  // Whenever the user's club count INCREASES after bootstrap (joining a club,
+  // joining via a public profile, creating a club, or an exec approving their
+  // request) we auto-open the OnboardingTour. Two guards keep this honest:
+  //
+  //  • BASELINE GUARD: `setClubs(memberships)` and `setBootstrapped(true)`
+  //    fire in the SAME batched commit inside the bootstrap handler, so the
+  //    effect's first post-bootstrap observation already contains the full
+  //    club list. Without recording that as the baseline, every page reload
+  //    would read 0→N as a "join" and re-arm the guide (the
+  //    "it keeps showing me the introduction" bug).
+  //  • SEEN GUARD: the persisted `onboardingCompleted` flag (stamped when the
+  //    guide is closed — finished OR skipped) suppresses every AUTO-open.
+  //    The guide stays manually replayable from the account menu.
   const prevClubsCountRef = useRef(clubs.length)
   const tourArmedRef = useRef(false)
+  const postBootRef = useRef(false)
   useEffect(() => {
     // Pre-bootstrap (zustand persist hydration + the /api/me sync) is NOT a
-    // join — keep the baseline in sync without arming, otherwise every page
-    // reload would re-open the guide.
+    // join — keep the baseline in sync without arming.
     if (!bootstrapped) {
+      prevClubsCountRef.current = clubs.length
+      return
+    }
+    // First observation after bootstrap = the synced baseline, not a join
+    // (clubs + bootstrapped landed in one batched commit).
+    if (!postBootRef.current) {
+      postBootRef.current = true
       prevClubsCountRef.current = clubs.length
       return
     }
@@ -432,11 +472,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [clubs.length, bootstrapped])
 
   // ── Executive Admin Handbook (once per club lifetime) ────────────────────
-  // The FIRST club where the viewer is an active executive and the handbook
-  // hasn't been acknowledged (club.handbookAcceptedAt == null) gets the
-  // non-dismissible handbook popup. Typically that's the club they just
-  // created; confirming stamps the DB flag so it never shows again. If the
-  // handbook popup is up, the tour waits until it's confirmed.
+  // The ACTIVE club (when the viewer is an active executive there) gets the
+  // non-dismissible handbook popup if it hasn't been acknowledged
+  // (club.handbookAcceptedAt == null). Typically that's the club they just
+  // created — creation/landing switches straight into the club, so the
+  // popup shows in its proper context; confirming stamps the DB flag so it
+  // never shows again. If the handbook popup is up, the tour waits until
+  // it's confirmed. §9 — the popup is a CLUB-workspace surface, so it never
+  // interrupts My Hub; it appears the moment the exec enters the club.
   //
   // `confirmedThisSession` guards the brief window between the confirm POST
   // succeeding and the memberships refetch landing (clubs is still stale
@@ -444,13 +487,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [confirmedThisSession, setConfirmedThisSession] = useState<string[]>([])
   const handbookDue = useMemo(
     () =>
-      clubs.find(
-        (c) =>
-          c.role === "executive" &&
-          (c.handbookAcceptedAt ?? null) === null &&
-          !confirmedThisSession.includes(c.clubId),
-      ) ?? null,
-    [clubs, confirmedThisSession],
+      context === "club" && currentClub?.role === "executive" &&
+      (currentClub.handbookAcceptedAt ?? null) === null &&
+      !confirmedThisSession.includes(currentClub.clubId)
+        ? currentClub
+        : null,
+    [context, currentClub, confirmedThisSession],
   )
 
   // The tour itself: fires 600ms after the club list settles, deferred
@@ -469,6 +511,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (handbookDue) return // wait for the handbook modal to be confirmed
     tourArmedRef.current = false
     if (useAppStore.getState().currentClub?.role === "executive") return
+    // Seen guard — a closed guide (finished or skipped) never auto-opens
+    // again; the account-menu replay dispatches the event directly instead.
+    if (useCustomizationStore.getState().onboardingCompleted) return
     setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 600)
   }, [clubs, handbookDue])
 
@@ -485,6 +530,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
     [setClubs],
   )
+
+  // ── §9 "Discover clubs" event ───────────────────────────────────────────
+  // Hub surfaces (dashboard CTAs, club cards' discover tile) dispatch
+  // `clubhub:open-join`; the shell owns the join dialog so there's exactly
+  // one instance regardless of which view fired it.
+  useEffect(() => {
+    const handler = () => setDiscoverOpen(true)
+    window.addEventListener("clubhub:open-join", handler)
+    return () => window.removeEventListener("clubhub:open-join", handler)
+  }, [])
 
   // ── Executive Admin Handbook — REVIEW mode ──────────────────────────────
   // Execs can re-read the handbook anytime: Settings → Security (rendered
@@ -540,17 +595,72 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // Joined a NEW club on the public profile → open the introduction guide
     // for it. Fire-once per page load (no cleanup — later effect re-runs from
     // refetches must not cancel the pending tour dispatch). "Open club
-    // workspace" (existing member) skips this — they've seen it already.
+    // workspace" (existing member) skips this — they've seen it already. So
+    // has anyone who ever closed the guide (persisted seen flag).
     if (justJoined && !afterLoadTourFiredRef.current) {
       afterLoadTourFiredRef.current = true
-      setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 900)
+      if (!useCustomizationStore.getState().onboardingCompleted) {
+        setTimeout(() => window.dispatchEvent(new CustomEvent("open-onboarding-tour")), 900)
+      }
     }
   }, [bootstrapped, clubs, selectClub])
 
+  // ── §9 Context + view URL sync (read side) ─────────────────────────
+  // The URL is the source of truth for navigation state:
+  //    /?view=tasks&club=<id>  → that club's workspace, Tasks
+  //    /?view=tasks            → My Hub, Tasks (aggregated)
+  //    /                       → My Hub home (the default view of the app)
+  //
+  // Runs on mount (deep links / notification URLs) and whenever Next
+  // updates the search params (branch navigations like /?landing=1).
+  // Browser back/forward through our pushState entries is handled by the
+  // dedicated popstate listener below — both paths converge on
+  // `applyNavState`, which sets context + club + view ATOMICALLY so the
+  // write-side effect never sees an intermediate state (no loops).
   useEffect(() => {
     const v = params.get("view") as View | null
-    if (v && NAV.some((n) => n.view === v)) setView(v)
-  }, [params, setView])
+    const clubParam = params.get("club")
+    const validView = v && NAV.some((n) => n.view === v) ? v : null
+    const store = useAppStore.getState()
+    if (clubParam && store.clubs.some((c) => c.clubId === clubParam)) {
+      const finalView = validView ?? "dashboard"
+      if (
+        store.context !== "club" ||
+        store.currentClubId !== clubParam ||
+        store.view !== finalView
+      ) {
+        store.applyNavState("club", clubParam, validView ?? undefined)
+      }
+    } else {
+      const finalView = validView ?? "dashboard"
+      if (store.context !== "hub" || store.view !== finalView) {
+        store.applyNavState("hub", null, validView ?? undefined)
+      }
+    }
+  }, [params])
+
+  // ── Browser back/forward ───────────────────────────────────────────────
+  // Our navigation writes create REAL history entries (pushState, below),
+  // so the browser's back/forward buttons walk through them. Next's router
+  // ignores entries it didn't create, so we own the popstate handling: read
+  // the URL and atomically restore the store. Idempotent with the params
+  // effect above.
+  useEffect(() => {
+    const onPop = () => {
+      const url = new URL(window.location.href)
+      const v = url.searchParams.get("view") as View | null
+      const clubParam = url.searchParams.get("club")
+      const validView = v && NAV.some((n) => n.view === v) ? v : null
+      const store = useAppStore.getState()
+      if (clubParam && store.clubs.some((c) => c.clubId === clubParam)) {
+        store.applyNavState("club", clubParam, validView ?? undefined)
+      } else {
+        store.applyNavState("hub", null, validView ?? undefined)
+      }
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
 
   // ── View-switch feel: scroll reset + URL mirroring ────────────────────
   // Switching views (or clubs) remounts the keyed content wrapper below, so
@@ -561,32 +671,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   useLayoutEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: "instant" })
-  }, [view, currentClubId])
+  }, [view, currentClubId, context])
 
-  // Write side of the `?view=` param (the effect above is the read side).
-  // Native history API — next/navigation's router.replace would re-render
-  // the tree. "dashboard" is the default view and keeps the bare URL; all
-  // other query params (?public= / ?auth= / ?landing=) are preserved. On
-  // mount the URL is the source of truth (the read effect's setView may
-  // still be in flight), so the first run never overwrites a differing
-  // ?view= — otherwise a stale persisted view could clobber a fresh deep
-  // link before the read side lands.
+  // ── Write side of the `?view=` + `?club=` params ───────────────────────
+  // Every user-driven navigation (sidebar, hub deep links, shortcuts,
+  // notifications) lands in the store first; this effect mirrors it into the
+  // URL with pushState — REAL history entries, so refresh preserves the
+  // context (Scenario D) and back/forward walk through the student's actual
+  // navigation. The read side owns the URL on mount (deep links win over
+  // the persisted store), so the first run never writes.
   const viewUrlFirstRun = useRef(true)
   useEffect(() => {
     const url = new URL(window.location.href)
-    const current = url.searchParams.get("view")
-    const target = view === "dashboard" ? null : view
+    const currentView = url.searchParams.get("view")
+    const currentClubParam = url.searchParams.get("club")
+    const targetView = view === "dashboard" ? null : view
+    const targetClub = context === "club" ? currentClubId : null
+    const viewMatches = (currentView ?? null) === (targetView ?? null)
+    const clubMatches = (currentClubParam ?? null) === (targetClub ?? null)
     if (viewUrlFirstRun.current) {
+      // On mount the URL is the source of truth — the read effect's store
+      // updates are still in flight; let them land and re-run this effect.
       viewUrlFirstRun.current = false
-      // URL carries a different view than the store → the read effect's
-      // setView is already queued; let it land and re-run this effect.
-      if (current !== null && current !== target) return
+      return
     }
-    if (current === target) return
-    if (target === null) url.searchParams.delete("view")
-    else url.searchParams.set("view", view)
-    window.history.replaceState(null, "", url.toString())
-  }, [view])
+    if (viewMatches && clubMatches) return
+    if (targetView) url.searchParams.set("view", targetView)
+    else url.searchParams.delete("view")
+    if (targetClub) url.searchParams.set("club", targetClub)
+    else url.searchParams.delete("club")
+    window.history.pushState(null, "", url.toString())
+  }, [view, context, currentClubId])
 
   // Authenticate the realtime socket once we know the user + clubs. We use
   // `effectiveUserId` (from the manual probe fallback) so the socket connects
@@ -725,144 +840,193 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     )
   }
 
-  const isExec = currentClub?.role === "executive"
+  // §9 — the active club only exists in a club context; My Hub has no
+  // club-scoped controls. Exec-gating rides on top for the club section.
+  const isExec = context === "club" && currentClub?.role === "executive"
 
-  const clubSwitcher = (
-    <ClubSwitcher
-      clubs={clubs}
-      currentClub={currentClub ?? null}
-      onSelect={(id) => { selectClub(id); setMobileNavOpen(false) }}
-    />
-  )
+  // The shared-nav unread dot: per-club indicator inside a club workspace,
+  // cross-club indicator in My Hub.
+  const updatesDot = context === "hub" ? hasUnreadHubUpdates : hasUnreadAnnouncements
 
+  // ── Sidebar nav ─────────────────────────────────────────────────────────
+  // ONE navigation system. The SHARED NAV (Home, Calendar, My Tasks, Updates,
+  // Messages) keeps exactly the same position in both contexts. Below it, the
+  // club-workspace section appears ONLY while a club context is active, and
+  // MY CLUBS gives one-click switching with a subtle active indicator.
   const navList = (
     <nav className="flex flex-col gap-4 px-2.5 py-3" aria-label="Primary">
-      {NAV_TIERS.map((tier) => {
-        const items = tier.items.filter((n) => !n.execOnly || isExec)
-        if (items.length === 0) return null
-        return (
-          <div key={tier.id} className="space-y-0.5">
-            {/* Group label — one consistent 10px uppercase tracked muted label.
-                No top padding: the nav's gap-4 between tiers keeps the rhythm
-                even, so every label sits the same distance from what's above. */}
-            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
-              {tier.label}
-            </div>
-            {items.map((item) => {
-              const Icon = item.icon
-              const active = view === item.view
-              return (
-                <button
-                  key={item.view}
-                  onClick={() => { setView(item.view); setMobileNavOpen(false) }}
-                  className={cn(
-                    "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
-                    active
-                      ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                      : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                  )}
-                  aria-current={active ? "page" : undefined}
-                >
-                  {/* Active row — the Linear-style recipe: a neutral secondary
-                      fill, a 3px club-accent bar on the LEFT edge, a
-                      foreground label, a club-ink icon, and a whisper inset
-                      highlight. Everything rides theme tokens (secondary /
-                      club), so any per-club accent and dark mode keep reading
-                      correctly. Inactive rows stay muted and only pick up a
-                      whisper of neutral fill on hover. */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute left-0 top-1/2 -translate-y-1/2 h-[18px] w-[3px] rounded-full bg-club transition-opacity duration-150",
-                      active ? "opacity-100" : "opacity-0"
-                    )}
+      {/* Shared navigation — identical rows + order in every context. */}
+      <div className="space-y-0.5">
+        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+          Menu
+        </div>
+        {SHARED_NAV.map((item) => (
+          <SharedNavRow
+            key={item.view}
+            item={item}
+            active={view === item.view}
+            onSelect={() => { setView(item.view); setMobileNavOpen(false) }}
+            unread={item.view === "announcements" && !!updatesDot && view !== "announcements"}
+          />
+        ))}
+      </div>
+
+      {/* Club-workspace navigation — only inside an individual club. */}
+      {context === "club" && currentClub && (
+        <>
+          {CLUB_NAV_TIERS.map((tier) => {
+            const items = tier.items.filter((n) => !n.execOnly || isExec)
+            if (items.length === 0) return null
+            return (
+              <div key={tier.id} className="space-y-0.5">
+                <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                  {tier.label}
+                </div>
+                {items.map((item) => (
+                  <SharedNavRow
+                    key={item.view}
+                    item={item}
+                    active={view === item.view}
+                    onSelect={() => { setView(item.view); setMobileNavOpen(false) }}
+                    execOnly={item.execOnly}
                   />
-                  <Icon className={cn("h-4 w-4 shrink-0", active && "text-club-ink")} />
-                  <span className="flex-1 truncate">{item.label}</span>
-                  {item.view === "announcements" &&
-                    hasUnreadAnnouncements &&
-                    !active && (
-                      <UnreadDot pulse aria-label="New announcements" />
-                    )}
-                  {item.execOnly && <ShieldCheck className="h-3 w-3 shrink-0 text-muted-foreground/50" />}
-                </button>
-              )
-            })}
+                ))}
+              </div>
+            )
+          })}
+        </>
+      )}
+
+      {/* MY CLUBS — the compact, elegant list. Rendered ONLY in My Hub (the
+          club workspace already has the context switcher pinned at the top
+          of the sidebar — a second club list below the nav would be noise).
+          My Hub leads (always the active row here), then one-click rows for
+          each club. */}
+      {context === "hub" && (
+        <div className="space-y-0.5">
+          <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+            My clubs
           </div>
-        )
-      })}
+          <button
+            onClick={() => { selectHub(); setMobileNavOpen(false) }}
+            className="group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left bg-secondary/60 font-medium text-foreground transition-[color,background-color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            aria-current="true"
+          >
+            <span
+              aria-hidden
+              className="absolute left-0 top-1/2 -translate-y-1/2 h-[16px] w-[3px] rounded-full bg-club"
+            />
+            <HubTile size="row" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] leading-4">My Hub</span>
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/0 transition-all duration-150 group-hover:text-muted-foreground/70" />
+          </button>
+          {clubs.map((c) => (
+            <button
+              key={c.clubId}
+              onClick={() => { selectClub(c.clubId); setMobileNavOpen(false) }}
+              className="group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted-foreground transition-[color,background-color] duration-150 hover:bg-secondary/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+              title={c.clubName}
+            >
+              <span
+                className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-md text-[10px] font-bold text-white"
+                style={{ backgroundColor: c.accentColor }}
+              >
+                <ResilientImage
+                  src={c.logoUrl}
+                  alt=""
+                  name={c.clubName}
+                  className="h-full w-full object-cover"
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] leading-4">{c.clubName}</span>
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/0 transition-all duration-150 group-hover:translate-x-0.5 group-hover:text-muted-foreground/70" />
+            </button>
+          ))}
+          <button
+            onClick={() => { setDiscoverOpen(true); setMobileNavOpen(false) }}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-border/80">
+              <Compass className="h-3.5 w-3.5" />
+            </span>
+            <span className="text-[13px] leading-4">Discover clubs</span>
+          </button>
+        </div>
+      )}
     </nav>
   )
 
-  // Page title for the top bar — derived from the active nav item's label.
-  const currentNavItem = NAV.find((n) => n.view === view)
-  const pageTitle = currentNavItem?.label ?? "Dashboard"
+  // Page title for the top bar — context-aware ("My Hub" vs the club
+  // workspace's own "Home").
+  const pageTitle = navLabel(view, context)
 
   // Persistent top bar — desktop + mobile.
-  //   LEFT:   hamburger (mobile) + brand mark (desktop)
-  //   CENTER: global search trigger
-  //   RIGHT:  connection dot, notification bell, profile avatar
-  // The club switcher + theme toggle live in the sidebar (top + bottom).
-  // PERF: no backdrop-blur on the header (was bg-background/80 +
-  // backdrop-blur-md) — a blurred full-width header re-rasters EVERY frame
-  // while a sheet/dialog overlay fades in over it AND while the ambient
-  // background morphs behind it, which was the single biggest cause of the
-  // choppy More / notifications sheet opens on mobile. A nearly-opaque solid
-  // background looks identical for ~0 paint cost (same fix the bottom tab
-  // bar got earlier).
+  //   DESKTOP:  page title (left) · global search (center) · bell (right).
+  //             The avatar lives in the sidebar footer (account home).
+  //   MOBILE:   context pill (left) · bell + avatar (right) — the bottom tab
+  //             bar owns primary navigation, so the top bar stays minimal.
   // PERF: no backdrop-blur on the header — it's IN-FLOW (nothing scrolls
   // underneath), so it can be fully transparent for ZERO cost: the
   // atmosphere's top backlight beam glows through this whole strip. (The
   // old bg-background/95 wash hid it.)
   const topBar = (
     <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/70 bg-transparent shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
-      {/* Page title (display face, 20px) — replaces the old 'ClubHub' wordmark.
-          The wordmark competed with the club switcher in the sidebar.
-          Mobile nav is via the bottom tab bar's "More" button — no hamburger
-          in the top bar (it was redundant). */}
+      {/* Desktop: page title (display face, 18px) */}
       <div className="hidden md:flex items-center shrink-0 min-w-0">
         <h1 className="truncate font-semibold" style={{ fontFamily: "var(--font-display)", fontSize: "1.125rem", lineHeight: "1.5rem", letterSpacing: "-0.018em" }}>{pageTitle}</h1>
       </div>
 
+      {/* Mobile: the context selector — compact pill with the club tile (or
+          the My Hub mark), name, and chevron. Primary mobile navigation lives
+          in the bottom tab bar; this keeps club switching one tap away. */}
+      <div className="md:hidden min-w-0 flex-1">
+        <ContextSwitcher
+          clubs={clubs}
+          context={context}
+          currentClub={currentClub ?? null}
+          compact
+          onSelectHub={() => { selectHub(); setMobileNavOpen(false) }}
+          onSelectClub={(id) => { selectClub(id); setMobileNavOpen(false) }}
+        />
+      </div>
+
       {/* Search (center, desktop) — a full-round pill that reads bespoke, not
-          templated: the placeholder carries the club's OWN name ("Search
-          Robotics Club…"), and the ⌘K hint is a physical keycap floating on
-          the pill's right edge (opaque key + hairline border + elevation
-          shadow). The trigger blurs itself when it opens the palette so no
-          browser (Safari/Firefox included) can paint a focus ring on it while
-          the palette is up. */}
+          templated: the placeholder carries the active context's name ("Search
+          all your clubs…" in My Hub, the club's own name inside a club), and
+          the ⌘K hint is a physical keycap floating on the pill's right edge. */}
       <button
         type="button"
         onClick={(e) => { openGlobalSearch(); e.currentTarget.blur() }}
-        disabled={!currentClubId}
-        className="hidden md:flex group items-center gap-2.5 h-9 rounded-full border border-input bg-muted/40 px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] disabled:opacity-50 disabled:pointer-events-none max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
-        aria-label={currentClub ? `Search ${currentClub.clubName}` : "Open search"}
+        className="hidden md:flex group items-center gap-2.5 h-9 rounded-full border border-input bg-muted/40 px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
+        aria-label={context === "club" && currentClub ? `Search ${currentClub.clubName}` : "Search your clubs"}
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left truncate">{currentClub ? `Search ${currentClub.clubName}…` : "Search this club…"}</span>
+        <span className="flex-1 text-left truncate">
+          {context === "club" && currentClub
+            ? `Search ${currentClub.clubName}…`
+            : "Search all your clubs…"}
+        </span>
         <SearchShortcutHint />
       </button>
 
-      {/* Mobile: page title fills the gap (replaces the club name) */}
-      <div className="md:hidden font-semibold truncate flex-1 px-1 min-w-0" style={{ letterSpacing: "-0.01em" }}>
-        {pageTitle}
-      </div>
-
-      {/* Right side: search icon (mobile), bell, profile avatar */}
+      {/* Right side: search icon (mobile), bell, profile avatar (mobile only —
+          desktop accounts live in the sidebar footer). */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
         <Button
           variant="ghost"
           size="icon"
           className="md:hidden"
           aria-label="Search"
-          disabled={!currentClubId}
           onClick={(e) => { openGlobalSearch(); e.currentTarget.blur() }}
         >
           <SearchIcon className="h-4 w-4" />
         </Button>
         <NotificationBell />
-        {/* Profile avatar menu — moved to the RIGHT side of the top bar */}
-        <div className="shrink-0">
+        <div className="shrink-0 md:hidden">
           <UserMenu compact />
         </div>
       </div>
@@ -892,15 +1056,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             doesn't apply). A lit top edge (inset 1px highlight) carries the
             physical elevation language. Club-switcher card pinned at the top,
             nav in the scrollable middle, theme toggle at the bottom. */}
-        <aside className="hidden md:flex md:w-[240px] flex-col rounded-2xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
-          {/* Club switcher — hairline ghost row at the top (transparent at
-              rest, fill only on hover/open): accent logo, name, role,
-              chevron. */}
-          <div className="p-3 shrink-0">{clubSwitcher}</div>
+        <aside className="hidden md:flex md:w-[244px] flex-col rounded-2xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
+          {/* §9 sidebar header — the context selector IS the anchor of the
+              sidebar (no brand row above it): My Hub ↔ individual clubs.
+              Switcher pinned at the top, nav in the scrollable middle, theme
+              toggle at the bottom. */}
+          <div className="p-3 shrink-0">
+            <ContextSwitcher
+              clubs={clubs}
+              context={context}
+              currentClub={currentClub ?? null}
+              onSelectHub={() => selectHub()}
+              onSelectClub={(id) => selectClub(id)}
+            />
+          </div>
           {/* Nav occupies the scrollable middle of the sidebar */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">{navList}</div>
-          {/* Theme toggle pinned to the BOTTOM of the sidebar */}
-          <div className="p-2 shrink-0 border-t border-border/80">
+          {/* Account + theme pinned to the BOTTOM of the sidebar — same
+              20px text grid as the nav rows above. */}
+          <div className="px-2.5 pt-2 pb-2.5 shrink-0 border-t border-border/80 space-y-1">
+            <div className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">
+                <UserMenu desktop />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Account settings"
+                onClick={() => window.dispatchEvent(new CustomEvent("open-settings", { detail: { tab: "profile" } }))}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
             <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={toggleTheme}>
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="ml-2">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
@@ -909,8 +1097,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
-          {view === "chat" ? (
+          {view === "chat" && context === "club" ? (
             /* ── iOS Safari keyboard fix: dedicated NON-scrollable branch ──
+               (club chat only — My Hub's combined inbox is a normal page.)
                Chat renders its own full-height panes (conversation list +
                thread) that manage their own internal scrolling. Wrapping
                them in the standard overflow-y-auto container made the pane
@@ -938,7 +1127,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
                   view/club switch (replayed by the remount key below);
                   neutralized under prefers-reduced-motion in globals.css. */}
-              <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${currentClubId}-${view}`}>
+              <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${context}-${currentClubId ?? ""}-${view}`}>
                 {children}
               </div>
             </div>
@@ -951,6 +1140,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <MobileTabBar />
 
       <CreateClubDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(club) => landInClub(club?.id)} />
+      {/* Discover-clubs entry points (sidebar "Discover clubs", hub dashboard
+          CTAs) — the join dialog opened straight on its Explore tab. */}
+      <JoinClubDialog
+        open={discoverOpen}
+        onOpenChange={setDiscoverOpen}
+        onJoined={(club) => landInClub(club?.id)}
+        initialTab="explore"
+      />
       {/* Join-intent resume — a visitor who clicked "Join this club" on the
           public site gets the join dialog with the code prefilled after
           signing in. They still confirm with the club password. */}
@@ -981,7 +1178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           replayable anytime via the `open-admin-tour` window event from
           Settings → Security. Executives only — so the ~100KB chunk is
           gated on the role: regular members never download it. */}
-      {currentClub?.role === "executive" && <AdminTour />}
+      {isExec && <AdminTour />}
       {/* Executive Admin Handbook — the one-time acknowledgment popup for
           clubs the viewer runs that haven't confirmed it yet (typically the
           club they just created). Non-dismissible until confirmed. In REVIEW
@@ -1001,6 +1198,97 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
     </div>
+  )
+}
+
+/** The My Hub mark — a monochrome "hub" constellation: the student at the
+ *  center, their clubs in orbit around them. Deliberately NOT the emerald
+ *  accent: My Hub is the neutral home base that sits beside the colorful
+ *  club tiles, so its mark is pure theme ink — a solid foreground tile
+ *  (black in light mode, white in dark mode) with the counter-ink glyph.
+ *  High contrast on both themes, never gray. */
+function HubGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className}>
+      <circle cx="12" cy="12" r="3.1" />
+      <circle cx="4.9" cy="5.4" r="2.1" />
+      <circle cx="19.1" cy="5.4" r="2.1" />
+      <circle cx="4.9" cy="18.6" r="2.1" />
+      <circle cx="19.1" cy="18.6" r="2.1" />
+    </svg>
+  )
+}
+
+/** The My Hub tile — the monochrome counterpart of a club's logo tile.
+ *  Size mirrors the club-tile form factors so the two sit flush inside the
+ *  same row/trigger:
+ *    row  — sidebar MY CLUBS + mobile drawer rows   (h-6, rounded-md)
+ *    menu — context-switcher dropdown items          (h-7, rounded-md)
+ *    sm   — mobile compact switcher trigger          (h-7, rounded-full)
+ *    md   — desktop switcher trigger                 (h-10, rounded-xl) */
+function HubTile({ size, className }: { size: "row" | "menu" | "sm" | "md"; className?: string }) {
+  const dims =
+    size === "row" ? "h-6 w-6 rounded-md"
+    : size === "menu" ? "h-7 w-7 rounded-md"
+    : size === "sm" ? "h-7 w-7 rounded-full"
+    : "h-10 w-10 rounded-xl"
+  const glyph =
+    size === "row" ? "h-3 w-3"
+    : size === "md" ? "h-[18px] w-[18px]"
+    : "h-3.5 w-3.5"
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex shrink-0 items-center justify-center bg-foreground text-background shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]",
+        dims,
+        className
+      )}
+    >
+      <HubGlyph className={glyph} />
+    </span>
+  )
+}
+
+/** One shared-nav / club-nav row — the Linear-style recipe: neutral
+ *  secondary fill when active, 3px accent bar on the LEFT edge, foreground
+ *  label, club-ink icon, whisper inset highlight. Inactive rows stay muted
+ *  and only pick up a whisper of neutral fill on hover. */
+function SharedNavRow({
+  item, active, onSelect, unread, execOnly,
+}: {
+  item: NavItem
+  active: boolean
+  onSelect: () => void
+  unread?: boolean
+  execOnly?: boolean
+}) {
+  const Icon = item.icon
+  return (
+    <button
+      onClick={onSelect}
+      className={cn(
+        "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
+        active
+          ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+          : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+      )}
+      aria-current={active ? "page" : undefined}
+    >
+      {/* Active indicator — grows in from the row edge (scaleX), so the
+          switch reads as a deliberate slide rather than an instant flip. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-1/2 -translate-y-1/2 h-[18px] w-[3px] origin-center rounded-full bg-club transition-[opacity,transform] duration-200",
+          active ? "scale-y-100 opacity-100" : "scale-y-0 opacity-0"
+        )}
+      />
+      <Icon className={cn("nav-icon-nudge h-4 w-4 shrink-0", active && "text-club-ink")} />
+      <span className="flex-1 truncate">{item.label}</span>
+      {unread && <UnreadDot pulse aria-label="New announcements" />}
+      {execOnly && <ShieldCheck className="h-3 w-3 shrink-0 text-muted-foreground/50" />}
+    </button>
   )
 }
 
@@ -1130,6 +1418,9 @@ function PullDownSheet({
           transition: dragging ? "none" : "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
+        {/* Radix requires a DialogTitle for screen readers — the sheet is
+            visually unlabeled by design, so the title is sight-hidden. */}
+        <SheetTitle className="sr-only">{ariaLabel ?? "More navigation"}</SheetTitle>
         <div
           onPointerDown={(e) => {
             startY.current = e.clientY
@@ -1161,9 +1452,12 @@ function PullDownSheet({
 }
 
 /**
- * Mobile bottom tab bar (below md) — Dashboard, Tasks, Chat, Meetings, More.
- * "More" opens the existing mobile drawer (Sheet). Safe-area padding, accent on
- * the active tab, unread dots. Hidden below md (the sidebar takes over at md+).
+ * Mobile bottom tab bar (below md) — Home, Calendar, Tasks, Messages, More.
+ * The five shared destinations, mobile-adapted: the four most important as
+ * tabs, everything else (Updates + the club workspace section + MY CLUBS +
+ * theme) in the "More" pull-down sheet. Context-aware — the tabs show the
+ * active context's version of each page. Hidden below md (the sidebar takes
+ * over at md+).
  */
 function MobileTabBar() {
   const view = useAppStore((s) => s.view)
@@ -1172,9 +1466,9 @@ function MobileTabBar() {
 
   const tabs: { view: View; label: string; icon: any }[] = [
     { view: "dashboard", label: "Home", icon: LayoutDashboard },
+    { view: "meetings", label: "Calendar", icon: CalendarDays },
     { view: "tasks", label: "Tasks", icon: CheckSquare },
-    { view: "chat", label: "Chat", icon: MessageSquare },
-    { view: "meetings", label: "Meetings", icon: CalendarDays },
+    { view: "chat", label: "Messages", icon: MessageSquare },
   ]
 
   return (
@@ -1208,8 +1502,9 @@ function MobileTabBar() {
               {/* Active indicator — same recipe as the desktop sidebar: the
                   icon sits on a neutral secondary fill with club-ink glyphs,
                   and a short club-accent bar rides the tab's top edge (the
-                  bottom-bar transpose of the sidebar's left-edge bar). No
-                  saturated accent blob. */}
+                  bottom-bar transpose of the sidebar's left-edge bar). The
+                  pill pops in with a spring (keyed remount on activation) —
+                  a small "the tap landed" answer. */}
               <span
                 aria-hidden
                 className={cn(
@@ -1219,9 +1514,12 @@ function MobileTabBar() {
               />
               <span
                 aria-hidden
+                key={active ? "on" : "off"}
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150",
-                  active ? "bg-secondary/80 text-club-ink" : ""
+                  active
+                    ? "bg-secondary/80 text-club-ink animate-tab-pop"
+                    : ""
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -1257,67 +1555,156 @@ function MobileTabBar() {
 }
 
 /** Compact nav used inside the mobile "More" bottom-sheet.
- *  Filters out execOnly items for members (Approvals, Activity Log).
- *  The club switcher is pinned at the BOTTOM so it's thumb-reachable and
- *  visually separated from the nav list. */
+ *  §9 structure, SPLIT into labelled sections separated by hairline
+ *  dividers: Menu (Updates) → the club-workspace tiers (context-gated,
+ *  exec items filtered for members) → Discover clubs → My clubs (pinned).
+ *
+ *  NO subtext anywhere in this sheet — every row is a single label
+ *  (explicit user request). MY CLUBS renders in BOTH contexts: on mobile
+ *  it's the SECOND club switcher alongside the top-bar context pill. */
 function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
   const view = useAppStore((s) => s.view)
+  const context = useAppStore((s) => s.context)
   const clubs = useAppStore((s) => s.clubs)
   const currentClub = useAppStore((s) => s.currentClub)
   const selectClub = useAppStore((s) => s.selectClub)
-  const isExec = currentClub?.role === "executive"
+  const selectHub = useAppStore((s) => s.selectHub)
+  const isHub = context === "hub"
+  const isExec = context === "club" && currentClub?.role === "executive"
+
+  // Sections in display order. The club-workspace tiers reuse the desktop
+  // sidebar's grouping ("Club pages" + "Manage"); empty sections (e.g.
+  // Manage for members) drop out — the divider logic below uses a running
+  // index so it never draws two adjacent hairlines.
+  const sections: { title: string; items: NavItem[] }[] = [
+    { title: "Menu", items: [{ view: "announcements", label: "Updates", icon: Megaphone }] },
+    ...(context === "club"
+      ? CLUB_NAV_TIERS.map((tier) => ({ title: tier.label, items: tier.items }))
+      : []),
+  ]
+
   return (
     <div className="flex flex-col h-full">
-      <nav className="flex flex-col gap-4 px-2.5 py-4 flex-1 overflow-y-auto scrollbar-thin" aria-label="More">
-        {NAV_TIERS.map((tier) => {
-          const items = tier.items.filter((n) => !n.execOnly || isExec)
+      <nav className="flex flex-col flex-1 overflow-y-auto scrollbar-thin px-2.5 py-3" aria-label="More">
+        {sections.map((section, i) => {
+          const items = section.items.filter((n) => !n.execOnly || isExec)
           if (items.length === 0) return null
           return (
-            <div key={tier.id} className="space-y-0.5">
-              <div className="px-3 pb-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">{tier.label}</div>
-              {items.map((item) => {
-              const Icon = item.icon
-              const active = view === item.view
-              return (
-                <button
-                  key={item.view}
-                  onClick={() => onPick(item.view)}
-                  className={cn(
-                    "relative flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm transition-[color,background-color,border-color,transform,translate,scale,rotate] active:scale-[0.98]",
-                    active
-                      ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                      : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                  )}
-                >
-                  {/* Same active recipe as the desktop sidebar: neutral fill
-                      + left-edge accent bar + club-ink icon. */}
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-club transition-opacity duration-150",
-                      active ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <Icon className={cn("h-4 w-4", active && "text-club-ink")} />
-                  <span className="flex-1 truncate">{item.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        )
-      })}
+            <div key={`${section.title}-${i}`}>
+              {/* Hairline split between sections (none above the first). */}
+              {i > 0 && <div aria-hidden className="mx-3 my-2 h-px bg-border/70" />}
+              <div className="px-3 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                {section.title}
+              </div>
+              <div className="space-y-0.5">
+                {items.map((item) => (
+                  <DrawerRow key={item.view} item={item} active={view === item.view} onPick={onPick} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        {/* Discover clubs — always reachable from the drawer. Fires the
+            shell-owned `clubhub:open-join` event (same as the hub CTAs) so
+            exactly one join dialog instance exists app-wide. */}
+        <div>
+          <div aria-hidden className="mx-3 my-2 h-px bg-border/70" />
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("clubhub:open-join"))
+              onPick(view)
+            }}
+            className="flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm text-muted-foreground transition-[color,background-color,transform] active:scale-[0.98] hover:bg-secondary/50 hover:text-foreground"
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-border/80">
+              <Compass className="h-3.5 w-3.5" />
+            </span>
+            <span className="flex-1 truncate">Discover clubs</span>
+          </button>
+        </div>
       </nav>
-      {/* Club switcher — pinned at the bottom of the "More" sheet, thumb-
-          reachable, visually separated by a top border. */}
-      <div className="border-t border-border px-2.5 pt-3 pb-4 shrink-0" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
-        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">Club</div>
-        <ClubSwitcher
-          clubs={clubs}
-          currentClub={currentClub ?? null}
-          onSelect={(id) => { selectClub(id); onPick("dashboard") }}
-        />
+      {/* MY CLUBS — pinned at the bottom of the "More" sheet, thumb-
+          reachable, split off by the top border. Rendered in BOTH contexts
+          (the second club switcher on mobile alongside the top-bar pill).
+          Switching here lands in that context's home. */}
+      <div
+        className="border-t border-border px-2.5 pt-2 pb-4 shrink-0"
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">My clubs</div>
+        <div className="space-y-0.5">
+          <button
+            onClick={() => { selectHub(); onPick("dashboard") }}
+            className={cn(
+              "relative flex w-full items-center gap-2.5 rounded-md h-11 px-3 text-left text-sm transition-colors",
+              isHub ? "bg-secondary/60 font-medium text-foreground" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+            )}
+            aria-current={isHub ? "true" : undefined}
+          >
+            <HubTile size="menu" />
+            <span className="min-w-0 flex-1 truncate">My Hub</span>
+            {isHub && <Check className="h-3.5 w-3.5 shrink-0 text-club" />}
+          </button>
+          {clubs.map((c) => {
+            const active = !isHub && currentClub?.clubId === c.clubId
+            return (
+              <button
+                key={c.clubId}
+                onClick={() => { selectClub(c.clubId); onPick("dashboard") }}
+                className={cn(
+                  "relative flex w-full items-center gap-2.5 rounded-md h-11 px-3 text-left text-sm transition-colors",
+                  active ? "bg-secondary/60 font-medium text-foreground" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                )}
+                aria-current={active ? "true" : undefined}
+              >
+                <span
+                  className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md text-[10px] font-bold text-white"
+                  style={{ backgroundColor: c.accentColor }}
+                >
+                  <ResilientImage src={c.logoUrl} alt="" name={c.clubName} className="h-full w-full object-cover" />
+                </span>
+                <span className="min-w-0 flex-1 truncate">{c.clubName}</span>
+                {active && <Check className="h-3.5 w-3.5 shrink-0 text-club" />}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
+  )
+}
+
+/** One destination row in the More sheet: icon + label on a single line
+ *  (no subtext). Same active recipe as the desktop sidebar rows — neutral
+ *  fill + left-edge accent bar + club-ink icon. */
+function DrawerRow({
+  item, active, onPick,
+}: {
+  item: NavItem
+  active: boolean
+  onPick: (v: View) => void
+}) {
+  const Icon = item.icon
+  return (
+    <button
+      onClick={() => onPick(item.view)}
+      className={cn(
+        "relative flex items-center gap-2.5 rounded-md w-full h-11 px-3 text-left text-sm transition-[color,background-color,transform] active:scale-[0.98]",
+        active
+          ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+          : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-full bg-club transition-opacity duration-150",
+          active ? "opacity-100" : "opacity-0"
+        )}
+      />
+      <Icon className={cn("h-4 w-4 shrink-0", active && "text-club-ink")} />
+      <span className="flex-1 truncate">{item.label}</span>
+    </button>
   )
 }
 
@@ -1398,6 +1785,72 @@ function useUnreadAnnouncements(clubId: string | undefined): boolean {
       cancelled = true
     }
   }, [data, clubId])
+
+  return hasUnread
+}
+
+/**
+ * §9 — Hook: cross-club unread-updates indicator for My Hub.
+ *
+ * Same pattern as `useUnreadAnnouncements`, but across EVERY club the
+ * student belongs to: polls the first page of the combined hub feed and
+ * compares the latest item's createdAt to a single localStorage timestamp
+ * (`last-seen-announcements-hub`). HubUpdatesView stamps that baseline
+ * whenever it's visited, so the shared-nav dot clears on visit.
+ */
+function useUnreadHubUpdates(enabled: boolean): boolean {
+  const [hasUnread, setHasUnread] = useState(false)
+
+  const { data } = useQuery<{ items: { id: string; createdAt: string }[] }>({
+    queryKey: ["hub-updates-unread-peek", enabled ? "on" : "off"],
+    queryFn: () =>
+      api<{ items: { id: string; createdAt: string }[] }>("/api/hub/announcements?page=1"),
+    enabled,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve().then(() => {
+      if (cancelled) return
+      if (!enabled) {
+        setHasUnread(false)
+        return
+      }
+      const items = data?.items
+      if (!items || items.length === 0) {
+        setHasUnread(false)
+        return
+      }
+      let lastSeen = 0
+      try {
+        const raw = localStorage.getItem("last-seen-announcements-hub")
+        if (raw) {
+          const parsed = parseInt(raw, 10)
+          if (!isNaN(parsed)) lastSeen = parsed
+        }
+      } catch {
+        setHasUnread(false)
+        return
+      }
+      // First-run (no stored baseline) — seed silently.
+      if (lastSeen === 0) {
+        const latest = new Date(items[0].createdAt).getTime()
+        try {
+          localStorage.setItem("last-seen-announcements-hub", String(latest))
+        } catch {
+          // ignore
+        }
+        setHasUnread(false)
+        return
+      }
+      setHasUnread(items.some((it) => new Date(it.createdAt).getTime() > lastSeen))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data, enabled])
 
   return hasUnread
 }
@@ -1593,6 +2046,7 @@ const URGENT_DISMISS_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 function UrgentBanner() {
   const currentClubId = useAppStore((s) => s.currentClubId)
+  const context = useAppStore((s) => s.context)
   const setView = useAppStore((s) => s.setView)
   const [dismissedId, setDismissedId] = useState<string | null>(null)
 
@@ -1605,7 +2059,9 @@ function UrgentBanner() {
   } | null }>({
     queryKey: ["urgent-announcement", currentClubId ?? ""],
     queryFn: () => api(`/api/clubs/${currentClubId}/announcements/urgent`),
-    enabled: !!currentClubId,
+    // §9 — urgent banners are a CLUB-workspace surface: only the active
+    // club's urgent shows, and only while that club context is on screen.
+    enabled: context === "club" && !!currentClubId,
     // Poll every 60s — urgent banners are high-signal; we want a near-real-time
     // surfacing of new urgent announcements without spamming the server.
     refetchInterval: 60_000,
@@ -1683,6 +2139,9 @@ function UrgentBanner() {
     setDismissedId(announcement.id)
   }
 
+  // §9 — hard render gate: club-scoped urgent banners must never leak into
+  // My Hub, including via cached query data from a previous club context.
+  if (context !== "club" || !currentClubId) return null
   if (!announcement || dismissedId === announcement.id) return null
 
   const bodyPreview = announcement.body.length > 120
@@ -1710,7 +2169,7 @@ function UrgentBanner() {
         type="button"
         variant="club"
         size="sm"
-        className="shrink-0 h-7"
+        className="shrink-0 h-9"
         onClick={() => setView("announcements")}
       >
         View
@@ -1719,7 +2178,7 @@ function UrgentBanner() {
         type="button"
         onClick={dismiss}
         aria-label="Dismiss urgent banner"
-        className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-danger-subtle dark:hover:bg-danger transition-colors"
+        className="shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-danger-subtle dark:hover:bg-danger transition-colors"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -1727,79 +2186,122 @@ function UrgentBanner() {
   )
 }
 
-function ClubSwitcher({
-  clubs, currentClub, onSelect,
+/**
+ * §9 ContextSwitcher — the prominent context selector at the top of the
+ * sidebar (and, in `compact` form, the mobile top bar). Shows the ACTIVE
+ * context — the monochrome My Hub mark or the club's logo + name + role —
+ * and opens a dropdown to switch between My Hub and any of the student's
+ * clubs.
+ *
+ * The dropdown mirrors the sidebar's MY CLUBS list (workspace-switcher
+ * pattern): My Hub first with its own caption, then every club with its
+ * logo tile, role caption, and a check for the active one, then the
+ * discover action. Switching is instant — one click, no confirmations.
+ * The chevron rotates 180° while open — a small "the menu answered you"
+ * cue that doubles as an open/closed affordance.
+ */
+function ContextSwitcher({
+  clubs, context, currentClub, onSelectHub, onSelectClub, compact,
 }: {
   clubs: MeResponse["memberships"]
+  context: "hub" | "club"
   currentClub: MeResponse["memberships"][number] | null
-  onSelect: (id: string) => void
+  onSelectHub: () => void
+  onSelectClub: (id: string) => void
+  /** Mobile top-bar pill — smaller tile, tighter padding, no border card. */
+  compact?: boolean
 }) {
   const [showJoin, setShowJoin] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
+  const isHub = context === "hub"
+
+  const trigger = compact ? (
+    <button
+      type="button"
+      className="group flex min-w-0 items-center gap-2 rounded-full border border-border/70 bg-card/70 py-1 pl-1 pr-2.5 text-left backdrop-blur-sm transition-[background-color,border-color,transform] duration-150 hover:bg-secondary/60 hover:border-border active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 data-[state=open]:bg-secondary/70 data-[state=open]:border-border"
+      aria-label={isHub ? "My Hub — switch context" : `${currentClub?.clubName ?? "Club"} — switch context`}
+    >
+      <HubOrClubTile context={context} currentClub={currentClub} size="sm" />
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-semibold leading-4">
+          {isHub ? "My Hub" : currentClub?.clubName ?? "Club"}
+        </span>
+        {!isHub && (
+          <span className="block truncate text-[10px] capitalize leading-3 text-muted-foreground">
+            {currentClub?.role ?? ""}
+          </span>
+        )}
+      </span>
+      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-out group-data-[state=open]:rotate-180" />
+    </button>
+  ) : (
+    <Button
+      variant="ghost"
+      className="group w-full justify-between h-auto py-2.5 px-2.5 rounded-xl gap-3 border border-border/80 bg-transparent text-foreground transition-[background-color,border-color,transform] duration-150 hover:bg-secondary/60 hover:border-border hover:text-foreground active:scale-[0.99] dark:hover:bg-secondary/60 data-[state=open]:bg-secondary/70 dark:data-[state=open]:bg-secondary/70"
+    >
+      <div className="flex items-center gap-2.5 min-w-0">
+        <HubOrClubTile context={context} currentClub={currentClub} size="md" />
+        <div className="min-w-0 text-left">
+          <div className="text-sm font-semibold truncate">
+            {isHub ? "My Hub" : currentClub?.clubName ?? "Select club"}
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            {isHub ? `All your clubs${clubs.length > 0 ? ` · ${clubs.length}` : ""}` : currentClub ? <span className="capitalize">{currentClub.role}</span> : "No club selected"}
+          </div>
+        </div>
+      </div>
+      <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ease-out group-data-[state=open]:rotate-180" />
+    </Button>
+  )
+
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          {/* Hairline ghost at rest (transparent + hairline border, neutral
-              fill only on hover/open) — the club's accent logo tile carries
-              the color. */}
-          <Button
-            variant="ghost"
-            className="w-full justify-between h-auto py-2.5 px-3 rounded-xl gap-3 border border-border/80 bg-transparent text-foreground hover:bg-secondary/60 hover:text-foreground dark:hover:bg-secondary/60 data-[state=open]:bg-secondary/70 dark:data-[state=open]:bg-secondary/70"
+        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64 shadow-popover">
+          {/* My Hub — the default context */}
+          <DropdownMenuItem
+            onClick={onSelectHub}
+            className="cursor-pointer gap-2.5 py-2"
+            aria-current={isHub ? "true" : undefined}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              {/* Club tile — the club's actual logo when one exists (kept in
-                  sync via /api/me + patchCurrentClub), initials otherwise.
-                  §Resilient: retries a transiently-dropped request once, then
-                  clean initials — never the broken-image glyph. */}
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-white text-sm font-bold shrink-0 overflow-hidden"
-                style={{ backgroundColor: currentClub?.accentColor ?? "#10b981" }}
+            <HubTile size="menu" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">My Hub</div>
+              <div className="text-caption">All your clubs</div>
+            </div>
+            {isHub && <Check className="h-3.5 w-3.5 text-club shrink-0" />}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Your clubs</DropdownMenuLabel>
+          {clubs.map((c) => {
+            const active = !isHub && currentClub?.clubId === c.clubId
+            return (
+              <DropdownMenuItem
+                key={c.clubId}
+                onClick={() => onSelectClub(c.clubId)}
+                className="cursor-pointer gap-2.5 py-2"
+                aria-current={active ? "true" : undefined}
               >
-                {currentClub ? (
+                <div
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0 overflow-hidden"
+                  style={{ backgroundColor: c.accentColor }}
+                >
                   <ResilientImage
-                    src={currentClub.logoUrl}
-                    alt={currentClub.clubName}
-                    name={currentClub.clubName}
+                    src={c.logoUrl}
+                    alt={c.clubName}
+                    name={c.clubName}
                     className="h-full w-full object-cover"
                   />
-                ) : (
-                  "?"
-                )}
-              </div>
-              <div className="min-w-0 text-left">
-                <div className="text-sm font-semibold truncate">{currentClub?.clubName ?? "Select club"}</div>
-                <div className="text-xs text-muted-foreground capitalize truncate">
-                  {currentClub ? currentClub.role : "No club selected"}
                 </div>
-              </div>
-            </div>
-            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64 shadow-popover">
-          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Clubs</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {clubs.map((c) => (
-            <DropdownMenuItem key={c.clubId} onClick={() => onSelect(c.clubId)} className="cursor-pointer gap-2.5 py-2">
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-md text-white text-xs font-bold shrink-0 overflow-hidden"
-                style={{ backgroundColor: c.accentColor }}
-              >
-                <ResilientImage
-                  src={c.logoUrl}
-                  alt={c.clubName}
-                  name={c.clubName}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{c.clubName}</div>
-                <div className="text-caption capitalize">{c.role}</div>
-              </div>
-              {currentClub?.clubId === c.clubId && <span className="h-1.5 w-1.5 rounded-full bg-club shrink-0" />}
-            </DropdownMenuItem>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{c.clubName}</div>
+                  <div className="text-caption capitalize">{c.role}</div>
+                </div>
+                {active && <Check className="h-3.5 w-3.5 text-club shrink-0" />}
+              </DropdownMenuItem>
+            )
+          })}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setShowJoin(true)} className="cursor-pointer text-club">
             <LogIn className="mr-2 h-4 w-4" /> Join a club
@@ -1815,6 +2317,33 @@ function ClubSwitcher({
   )
 }
 
+/** The tile shown by the context switcher: the monochrome My Hub mark for
+ *  My Hub, the club's own logo (or accent initials) for a club context. */
+function HubOrClubTile({
+  context, currentClub, size,
+}: {
+  context: "hub" | "club"
+  currentClub: MeResponse["memberships"][number] | null
+  size: "sm" | "md"
+}) {
+  if (context === "hub" || !currentClub) {
+    return <HubTile size={size} />
+  }
+  return (
+    <span
+      className={`flex ${size === "sm" ? "h-7 w-7 rounded-full" : "h-10 w-10 rounded-xl"} shrink-0 items-center justify-center overflow-hidden text-white text-sm font-bold`}
+      style={{ backgroundColor: currentClub.accentColor }}
+    >
+      <ResilientImage
+        src={currentClub.logoUrl}
+        alt=""
+        name={currentClub.clubName}
+        className="h-full w-full object-cover"
+      />
+    </span>
+  )
+}
+
 function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }) {
   const { data: session } = useSession()
   const [showSettings, setShowSettings] = useState(false)
@@ -1823,6 +2352,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
   const [showCreate, setShowCreate] = useState(false)
   const setClubs = useAppStore((s) => s.setClubs)
   const user = session?.user
+  const isMobile = useIsMobile()
 
   // Listen for the `open-settings` custom event so other surfaces (e.g. the
   // What's New modal's "Choose your effect" CTA) can open the dialog on a
@@ -1832,6 +2362,14 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
   // modal).
   useEffect(() => {
     const handler = (e: Event) => {
+      // TWO UserMenu instances are mounted at once (compact = mobile top
+      // bar, desktop = sidebar) and BOTH listen to this event — CSS only
+      // hides one of them, it doesn't unmount it. Without this gate a
+      // single `open-settings` dispatch opened BOTH dialogs stacked (the
+      // "settings opens twice" bug). The visible instance wins: compact
+      // owns the sub-md breakpoint, desktop owns md+.
+      if (compact && !isMobile) return
+      if (desktop && isMobile) return
       const detail = (e as CustomEvent).detail as { tab?: string } | undefined
       if (detail?.tab === "security" || detail?.tab === "profile" || detail?.tab === "appearance") {
         setSettingsTab(detail.tab)
@@ -1847,7 +2385,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
       window.removeEventListener("open-settings", handler as EventListener)
       window.removeEventListener("close-settings", closeHandler as EventListener)
     }
-  }, [])
+  }, [compact, desktop, isMobile])
 
   function openSettingsFromMenu() {
     setSettingsTab("profile")
@@ -1880,7 +2418,7 @@ function UserMenu({ desktop, compact }: { desktop?: boolean; compact?: boolean }
           ) : desktop ? (
             <button
               type="button"
-              className="flex items-center gap-2.5 w-full rounded-md px-2 py-2 text-left hover:bg-accent transition-colors"
+              className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-left hover:bg-accent transition-colors"
               aria-label="Account menu"
             >
               <DecoratedAvatar
@@ -2027,7 +2565,7 @@ function JoinClubInline({ onJoined }: { onJoined: (club?: JoinedClubInfo) => voi
  * TanStack Query so re-typing a code doesn't spam the server.
  */
 function JoinClubDialog({
-  open, onOpenChange, onJoined, defaultClubCode,
+  open, onOpenChange, onJoined, defaultClubCode, initialTab,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -2037,8 +2575,11 @@ function JoinClubDialog({
   /** Optional prefilled code — used by the public-site join-intent flow so
    *  the visitor lands back on a dialog with the club they were viewing. */
   defaultClubCode?: string
+  /** §9 — which tab the dialog opens on. "explore" powers the Discover
+   *  clubs entry points (sidebar row + My Hub CTAs). */
+  initialTab?: "code" | "explore"
 }) {
-  const [tab, setTab] = useState<"code" | "explore">("code")
+  const [tab, setTab] = useState<"code" | "explore">(initialTab ?? "code")
   const [clubCode, setClubCode] = useState(defaultClubCode ?? "")
   const [clubPassword, setClubPassword] = useState("")
   const [message, setMessage] = useState("")
@@ -2055,13 +2596,13 @@ function JoinClubDialog({
     if (!open) return
     Promise.resolve().then(() => {
       setRequested(false)
-      setTab("code")
+      setTab(initialTab ?? "code")
       setClubCode(defaultClubCode ?? "")
       setClubPassword("")
       setMessage("")
       setPwFailed(false)
     })
-  }, [open])
+  }, [open, initialTab, defaultClubCode])
 
   // Live club detection: once the typed code looks like a real code (≥4
   // chars), fetch the public club profile (public-safe, unauth'd) so the
@@ -3832,6 +4373,14 @@ function NotificationBell() {
     }
     const { view } = targetViewFor(n)
     if (!n.isRead) markRead(n.id)
+    // §9 — a club-scoped notification jumps straight into THAT club's
+    // workspace at the relevant view (never just the current context).
+    if (n.clubId) {
+      const { clubs, selectClub } = useAppStore.getState()
+      if (clubs.some((c) => c.clubId === n.clubId)) {
+        selectClub(n.clubId)
+      }
+    }
     setView(view)
     setOpen(false)
   }

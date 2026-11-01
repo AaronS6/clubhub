@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Sparkles, X } from "lucide-react"
+import { X } from "lucide-react"
 import {
   checkAndMarkVisited,
   shouldShowWhatsNew,
@@ -14,22 +14,24 @@ import { APP_VERSION } from "@/lib/version"
 
 /**
  * ============================================================================
- * WhatsNewModal — "v8.0 — storage, guides & a glow-up"
+ * WhatsNewModal — "v9.0 — My Hub & one navigation for every club"
  * ============================================================================
  *
- * The v8 wave, in one announcement:
+ * The v9 relaunch, in one announcement:
  *
- *   v8.0   real club storage — a live quota meter, a pause at 100% with a
- *          clear recovery loop, ranked safe-cleanup suggestions, and a
- *          capacity request path; the executive introduction guide (with
- *          the resume pill); a chat diet (denser messages, Enter-to-send
- *          keeps focus, ~60% less storage per message); the redesigned
- *          avatar-effect set; the notes "Make private" flow; visible
- *          ambient backgrounds; and a pile of mobile fixes.
+ *   v9.0   MY HUB — the student's personal, cross-club default view: their
+ *          week across clubs, recent updates, their tasks, their clubs,
+ *          and their activity — every item deep-links to its original
+ *          club. ONE unified navigation: Home / Calendar / My Tasks /
+ *          Updates / Messages keep the same position in My Hub and inside
+ *          every club workspace; a prominent context switcher + the MY
+ *          CLUBS list move between them. Real browser back/forward,
+ *          refresh-safe context, cross-club search, and a mobile
+ *          context-pill + bottom-tab layout.
  *
- * The DISPLAYED version is APP_VERSION ("8.0") — whats-new.ts's
- * WHATS_NEW_VERSION ("8.0") is the localStorage ack key; it moved from
- * "7.5.1" so everyone who closed the v7.5 notes sees these exactly once.
+ * The DISPLAYED version is APP_VERSION ("9.0") — whats-new.ts's
+ * WHATS_NEW_VERSION ("9.0") is the localStorage ack key; it moved from
+ * "8.0" so everyone who closed the v8 notes sees these exactly once.
  *
  * Shown ONCE to returning visitors, centered on a blurred backdrop — never
  * full-screen. Always in the ClubHub editorial dark palette (#16130e /
@@ -70,17 +72,6 @@ export function WhatsNewModal() {
     // File it into the notifications area as a local notification.
     setWhatsNewNotif(true)
   }, [])
-
-  // "Pick your effect" — acknowledge the release AND hand the user straight
-  // to Settings → Profile, where the avatar-effect picker lives (same
-  // open-settings CustomEvent the bell/other surfaces use; the app shell
-  // routes it to the dialog on the requested tab).
-  const openEffectsInSettings = useCallback(() => {
-    close()
-    window.dispatchEvent(
-      new CustomEvent("open-settings", { detail: { tab: "profile" } })
-    )
-  }, [close])
 
   // Escape closes; body scroll lock while open (same pattern as the
   // onboarding tour).
@@ -141,7 +132,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  v{APP_VERSION} — storage, guides &amp; a glow-up.
+                  v{APP_VERSION} — My Hub &amp; one navigation for every club.
                 </h2>
               </div>
               <button
@@ -157,98 +148,74 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                Storage you can see, guides that never get lost, a leaner
-                chat, and redesigned avatar effects.
+                One ClubHub, one navigation, every club you belong to —
+                starting with a personal home for it all.
               </p>
 
-              {/* ── v8.0 — storage becomes real ─────────────────────────── */}
-              <SectionLabel version="v8.0" label="Storage becomes real" />
+              {/* –– v9.0 — My Hub –––––––––––––––––––––––––––– */}
+              <SectionLabel version="v9.0" label="My Hub — your clubs, one home" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="📊" title="Your club's storage, visible">
-                  A live meter of the club&apos;s 15 MB quota, by category.
+                <ReleaseNote emoji="🏡" title="Your default view">
+                  My Hub opens first: what&rsquo;s happening across your clubs,
+                  what you need to do, and what deserves attention — all on
+                  one page.
                 </ReleaseNote>
-                <ReleaseNote emoji="⏸️" title="A full pause, not a crash">
-                  At 100%, new posts pause club-wide until an exec clears
-                  room. Nothing is lost.
+                <ReleaseNote emoji="📅" title="Your week, every club">
+                  Meetings and events from all your clubs in one agenda,
+                  badged with each club&rsquo;s colors. Click anything to jump
+                  straight to it.
                 </ReleaseNote>
-                <ReleaseNote emoji="🧹" title="Cleanup that doesn't hurt">
-                  Ranked, safe-to-clear suggestions — never financial
-                  records. Deleting frees space instantly.
+                <ReleaseNote emoji="✅" title="My Tasks, everywhere">
+                  Every task assigned to you across your clubs, with due
+                  dates, progress, and one-tap completion.
                 </ReleaseNote>
-                <ReleaseNote emoji="📬" title="Need more room?">
-                  &ldquo;Increase storage capacity&rdquo; on the Storage page
-                  reaches the ClubHub team.
+                <ReleaseNote emoji="📣" title="Updates in one feed">
+                  Announcements from every club, newest first — each clearly
+                  labeled with the club that posted it.
+                </ReleaseNote>
+                <ReleaseNote emoji="💬" title="A combined inbox">
+                  Club channels, group chats and DMs from all your clubs,
+                  with unread counts — open any conversation in its club.
                 </ReleaseNote>
               </div>
 
-              {/* ── v8.0 — the guides ───────────────────────────────────── */}
-              <SectionLabel version="v8.0" label="Guides that never get lost" />
+              {/* –– v9.0 — one navigation ––––––––––––––––––––––––––– */}
+              <SectionLabel version="v9.0" label="One navigation system" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="🛡️" title="The executive guide">
-                  An eight-stop tour of every admin power, with demos and
-                  one-tap jumps.
+                <ReleaseNote emoji="🧭" title="Five destinations, always in place">
+                  Home, Calendar, My Tasks, Updates and Messages sit in
+                  exactly the same spot — in My Hub and inside every club.
                 </ReleaseNote>
-                <ReleaseNote emoji="📍" title="Pause it, resume anytime">
-                  Leave mid-tour and it waits in a pill up top — resume on
-                  the exact step.
+                <ReleaseNote emoji="🔀" title="Switch contexts instantly">
+                  The context switcher up top (and the My Clubs list) moves
+                  between My Hub and any club in one click.
+                </ReleaseNote>
+                <ReleaseNote emoji="⬅️" title="Real back and forward">
+                  Your navigation is real browser history now — back, forward
+                  and refresh all keep exactly where you were.
+                </ReleaseNote>
+                <ReleaseNote emoji="🔍" title="Search across your clubs">
+                  In My Hub, the search bar finds your tasks, updates,
+                  meetings and messages across every club at once.
+                </ReleaseNote>
+                <ReleaseNote emoji="📱" title="Mobile, reimagined">
+                  A context pill up top and Home / Calendar / Tasks /
+                  Messages in the bottom bar — club switching stays one tap
+                  away.
                 </ReleaseNote>
               </div>
 
-              {/* ── v8.0 — chat diet ────────────────────────────────────── */}
-              <SectionLabel version="v8.0" label="A leaner chat" />
+              {/* –– v9.0 — unchanged where it matters –––––––––––––––––––– */}
+              <SectionLabel version="v9.0" label="Everything you know, still here" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="💬" title="More messages on screen">
-                  Tighter bubbles and spacing — timestamps and reactions
-                  intact.
+                <ReleaseNote emoji="🛠️" title="Club workspaces, untouched">
+                  Every existing feature — members, teams, hours, approvals,
+                  finances, storage — lives where it always did, inside each
+                  club.
                 </ReleaseNote>
-                <ReleaseNote emoji="⌨️" title="Keep typing after Enter">
-                  Enter sends without stealing your cursor.
-                </ReleaseNote>
-                <ReleaseNote emoji="🪶" title="Chat weighs ~60% less">
-                  Hidden per-message overhead is gone — old extras cleaned
-                  up too.
-                </ReleaseNote>
-              </div>
-
-              {/* ── v8.0 — avatar effects, redesigned ───────────────────── */}
-              <div className="mt-7">
-                <SectionLabel version="v8.0" label="Avatar effects, redesigned" />
-              </div>
-              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <div className="py-3.5 first:pt-1 last:pb-1">
-                  <div className="flex items-baseline gap-2">
-                    <span aria-hidden className="text-sm leading-none">💫</span>
-                    <h3 className="text-sm font-bold tracking-tight">
-                      All nine effects, rebuilt
-                    </h3>
-                  </div>
-                  <p className="mt-1.5 text-sm text-[#f0ebe0]/65 leading-relaxed">
-                    Ring, glow, starlight, comet, petals, glitch, sunset,
-                    aurora, halo — bigger and clearer in the picker.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={openEffectsInSettings}
-                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-none border border-club/50 bg-club/10 px-3 h-9 text-xs font-bold tracking-wide uppercase text-club hover:bg-club/20 hover:border-club/70 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Choose your effect
-                  </button>
-                </div>
-              </div>
-
-              {/* ── v8.0 · the rest ──────────────────────────────────── */}
-              <SectionLabel version="v8.0" label="And the rest" />
-              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
-                <ReleaseNote emoji="🔒" title="Private notes, plainly">
-                  A &ldquo;Make private&rdquo; button with a who-can-see
-                  chooser.
-                </ReleaseNote>
-                <ReleaseNote emoji="🌌" title="Backgrounds that show up">
-                  Genuinely visible, with live preview tiles in Settings.
-                </ReleaseNote>
-                <ReleaseNote emoji="📱" title="Mobile, smoothed out">
-                  Overflow fixes, keyboard fixes, general polish.
+                <ReleaseNote emoji="🔗" title="Deep links to the original">
+                  Nothing is duplicated: every My Hub item opens the real
+                  thing inside its club, right where it lives.
                 </ReleaseNote>
               </div>
 
@@ -266,7 +233,7 @@ export function WhatsNewModal() {
                 Thank you for using ClubHub.
               </p>
               <p className="mt-2 text-sm text-[#f0ebe0]/75 leading-relaxed">
-                Explore what&apos;s new in v{APP_VERSION} and tell us what
+                Explore what&rsquo;s new in v{APP_VERSION} and tell us what
                 you think.
               </p>
               <p className="mt-4 text-xs text-[#f0ebe0]/45 font-medium">
@@ -318,7 +285,7 @@ function ReleaseNote({
   )
 }
 
-/** Section label for one wave of the release story — e.g. "v8.0 · Storage". */
+/** Section label for one wave of the release story — e.g. "v9.0 · My Hub". */
 function SectionLabel({ version, label }: { version: string; label: string }) {
   return (
     <p className="mt-7 text-xs font-bold tracking-[0.18em] uppercase">

@@ -149,7 +149,28 @@ export function KeyboardShortcuts() {
         const chord = G_CHORDS[key]
         if (chord) {
           e.preventDefault()
-          useAppStore.getState().setView(chord.view)
+          // §9 — club-only destinations (notes, service hours) aren't
+          // reachable from My Hub. A chord for one of them while in My Hub
+          // jumps into the last-used club's workspace instead of dead-ending
+          // on the hub home.
+          const store = useAppStore.getState()
+          const clubOnly =
+            chord.view === "notes" ||
+            chord.view === "hours" ||
+            chord.view === "members" ||
+            chord.view === "teams" ||
+            chord.view === "financials" ||
+            chord.view === "approvals" ||
+            chord.view === "activity" ||
+            chord.view === "storage"
+          if (store.context === "hub" && clubOnly) {
+            const target =
+              store.currentClubId ?? store.clubs.find((c) => c.role === "executive")?.clubId ?? store.clubs[0]?.clubId
+            if (target) {
+              store.selectClub(target)
+            }
+          }
+          store.setView(chord.view)
           // Subtle confirmation of the jump — reuses the app's toast infra.
           toast(chord.label, { description: "Keyboard shortcut" })
         }

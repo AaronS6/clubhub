@@ -100,6 +100,8 @@ import {
   Target,
   NotebookPen,
   PenLine,
+  ArrowDownUp,
+  CalendarDays,
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
@@ -184,118 +186,188 @@ export function MembersView() {
   const online = usePresence(clubId ?? null)
 
   const [search, setSearch] = useState("")
+  const [roleFilter, setRoleFilter] = useState<"all" | "executive" | "member" | "online">("all")
+  const [sort, setSort] = useState<"name" | "hours" | "recent">("name")
   const [removeTarget, setRemoveTarget] = useState<ClubMember | null>(null)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [detailMember, setDetailMember] = useState<ClubMember | null>(null)
 
+  const members = data?.members ?? []
+
   const filtered = useMemo(() => {
-    const list = data?.members ?? []
     const q = search.trim().toLowerCase()
-    if (!q) return list
-    return list.filter(
-      (m) =>
-        m.user.name.toLowerCase().includes(q) ||
-        m.user.email.toLowerCase().includes(q)
-    )
-  }, [data, search])
+    let list = members
+    if (q) {
+      list = list.filter(
+        (m) =>
+          m.user.name.toLowerCase().includes(q) ||
+          m.user.email.toLowerCase().includes(q) ||
+          m.teams.some((t) => t.name.toLowerCase().includes(q))
+      )
+    }
+    if (roleFilter === "executive") list = list.filter((m) => m.role === "executive")
+    else if (roleFilter === "member") list = list.filter((m) => m.role === "member")
+    else if (roleFilter === "online") list = list.filter((m) => online.has(m.user.id))
+
+    const sorted = [...list]
+    if (sort === "hours") sorted.sort((a, b) => b.approvedHours - a.approvedHours)
+    else if (sort === "recent") sorted.sort((a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime())
+    else sorted.sort((a, b) => a.user.name.localeCompare(b.user.name))
+    // Executives always float to the top within the chosen sort.
+    return sorted.sort((a, b) => (a.role === b.role ? 0 : a.role === "executive" ? -1 : 1))
+  }, [members, search, roleFilter, sort, online])
+
+  // Roster stats — computed from the live list, never canned.
+  const stats = useMemo(() => {
+    const total = members.length
+    const execs = members.filter((m) => m.role === "executive").length
+    const onlineNow = members.filter((m) => online.has(m.user.id)).length
+    const hours = members.reduce((sum, m) => sum + m.approvedHours, 0)
+    return { total, execs, onlineNow, hours }
+  }, [members, online])
 
   if (!clubId) {
     return <div className="p-8 text-sm text-muted-foreground">No club selected.</div>
   }
 
+  const roleFilterTabs: { id: typeof roleFilter; label: string }[] = [
+    { id: "all", label: `Everyone${members.length ? ` · ${members.length}` : ""}` },
+    { id: "executive", label: `Executives${stats.execs ? ` · ${stats.execs}` : ""}` },
+    { id: "member", label: "Members" },
+    { id: "online", label: `Online${stats.onlineNow ? ` · ${stats.onlineNow}` : ""}` },
+  ]
+
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {isExec && (
+        <Button variant="club" onClick={() => setImportOpen(true)}>
+          <Upload className="mr-1.5 h-4 w-4" /> Import CSV
+        </Button>
+      )}
+      <Button variant="outline" onClick={() => setLeaveOpen(true)}>
+        <LogOut className="mr-1.5 h-4 w-4" /> Leave club
+      </Button>
+    </div>
+  )
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* §37 — Sticky page header on desktop. Wraps PageHeader in a sticky,
           backdrop-blurred bar so it stays visible while scrolling long member
           lists. Hidden on mobile to avoid double-stacking with the mobile nav. */}
       <div className="hidden sm:block sticky top-0 z-20 bg-background/45 backdrop-blur-xl -mx-4 md:-mx-6 px-4 md:px-6 py-4 border-b border-border/60">
-        <PageHeader
-          title="Members"
-          actions={
-            <div className="flex items-center gap-2 flex-wrap">
-              {isExec && (
-                <Button variant="club" onClick={() => setImportOpen(true)}>
-                  <Upload className="mr-1.5 h-4 w-4" /> Import CSV
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => setLeaveOpen(true)}>
-                <LogOut className="mr-1.5 h-4 w-4" /> Leave club
-              </Button>
-            </div>
-          }
-        />
+        <PageHeader title="Members" actions={headerActions} />
       </div>
       {/* Mobile (non-sticky) header */}
       <div className="sm:hidden">
-        <PageHeader
-          title="Members"
-          actions={
-            <div className="flex items-center gap-2 flex-wrap">
-              {isExec && (
-                <Button variant="club" onClick={() => setImportOpen(true)}>
-                  <Upload className="mr-1.5 h-4 w-4" /> Import CSV
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => setLeaveOpen(true)}>
-                <LogOut className="mr-1.5 h-4 w-4" /> Leave club
-              </Button>
-            </div>
-          }
-        />
+        <PageHeader title="Members" actions={headerActions} />
       </div>
 
-      {/* Club logo section — exec only */}
-      {isExec && <ClubLogoSection clubId={clubId} />}
+      {/* ── ROSTER STATS BAND ───────────────────────────────────────────────
+          Four glanceable tiles: total, executives, online now, logged hours.
+          Same card language as My Hub stat cards (display numerals). The
+          numbers themselves carry the information — no header sentence. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MembersStatTile icon={<UsersIcon />} label="In this club" value={isLoading ? null : stats.total} />
+        <MembersStatTile icon={<Shield />} label="Executives" value={isLoading ? null : stats.execs} />
+        <MembersStatTile
+          icon={<span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-success" /></span>}
+          label="Online now"
+          value={isLoading ? null : stats.onlineNow}
+        />
+        <MembersStatTile icon={<Clock />} label="Hours logged" value={isLoading ? null : Math.round(stats.hours)} suffix="h" />
+      </div>
 
-      {/* Club name — exec only (renames the club everywhere instantly). */}
-      {isExec && <ClubNameSection clubId={clubId} />}
+      {/* ── JOIN GATES (exec) — always visible ──────────────────────────────
+          How people get IN: the club code & password, the public directory
+          listing, and the pending join requests. Kept directly on the roster
+          page (per user request — never hidden behind a collapse) because
+          they answer the question members actually ask here. Identity
+          settings (logo/name/description/goal) live in the Club settings
+          view under the Manage tier instead. */}
+      {isExec && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <ClubCodeSection clubId={clubId} clubCode={clubCode} />
+          <PublicListingSection clubId={clubId} />
+        </div>
+      )}
 
-      {/* Club description — exec only (public profile + Explore copy). */}
-      {isExec && <ClubDescriptionSection clubId={clubId} />}
-
-      {/* Club-wide service-hours goal — exec only ("a goal for everyone to
-          reach", also set during the introduction tour). */}
-      {isExec && <ClubGoalSection clubId={clubId} />}
-
-      {/* Public directory listing — exec only */}
-      {isExec && <PublicListingSection clubId={clubId} />}
-
-      {/* Join-request review queue — exec only. Both join paths (code +
-          password AND approval requests) are always available. */}
+      {/* Join-request review queue — exec only, always visible while requests
+          wait (an action item, not a setting). */}
       {isExec && <JoinRequestsSection clubId={clubId} />}
 
-      {/* Club code section — exec only */}
-      {isExec && <ClubCodeSection clubId={clubId} clubCode={clubCode} />}
-
-      {/* §35 — Search input. Icon pinned inside-left, focus ring in the
-          club accent color, and a clear-X button on the right when text is
-          entered. §33 — When a search is active, render the current query as
-          a removable chip below the input. */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or email…"
-          className="pl-9 pr-9 focus-visible:ring-2 focus-visible:ring-club"
-          aria-label="Search members"
-        />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch("")}
-            aria-label="Clear search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <XIcon className="size-3.5" />
-          </button>
-        )}
+      {/* ── ROSTER TOOLBAR — search + role filter + sort, one card ────────── */}
+      <div className="hub-card flex flex-col gap-2.5 p-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, email, or team…"
+            className="h-9 pl-9 pr-9 bg-transparent border-border/70 focus-visible:ring-2 focus-visible:ring-club"
+            aria-label="Search members"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <XIcon className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div
+          className="flex items-center gap-1 rounded-lg border border-border/70 bg-muted/30 p-0.5"
+          role="tablist"
+          aria-label="Filter members by role"
+        >
+          {roleFilterTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={roleFilter === tab.id}
+              onClick={() => setRoleFilter(tab.id)}
+              className={cn(
+                "h-8 rounded-md px-2.5 text-caption-medium font-medium transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+                roleFilter === tab.id
+                  ? "bg-card text-foreground shadow-card"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 shrink-0 border-border/70" aria-label="Sort members">
+              <ArrowDownUp className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">
+                {sort === "name" ? "Name A–Z" : sort === "hours" ? "Most hours" : "Newest"}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSort("name")}>
+              <ArrowDownUp className="mr-2 h-4 w-4" /> Name A–Z
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSort("hours")}>
+              <Clock className="mr-2 h-4 w-4" /> Most hours
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSort("recent")}>
+              <CalendarDays className="mr-2 h-4 w-4" /> Recently joined
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* §33 — Active search chip (removable). */}
+      {/* Active search chip (removable) — only for the exec-settings gap. */}
       {search && (
-        <div className="-mt-3">
+        <div className="-mt-2">
           <button
             type="button"
             onClick={() => setSearch("")}
@@ -333,18 +405,18 @@ export function MembersView() {
           const executives = filtered.filter((m) => m.role === "executive")
           const regular = filtered.filter((m) => m.role !== "executive")
           return (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Leadership row — featured executives */}
               {executives.length > 0 && (
                 <section aria-labelledby="leadership-heading" className="space-y-3">
                   <h2
                     id="leadership-heading"
-                    className="text-xs font-medium text-muted-foreground"
+                    className="text-caption-medium uppercase tracking-[0.12em] text-muted-foreground/70"
                   >
-                    Leadership
+                    Leadership · {executives.length}
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {executives.map((m) => (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {executives.map((m, i) => (
                       <MemberCard
                         key={m.membershipId}
                         clubId={clubId}
@@ -355,6 +427,7 @@ export function MembersView() {
                         onRemove={() => setRemoveTarget(m)}
                         onOpenDetail={() => setDetailMember(m)}
                         featured
+                        stagger={i}
                       />
                     ))}
                   </div>
@@ -370,12 +443,12 @@ export function MembersView() {
                 <section aria-labelledby="all-members-heading" className="space-y-3">
                   <h2
                     id="all-members-heading"
-                    className="text-xs font-medium text-muted-foreground"
+                    className="text-caption-medium uppercase tracking-[0.12em] text-muted-foreground/70"
                   >
-                    All Members
+                    All members · {regular.length}
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {regular.map((m) => (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {regular.map((m, i) => (
                       <MemberCard
                         key={m.membershipId}
                         clubId={clubId}
@@ -385,6 +458,7 @@ export function MembersView() {
                         online={online}
                         onRemove={() => setRemoveTarget(m)}
                         onOpenDetail={() => setDetailMember(m)}
+                        stagger={i}
                       />
                     ))}
                   </div>
@@ -476,9 +550,38 @@ export function MembersView() {
         online={online}
         onOpenChange={(o) => !o && setDetailMember(null)}
       />
+      {/* Delete club moved to the Club settings view (Manage tier). */}
+    </div>
+  )
+}
 
-      {/* Delete club — at the very bottom, subtle, exec only */}
-      {isExec && <DeleteClubSection clubId={clubId} clubName={clubName ?? ""} />}
+/* ── Roster stat tile — same visual language as My Hub's stat cards:
+   tinted icon chip, display-face numeral, quiet caption. ── */
+function MembersStatTile({
+  icon, label, value, suffix,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: number | null
+  suffix?: string
+}) {
+  const loading = value === null
+  return (
+    <div className="hub-card-hover flex items-center gap-3 p-3.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary/70 text-club-ink [&_svg]:h-4 [&_svg]:w-4">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        {loading ? (
+          <div className="h-7 w-12 rounded skeleton-shimmer" aria-label="Loading" />
+        ) : (
+          <p className="font-display text-[1.375rem] font-bold leading-none tracking-[-0.03em] tabular-nums text-foreground">
+            {value}
+            {suffix ? <span className="text-[0.62em] font-semibold text-muted-foreground"> {suffix}</span> : null}
+          </p>
+        )}
+        <p className="mt-1 truncate text-caption-medium text-muted-foreground">{label}</p>
+      </div>
     </div>
   )
 }
@@ -487,7 +590,7 @@ export function MembersView() {
 // Club logo section (exec only) — upload / remove the club's logo
 // ---------------------------------------------------------------------------
 
-function ClubLogoSection({ clubId }: { clubId: string }) {
+export function ClubLogoSection({ clubId }: { clubId: string }) {
   const logoUrl = useAppStore((s) => s.currentClub?.logoUrl ?? null)
   const clubName = useAppStore((s) => s.currentClub?.clubName ?? "")
   const patchCurrentClub = useAppStore((s) => s.patchCurrentClub)
@@ -578,7 +681,7 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
     // dashed border + tinted bg appear only when isDragging.
     <div
       className={cn(
-        "card-quiet p-5 transition-colors",
+        "rounded-lg border border-border/50 bg-muted/20 p-4 transition-colors",
         isDragging && "border-2 border-dashed border-club bg-club-muted/20"
       )}
       onDragOver={onDragOver}
@@ -656,7 +759,7 @@ function ClubLogoSection({ clubId }: { clubId: string }) {
 // localStorage), and (3) invalidate the public-profile/Explore queries.
 // ---------------------------------------------------------------------------
 
-function ClubNameSection({ clubId }: { clubId: string }) {
+export function ClubNameSection({ clubId }: { clubId: string }) {
   const qc = useQueryClient()
   const clubName = useAppStore((s) => s.currentClub?.clubName ?? "")
   const patchCurrentClub = useAppStore((s) => s.patchCurrentClub)
@@ -693,7 +796,7 @@ function ClubNameSection({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="card-quiet p-5">
+    <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
       <h3 className="text-section-title flex items-center gap-2">
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
         Club name
@@ -749,7 +852,7 @@ function ClubNameSection({ clubId }: { clubId: string }) {
 // max 1000 chars — both enforced here too).
 // ---------------------------------------------------------------------------
 
-function ClubDescriptionSection({ clubId }: { clubId: string }) {
+export function ClubDescriptionSection({ clubId }: { clubId: string }) {
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ club: { description: string | null } }>({
     queryKey: ["club-description", clubId],
@@ -785,7 +888,7 @@ function ClubDescriptionSection({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="card-quiet p-5">
+    <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
       <h3 className="text-section-title flex items-center gap-2">
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <NotebookPen className="h-4 w-4" />}
         Club description
@@ -836,7 +939,7 @@ function ClubDescriptionSection({ clubId }: { clubId: string }) {
 // appears in the public landing page's "Explore clubs" directory.
 // ---------------------------------------------------------------------------
 
-function PublicListingSection({ clubId }: { clubId: string }) {
+export function PublicListingSection({ clubId }: { clubId: string }) {
   const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ isListedPublic: boolean }>({
@@ -867,7 +970,7 @@ function PublicListingSection({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="card-quiet p-5">
+    <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-section-title flex items-center gap-2">
@@ -900,7 +1003,7 @@ function PublicListingSection({ clubId }: { clubId: string }) {
 // the anytime editor. Personal goals are per-member (Service Hours view).
 // ---------------------------------------------------------------------------
 
-function ClubGoalSection({ clubId }: { clubId: string }) {
+export function ClubGoalSection({ clubId }: { clubId: string }) {
   const clubName = useAppStore((s) => s.currentClub?.clubName ?? "your club")
   const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ club: { hoursGoal: number } }>({
@@ -934,7 +1037,7 @@ function ClubGoalSection({ clubId }: { clubId: string }) {
   }
 
   return (
-    <div className="card-quiet p-5">
+    <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
       <h3 className="text-section-title flex items-center gap-2">
         <Target className="h-4 w-4" /> Club hours goal
       </h3>
@@ -1050,7 +1153,7 @@ function JoinRequestsSection({ clubId }: { clubId: string }) {
   if (pending.length === 0 && reviewed.length === 0) return null
 
   return (
-    <div className="card-quiet p-5">
+    <div className="hub-card p-5">
       <h3 className="text-section-title flex items-center gap-2">
         <UserPlus className="h-4 w-4" /> Join requests
         {pending.length > 0 && (
@@ -1180,7 +1283,7 @@ function JoinRequestsSection({ clubId }: { clubId: string }) {
 // Club code section (exec only) — code + password visibility + change pwd
 // ---------------------------------------------------------------------------
 
-function ClubCodeSection({
+export function ClubCodeSection({
   clubId,
   clubCode,
 }: {
@@ -1289,7 +1392,7 @@ function ClubCodeSection({
       : "•".repeat(Math.min(password.length, 16))
 
   return (
-    <div className="card-quiet p-5">
+    <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
       <div className="pb-3">
         <h3 className="text-section-title flex items-center gap-2">
           <KeyRound className="h-4 w-4" /> Club code &amp; password
@@ -1657,7 +1760,7 @@ function ChangePasswordDialog({
 // Delete club section (exec only) — requires club password to confirm
 // ---------------------------------------------------------------------------
 
-function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: string }) {
+export function DeleteClubSection({ clubId, clubName }: { clubId: string; clubName: string }) {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -1743,6 +1846,7 @@ function MemberCard({
   onRemove,
   onOpenDetail,
   featured,
+  stagger = 0,
 }: {
   clubId: string
   member: ClubMember
@@ -1757,6 +1861,8 @@ function MemberCard({
    * Purely visual — no logic depends on it.
    */
   featured?: boolean
+  /** Entrance stagger index — cards rise in with a soft cascade. */
+  stagger?: number
 }) {
   const qc = useQueryClient()
   // Briefly highlight when this member was just promoted/demoted/removed by
@@ -1780,10 +1886,11 @@ function MemberCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "card-quiet rounded-xl p-5 cursor-pointer hover:-translate-y-0.5 hover:border-club/30 transition-[color,background-color,border-color,transform,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border-t-2",
-        member.role === "executive" ? "border-t-violet-400" : "border-t-club/30",
+        "stagger-in card-quiet-hover relative cursor-pointer border-t-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        member.role === "executive" ? "border-t-club/60" : "border-t-border/40",
         flash && "ring-1 ring-inset ring-club/30 bg-club/5"
       )}
+      style={{ "--stagger-i": stagger } as React.CSSProperties}
       onClick={onOpenDetail}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1792,119 +1899,126 @@ function MemberCard({
         }
       }}
     >
-      {/* Header: avatar + identity + actions */}
-      <div className="flex items-start gap-3">
-        {/* Avatar wrapper — DecoratedAvatar renders the user's chosen
-            outer effect BEHIND the photo; the presence dot rides on top as
-            a child of the relative wrapper (never clipped by the avatar's
-            overflow-hidden). */}
-        <span className="relative inline-flex shrink-0">
-          <DecoratedAvatar
-            decoration={member.user.avatarDecoration}
-            src={member.user.avatarUrl ?? undefined}
-            name={member.user.name}
-            className={featured ? "h-14 w-14" : "h-12 w-12"}
-            avatarClassName={featured ? "text-lg" : "text-base"}
-          />
-          {online.has(member.user.id) && (
-            <span
-              aria-label="Online"
-              className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-club ring-2 ring-background"
+      {/* Club-accent wash behind the card top — quiet depth, no hard edge. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(120%_100%_at_50%_0%,color-mix(in_oklab,var(--club-accent)_6%,transparent),transparent)]"
+      />
+      <div className="relative p-4">
+        {/* Header: avatar + identity + actions */}
+        <div className="flex items-start gap-3">
+          {/* Avatar wrapper — DecoratedAvatar renders the user's chosen
+              outer effect BEHIND the photo; the presence dot rides on top as
+              a child of the relative wrapper (never clipped by the avatar's
+              overflow-hidden). */}
+          <span className="relative inline-flex shrink-0">
+            <DecoratedAvatar
+              decoration={member.user.avatarDecoration}
+              src={member.user.avatarUrl ?? undefined}
+              name={member.user.name}
+              className={featured ? "h-14 w-14" : "h-12 w-12"}
+              avatarClassName={featured ? "text-lg" : "text-base"}
             />
-          )}
-        </span>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className={cn("truncate", featured ? "text-base font-semibold" : "font-medium")}>
-              {member.user.name}
-            </span>
-            {isSelf && (
-              <span className="text-xs uppercase font-semibold text-muted-foreground shrink-0">
-                (you)
-              </span>
+            {online.has(member.user.id) && (
+              <span
+                aria-label="Online"
+                className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-success ring-2 ring-background"
+              />
             )}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={cn("truncate", featured ? "text-base font-semibold" : "text-body-medium font-medium")}>
+                {member.user.name}
+              </span>
+              {isSelf && (
+                <span className="text-[10px] uppercase font-semibold tracking-wide text-muted-foreground/70 shrink-0">
+                  you
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1 text-caption text-muted-foreground">
+              <Mail className="h-3 w-3 shrink-0" />
+              <span className="truncate">{member.user.email}</span>
+            </div>
+            <div className="mt-1.5">
+              <RoleBadge role={member.role} />
+            </div>
           </div>
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-            <Mail className="h-3 w-3 shrink-0" />
-            <span className="truncate">{member.user.email}</span>
-          </div>
-          <div className="mt-1.5">
-            <RoleBadge role={member.role} />
-          </div>
+
+          {/* Exec actions dropdown (⋯) */}
+          {isExec && !isSelf && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="-mt-1 -mr-1 shrink-0"
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    aria-label={`Actions for ${member.user.name}`}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    {member.user.name}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {member.role === "member" ? (
+                    <DropdownMenuItem
+                      onClick={() => roleMut.mutate("promote")}
+                      disabled={roleMut.isPending}
+                    >
+                      <Shield className="mr-2 h-4 w-4" /> Promote to executive
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onClick={() => roleMut.mutate("demote")}
+                      disabled={roleMut.isPending}
+                    >
+                      <ShieldOff className="mr-2 h-4 w-4" /> Demote to member
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-danger-foreground focus:text-danger-foreground"
+                    onClick={onRemove}
+                  >
+                    <UserMinus className="mr-2 h-4 w-4" /> Remove from club
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
 
-        {/* Exec actions dropdown (⋯) */}
-        {isExec && !isSelf && (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="-mt-1 -mr-1 shrink-0"
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  aria-label={`Actions for ${member.user.name}`}
+        {/* Secondary line: teams + hours + joined */}
+        <div className="mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-caption text-muted-foreground">
+          {member.teams.length > 0 && (
+            <div className="flex flex-wrap gap-1 items-center">
+              {member.teams.map((t) => (
+                <Badge
+                  key={t.id}
+                  variant="secondary"
+                  className="text-[11px] px-2 py-0 font-normal rounded-full"
                 >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {member.user.name}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {member.role === "member" ? (
-                  <DropdownMenuItem
-                    onClick={() => roleMut.mutate("promote")}
-                    disabled={roleMut.isPending}
-                  >
-                    <Shield className="mr-2 h-4 w-4" /> Promote to executive
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem
-                    onClick={() => roleMut.mutate("demote")}
-                    disabled={roleMut.isPending}
-                  >
-                    <ShieldOff className="mr-2 h-4 w-4" /> Demote to member
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-danger-foreground focus:text-danger-foreground"
-                  onClick={onRemove}
-                >
-                  <UserMinus className="mr-2 h-4 w-4" /> Remove from club
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        )}
-      </div>
-
-      {/* Secondary line: teams + hours + joined */}
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-        {member.teams.length > 0 && (
-          <div className="flex flex-wrap gap-1 items-center">
-            {member.teams.map((t) => (
-              <Badge
-                key={t.id}
-                variant="secondary"
-                className="text-xs px-2 py-0 font-normal rounded-full"
-              >
-                {t.name}
-              </Badge>
-            ))}
-          </div>
-        )}
-        <span className="inline-flex items-center gap-1 tabular-nums">
-          <Clock className="h-3 w-3" />
-          {member.approvedHours.toFixed(1)}h
-        </span>
-        <span aria-hidden className="text-muted-foreground/40">·</span>
-        <span>Joined {relativeTime(member.joinedAt)}</span>
+                  {t.name}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <span className="inline-flex items-center gap-1 tabular-nums font-medium text-foreground/80">
+            <Clock className="h-3 w-3" />
+            {member.approvedHours.toFixed(1)}h
+          </span>
+          <span aria-hidden className="text-muted-foreground/40">·</span>
+          <span>Joined {relativeTime(member.joinedAt)}</span>
+        </div>
       </div>
     </div>
   )
@@ -1933,8 +2047,14 @@ function MemberDetailSheet({
         side="right"
         className="w-full sm:max-w-md p-0 flex flex-col"
       >
-        <SheetHeader className="px-5 pt-5 pb-3 border-b">
-          <div className="flex items-center gap-3">
+        {/* Header — club-accent wash behind the identity block so the sheet
+            opens with quiet depth; executives keep the accent ring. */}
+        <SheetHeader className="relative overflow-hidden border-b px-5 pt-5 pb-4">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(120%_100%_at_0%_0%,color-mix(in_oklab,var(--club-accent)_9%,transparent),transparent)]"
+          />
+          <div className="relative flex items-center gap-3">
             {/* Avatar — DecoratedAvatar shows the member's outer effect;
                 the role accent ring rides on the avatar via avatarClassName
                 and the presence dot sits on the wrapper. Larger 64×64 —
@@ -1944,7 +2064,7 @@ function MemberDetailSheet({
                 decoration={member.user.avatarDecoration}
                 src={member.user.avatarUrl ?? undefined}
                 name={member.user.name}
-                className="h-16 w-16"
+                className="ch-pop-in h-16 w-16"
                 avatarClassName={cn(
                   "ring-2 ring-offset-2 ring-offset-background text-lg font-semibold",
                   isExec ? "ring-club" : "ring-border",
@@ -1953,14 +2073,14 @@ function MemberDetailSheet({
               {online.has(member.user.id) && (
                 <span
                   aria-label="Online"
-                  className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-club ring-2 ring-background"
+                  className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-success ring-2 ring-background"
                 />
               )}
             </span>
             <div className="min-w-0 flex-1">
               <SheetTitle className="truncate text-base">{member.user.name}</SheetTitle>
               <SheetDescription className="truncate">{member.user.email}</SheetDescription>
-              <div className="mt-1">
+              <div className="mt-1.5">
                 <RoleBadge role={member.role} />
               </div>
             </div>
@@ -1969,25 +2089,23 @@ function MemberDetailSheet({
 
         <ScrollArea className="flex-1">
           <div className="p-5 space-y-5">
-            {/* Stats row — prominent, mirrors the dashboard tile styling.
-                Uses rounded-xl border bg-card p-3 with icon + value + label,
-                sized to fit a 2-col grid on the narrow sheet. */}
+            {/* Stats row — display numerals matching the roster stat band. */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl border bg-card p-3">
-                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-xs  font-medium">Hours logged</span>
+              <div className="hub-card-hover p-3.5">
+                <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="text-caption-medium">Hours logged</span>
                 </div>
-                <div className="text-xl font-semibold tabular-nums">
+                <div className="font-display text-[1.375rem] font-bold leading-none tracking-[-0.03em] tabular-nums">
                   {member.approvedHours.toFixed(1)}
                 </div>
               </div>
-              <div className="rounded-xl border bg-card p-3">
-                <div className="flex items-center gap-1.5 text-muted-foreground mb-1">
-                  <UsersIcon className="h-4 w-4" />
-                  <span className="text-xs  font-medium">Teams</span>
+              <div className="hub-card-hover p-3.5">
+                <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
+                  <UsersIcon className="h-3.5 w-3.5" />
+                  <span className="text-caption-medium">Teams</span>
                 </div>
-                <div className="text-xl font-semibold tabular-nums">
+                <div className="font-display text-[1.375rem] font-bold leading-none tracking-[-0.03em] tabular-nums">
                   {String(member.teams.length)}
                 </div>
               </div>
@@ -1995,7 +2113,7 @@ function MemberDetailSheet({
 
             {member.user.bio && (
               <div>
-                <h3 className="text-xs font-medium text-muted-foreground mb-1">Bio</h3>
+                <h3 className="text-caption-medium uppercase tracking-[0.12em] text-muted-foreground/70 mb-1.5">Bio</h3>
                 <p className="text-sm text-foreground whitespace-pre-wrap">
                   {member.user.bio}
                 </p>
@@ -2004,7 +2122,7 @@ function MemberDetailSheet({
 
             {/* Teams pills — surfaces the teams they belong to. */}
             <div>
-              <h3 className="text-xs font-medium text-muted-foreground mb-2">Teams</h3>
+              <h3 className="text-caption-medium uppercase tracking-[0.12em] text-muted-foreground/70 mb-2">Teams</h3>
               {member.teams.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {member.teams.map((t) => (
@@ -2852,15 +2970,28 @@ function LeaveClubDialog({
 
 function MembersSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Stat band skeleton — four tiles */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="hub-card flex items-center gap-3 p-3.5">
+            <div className="h-9 w-9 shrink-0 rounded-lg skeleton-shimmer" />
+            <div className="space-y-1.5">
+              <div className="h-6 w-12 rounded skeleton-shimmer" />
+              <div className="h-2.5 w-20 rounded skeleton-shimmer" />
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Leadership row skeleton */}
       <section className="space-y-3">
-        <div className="h-3 w-20 rounded skeleton-shimmer" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="h-3 w-24 rounded skeleton-shimmer" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="card-quiet rounded-xl p-5 space-y-4 border-t-2 border-t-violet-400"
+              className="card-quiet rounded-xl p-4 space-y-4 border-t-2 border-t-club/60"
             >
               <div className="flex items-start gap-3">
                 <Skeleton className="h-14 w-14 rounded-full shrink-0" />
@@ -2883,11 +3014,11 @@ function MembersSkeleton() {
       {/* All members skeleton */}
       <section className="space-y-3">
         <div className="h-3 w-24 rounded skeleton-shimmer" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="card-quiet rounded-xl p-5 space-y-4 border-t-2 border-t-club/30"
+              className="card-quiet rounded-xl p-4 space-y-4 border-t-2 border-t-border/40"
             >
               <div className="flex items-start gap-3">
                 <Skeleton className="h-12 w-12 rounded-full shrink-0" />

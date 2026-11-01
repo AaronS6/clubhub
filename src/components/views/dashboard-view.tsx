@@ -482,7 +482,7 @@ export function DashboardView() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className="h-9 text-xs"
           onClick={() => setView("members")}
         >
           All <ChevronRight className="h-3 w-3" />
@@ -544,7 +544,7 @@ export function DashboardView() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className="h-9 text-xs"
           onClick={() => setView("hours")}
         >
           Hours <ChevronRight className="h-3 w-3" />
@@ -637,7 +637,7 @@ export function DashboardView() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className="h-9 text-xs"
           onClick={() => setView("announcements")}
         >
           All <ChevronRight className="h-3 w-3" />
@@ -683,7 +683,7 @@ export function DashboardView() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className="h-9 text-xs"
           onClick={() => setView("meetings")}
         >
           All <ChevronRight className="h-3 w-3" />
@@ -1387,18 +1387,8 @@ function ClubBannerCard({
                   {format(new Date(createdAt), "MMM yyyy")}
                 </span>
               </div>
-              {description && (
-                <p
-                  className={cn(
-                    "mt-1.5 max-w-2xl text-caption leading-4 line-clamp-1 sm:line-clamp-2",
-                    hasBanner
-                      ? "text-white/95"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {description}
-                </p>
-              )}
+              {/* Club description intentionally NOT rendered on the banner
+                  (per user request) — identity stays name + role + meta. */}
             </div>
           </div>
         </div>
@@ -1773,7 +1763,7 @@ function OnboardingBanner({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss onboarding banner"
-        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2.5 top-2.5 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-4 w-4" />
       </button>
@@ -1831,7 +1821,7 @@ function MemberOnboardingCard({
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss getting started card"
-        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="absolute right-2.5 top-2.5 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <X className="h-4 w-4" />
       </button>

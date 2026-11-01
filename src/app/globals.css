@@ -283,6 +283,8 @@
     [class*="fade-in"],
     [class*="view-enter"],
     [class*="stagger-in"],
+    [class*="hero-in"],
+    [class*="pop-in"],
     [style*="opacity:0"] {
       opacity: 1 !important;
       transform: none !important;
@@ -444,6 +446,28 @@
     border-color: color-mix(in oklab, var(--border) 60%, var(--club-accent) 8%);
   }
 
+  /* Hub surfaces — the My Hub page's section cards. Same physical card
+     language as .card-quiet (hairline border, layered shadow, hover lift)
+     with a slightly softer border so the page reads lighter; every hub
+     section uses one of these so the whole page feels like one family
+     instead of per-section hand-rolled strings. */
+  .hub-card {
+    @apply rounded-xl border border-border/60 bg-card overflow-hidden;
+    box-shadow: var(--shadow-card);
+  }
+  .hub-card-hover {
+    @apply rounded-xl border border-border/60 bg-card overflow-hidden;
+    box-shadow: var(--shadow-card);
+    transition:
+      box-shadow 180ms var(--motion-ease),
+      border-color 180ms var(--motion-ease),
+      transform 180ms var(--motion-ease);
+  }
+  .hub-card-hover:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: color-mix(in oklab, var(--border) 55%, var(--club-accent) 10%);
+  }
+
   /* Fade-in for newly loaded content. Two-step translateY keeps the motion
      subtle — content arrives from below without bouncing. */
   @keyframes fade-in {
@@ -469,6 +493,38 @@
   }
   .ch-view-enter {
     animation: ch-view-enter 320ms var(--motion-ease) backwards;
+  }
+
+  /* ── Modern motion accents (sitewide premium pass) ──────────────────── */
+
+  /* Nav-row icon nudge — sidebar icons lift a hair when their row is
+     hovered/active. Opt-in via .nav-icon-nudge on the icon element inside
+     a .group row; pure transform so it stays compositor-cheap. */
+  .group .nav-icon-nudge {
+    transition: transform 180ms var(--motion-ease);
+  }
+  .group:hover .nav-icon-nudge,
+  .group:focus-visible .nav-icon-nudge {
+    transform: translateY(-1px) scale(1.06);
+  }
+
+  /* Pop-in — small confirmations that should read as "landed": checkmark
+     chips, saved indicators, selection badges. A 1.06 overshoot with a
+     quick settle reads livelier than a linear fade. */
+  @keyframes ch-pop-in {
+    0%   { opacity: 0; transform: scale(0.85); }
+    60%  { opacity: 1; transform: scale(1.06); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  .ch-pop-in {
+    animation: ch-pop-in 240ms var(--motion-ease) both;
+  }
+
+  /* Shimmer sweep — a one-shot highlight band that crosses an element
+     right after it appears (used sparingly: fresh data landing). */
+  @keyframes ch-shimmer-once {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
   }
 
   /* Skeleton shimmer (§ v7.2) — the app's loading-ghost language. A soft
@@ -525,6 +581,20 @@
     animation: editorial-rise 600ms var(--motion-ease) both;
   }
 
+  /* Hero swap — the My Hub "Next up" card's content block rises + settles
+     in when the student responds to an event and the following event takes
+     over (keyed remount on the meeting id). Subtle scale makes the new
+     event read as EXPANDING into the frame. The class name intentionally
+     contains "hero-in" so the reduced-motion reset above neutralizes it. */
+  @keyframes hero-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.97); }
+    55%  { opacity: 1; }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .animate-hero-in {
+    animation: hero-in 480ms var(--motion-ease) both;
+  }
+
   /* Gentle float — still used by the auth screen until Phase 6 rebuilds it. */
   @keyframes float {
     0%, 100% { transform: translateY(0); }
@@ -553,6 +623,21 @@
   }
   .animate-badge-pop {
     animation: badge-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Mobile tab-bar active pill — a springy "the tap landed" pop. Applied to
+     a KEYED remount (key flips when the tab activates) so the pop replays on
+     every activation, not just the first. Compositor-only (transform+opacity). */
+  @keyframes tab-pop {
+    0%   { transform: scale(0.55); opacity: 0; }
+    55%  { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .animate-tab-pop {
+    animation: tab-pop 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-tab-pop { animation: none; }
   }
 
   /* Dialog entrance — only for centered modals that don't use animate-in. */

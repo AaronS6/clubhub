@@ -17,5 +17,14 @@
  * messages, Enter-to-send keeps focus, ~60% less storage per message), the
  * redesigned v8 avatar-effect set, the notes "Make private" flow, visible
  * ambient backgrounds, and a pile of mobile fixes.
+ * 9.0: the relaunch — My Hub + one unified navigation. A student's default
+ * view is now their personal cross-club home (Your Week, Recent Updates,
+ * My Tasks, My Clubs, activity stats), with Home / Calendar / My Tasks /
+ * Updates / Messages as SHARED pages that aggregate across every club they
+ * belong to. Individual club workspaces keep every existing feature behind
+ * the same five-item nav; a prominent context switcher (plus the MY CLUBS
+ * list) moves between My Hub and each club. Every aggregated item deep-links
+ * to its original club location, with real browser back/forward and
+ * refresh-safe context.
  */
-export const APP_VERSION = "8.0"
+export const APP_VERSION = "9.0"
