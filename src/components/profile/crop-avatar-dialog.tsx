@@ -29,31 +29,44 @@ export function CropAvatarDialog({
   onCancel: () => void
   uploading?: boolean
 }) {
-  const [imgSrc, setImgSrc] = React.useState<string | null>(null)
+  const [media, setMedia] = React.useState<{ file: File; url: string } | null>(null)
+  const [failedFile, setFailedFile] = React.useState<File | null>(null)
+  const [cropReady, setCropReady] = React.useState(false)
+  const imgSrc = media?.file === file ? media?.url ?? null : null
   const [crop, setCrop] = React.useState({ x: 0, y: 0 })
   const [zoom, setZoom] = React.useState(1)
   const [rotation, setRotation] = React.useState(0)
   const [aspect] = React.useState(1) // square
   const croppedAreaRef = React.useRef<Area | null>(null)
 
-  // Load the chosen file into an object URL whenever it changes.
+  // Decode before mounting the cropper, keeping its first measurement stable.
+  // Tag the source with its file so changing files cannot show a revoked URL.
   React.useEffect(() => {
-    if (!file) {
-      setImgSrc(null)
-      return
-    }
+    if (!file) return
     const url = URL.createObjectURL(file)
-    setImgSrc(url)
-    // reset controls for each new image
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-    setRotation(0)
-    return () => URL.revokeObjectURL(url)
+    let cancelled = false
+    void loadImage(url).then(() => {
+      if (cancelled) return
+      croppedAreaRef.current = null
+      setCropReady(false)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setRotation(0)
+      setFailedFile(null)
+      setMedia({ file, url })
+    }).catch(() => {
+      if (!cancelled) setFailedFile(file)
+    })
+    return () => {
+      cancelled = true
+      URL.revokeObjectURL(url)
+    }
   }, [file])
 
-  function onCropComplete(_a: Area, croppedAreaPixels: Area) {
+  const onCropComplete = React.useCallback((_a: Area, croppedAreaPixels: Area) => {
     croppedAreaRef.current = croppedAreaPixels
-  }
+    setCropReady(true)
+  }, [])
 
   // Render the crop region to a 512×512 canvas → JPEG blob.
   //
@@ -130,7 +143,14 @@ export function CropAvatarDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="sm:max-w-md rounded-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-md rounded-xl p-0 gap-0 overflow-hidden"
+        showCloseButton={false}
+        // Both the shared dialog classes and the global dialog rule animate
+        // scale. react-easy-crop measures transformed bounds, so disable that
+        // animation here (including on close) rather than resizing its frame.
+        style={{ animation: "none" }}
+      >
         <DialogHeader className="px-5 pt-5 pb-3 shrink-0">
           <DialogTitle>Crop your photo</DialogTitle>
           <DialogDescription>Drag to reposition.</DialogDescription>
@@ -153,7 +173,9 @@ export function CropAvatarDialog({
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
+              {file && failedFile === file
+                ? <span role="alert">Couldn&rsquo;t load this photo. Cancel and choose another image.</span>
+                : <Loader2 className="h-5 w-5 animate-spin" />}
             </div>
           )}
         </div>
@@ -209,7 +231,7 @@ export function CropAvatarDialog({
           <Button type="button" variant="ghost" onClick={onCancel} disabled={uploading}>
             <X className="h-4 w-4" /> Cancel
           </Button>
-          <Button type="button" variant="club" onClick={handleConfirm} disabled={uploading || !imgSrc}>
+          <Button type="button" variant="club" onClick={handleConfirm} disabled={uploading || !imgSrc || !cropReady}>
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {uploading ? "Uploading…" : "Confirm & upload"}
           </Button>
