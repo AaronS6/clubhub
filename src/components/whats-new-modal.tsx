@@ -13,7 +13,7 @@ import {
 import { APP_VERSION } from "@/lib/version"
 
 /**
- * What's New for v9.0.1, followed by the v9.0 release history.
+ * What's New for v9.0.2, followed by the v9.0.1 and v9.0 release history.
  * APP_VERSION is the displayed version; WHATS_NEW_VERSION controls the
  * once-per-release acknowledgement. Closing files the notes in notifications.
  */
@@ -104,7 +104,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  v{APP_VERSION} — smoother touch navigation.
+                  v{APP_VERSION} — steadier photo updates.
                 </h2>
               </div>
               <button
@@ -120,9 +120,22 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                A smaller glass bar, cleaner icons and smoother movement —
-                getting around ClubHub now feels better on touchscreens.
+                A small fix to make changing your profile photo feel steadier.
               </p>
+
+              <SectionLabel version="v9.0.2" label="Profile photo fix" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="🖼️" title="Steadier photo repositioning">
+                  Removed the resize animation that could cause flashing when
+                  opening the photo cropper. Your photo loads into a stable
+                  frame before you start repositioning it.
+                </ReleaseNote>
+                <ReleaseNote emoji="✅" title="Ready before you save">
+                  Confirm becomes available once the photo and crop are ready.
+                  Choosing a different photo clears the previous crop, and an
+                  unreadable image now shows a message instead of loading forever.
+                </ReleaseNote>
+              </div>
 
               <SectionLabel version="v9.0.1" label="A smoother way to move" />
               <div className="mt-3 divide-y divide-[#f0ebe0]/8">

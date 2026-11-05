@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import type { NotifItem } from "@/components/views/notifications-view"
 
 /**
- * What's New — v9.0.1 · smoother touch navigation.
+ * What's New — v9.0.2 · steadier profile photo updates.
  *
  * Returning visitors see the current release once. Closing the modal
  * acknowledges WHATS_NEW_VERSION and adds a local release-notes notification
@@ -13,7 +13,7 @@ import type { NotifItem } from "@/components/views/notifications-view"
  * Bump this acknowledgement key alongside APP_VERSION for each release so
  * visitors who acknowledged earlier notes see the new announcement.
  */
-export const WHATS_NEW_VERSION = "9.0.1"
+export const WHATS_NEW_VERSION = "9.0.2"
 
 const VISITED_KEY = "clubhub-visited"
 /** Marks the CURRENT browsing session so reloads (login/signup do a full
@@ -97,13 +97,13 @@ export function setWhatsNewNotif(on: boolean) {
 
 // ── Synthetic notification item (shared shape with server rows) ────────────
 
-export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v9-0-1"
+export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v9-0-2"
 
 export function buildReleaseNotesNotif(): NotifItem {
   return {
     id: RELEASE_NOTES_NOTIF_ID,
     type: "release_notes",
-    message: "ClubHub v9.0.1 — smoother touch navigation. Tap to see what's new",
+    message: "ClubHub v9.0.2 — steadier profile photo updates. Tap to see what's new",
     linkUrl: null,
     isRead: true,
     createdAt: new Date().toISOString(),

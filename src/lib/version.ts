@@ -28,5 +28,7 @@
  * refresh-safe context.
  * 9.0.1: compact glass navigation for touchscreens — icons only, drag across
  * buttons to switch pages, softer reflections and smoother spring transitions.
+ * 9.0.2: stable profile-photo cropping without scaling the cropper's frame,
+ * decoded image loading, crop readiness checks and unreadable-image feedback.
  */
-export const APP_VERSION = "9.0.1"
+export const APP_VERSION = "9.0.2"
