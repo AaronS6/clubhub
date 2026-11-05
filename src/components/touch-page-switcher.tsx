@@ -157,11 +157,13 @@ export function TouchPageSwitcher({
               type="button"
               className="ch-glass-tab"
               data-selected={highlightedIndex === index || undefined}
+              aria-label={tab.label}
+              title={tab.label}
               aria-current={view === tab.view ? "page" : undefined}
               onClick={() => onNavigate(tab.view)}
             >
               <span aria-hidden="true" className="ch-glass-icon"><Icon className="h-5 w-5" /></span>
-              <span className="ch-glass-label">{tab.label}</span>
+              
             </button>
           )
         })}
@@ -175,7 +177,7 @@ export function TouchPageSwitcher({
           onClick={onMore}
         >
           <span aria-hidden="true" className="ch-glass-icon"><Menu className="h-5 w-5" /></span>
-          <span className="ch-glass-label">More</span>
+          
         </button>
       </div>
     </nav>
