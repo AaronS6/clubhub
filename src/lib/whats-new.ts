@@ -4,38 +4,16 @@ import { useCallback, useEffect, useState } from "react"
 import type { NotifItem } from "@/components/views/notifications-view"
 
 /**
- * ============================================================================
- * What's New (release notes) — v8.0 · “storage, guides & a glow-up”
- * ============================================================================
+ * What's New — v9.0.1 · smoother touch navigation.
  *
- * A one-time, client-side announcement system:
+ * Returning visitors see the current release once. Closing the modal
+ * acknowledges WHATS_NEW_VERSION and adds a local release-notes notification
+ * that reopens it. No server rows or API calls are needed.
  *
- *   1. A RETURNING visitor (anyone who has opened ClubHub before — flag in
- *      localStorage) sees the "What's new in v8.0" modal once, centered
- *      with a blurred backdrop.
- *   2. When they close it, a persistent local notification ("What's new in
- *      v8.0") appears in the notification bell + Notifications view.
- *   3. Clicking that notification re-opens the modal — anytime, forever.
- *
- * Everything lives in localStorage — no DB rows, no API calls, no cost on
- * the free tier. The notification row is synthesized client-side with type
- *      "release_notes" (see notif-meta.ts) and never stored server-side.
- *
- * Version bump: when the next release ships, bump WHATS_NEW_VERSION here
- *      (and APP_VERSION) and the whole cycle repeats automatically for
- *      returning visitors — anyone holding an older ack key sees the new
- *      notes exactly once.
- *
- * NOTE: WHATS_NEW_VERSION is the ACK KEY, not the display version. It moved
- *      to "8.0" so everyone who closed the v7.5 notes sees the v8.0 notes
- *      exactly once. Everything USER-FACING displays APP_VERSION ("8.0")
- *      from lib/version — never this key.
- * ============================================================================
+ * Bump this acknowledgement key alongside APP_VERSION for each release so
+ * visitors who acknowledged earlier notes see the new announcement.
  */
-
-/** The release this announcement covers — the localStorage ack-key version.
- * "9.0" ≠ a display version you'll see anywhere else; see the note above. */
-export const WHATS_NEW_VERSION = "9.0"
+export const WHATS_NEW_VERSION = "9.0.1"
 
 const VISITED_KEY = "clubhub-visited"
 /** Marks the CURRENT browsing session so reloads (login/signup do a full
@@ -119,13 +97,13 @@ export function setWhatsNewNotif(on: boolean) {
 
 // ── Synthetic notification item (shared shape with server rows) ────────────
 
-export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v9-0"
+export const RELEASE_NOTES_NOTIF_ID = "local-release-notes-v9-0-1"
 
 export function buildReleaseNotesNotif(): NotifItem {
   return {
     id: RELEASE_NOTES_NOTIF_ID,
     type: "release_notes",
-    message: "ClubHub v9.0 — My Hub & one navigation for every club. Tap to see what's new",
+    message: "ClubHub v9.0.1 — smoother touch navigation. Tap to see what's new",
     linkUrl: null,
     isRead: true,
     createdAt: new Date().toISOString(),

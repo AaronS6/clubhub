@@ -13,37 +13,9 @@ import {
 import { APP_VERSION } from "@/lib/version"
 
 /**
- * ============================================================================
- * WhatsNewModal — "v9.0 — My Hub & one navigation for every club"
- * ============================================================================
- *
- * The v9 relaunch, in one announcement:
- *
- *   v9.0   MY HUB — the student's personal, cross-club default view: their
- *          week across clubs, recent updates, their tasks, their clubs,
- *          and their activity — every item deep-links to its original
- *          club. ONE unified navigation: Home / Calendar / My Tasks /
- *          Updates / Messages keep the same position in My Hub and inside
- *          every club workspace; a prominent context switcher + the MY
- *          CLUBS list move between them. Real browser back/forward,
- *          refresh-safe context, cross-club search, and a mobile
- *          context-pill + bottom-tab layout.
- *
- * The DISPLAYED version is APP_VERSION ("9.0") — whats-new.ts's
- * WHATS_NEW_VERSION ("9.0") is the localStorage ack key; it moved from
- * "8.0" so everyone who closed the v8 notes sees these exactly once.
- *
- * Shown ONCE to returning visitors, centered on a blurred backdrop — never
- * full-screen. Always in the ClubHub editorial dark palette (#16130e /
- * #f0ebe0 / teal) so it reads as a "release moment" in both the app and the
- * public site.
- *
- * Closing it:
- *   - marks this release as acknowledged (won't auto-open again)
- *   - files the announcement into the notification bell as a local
- *     "What's new" notification — clicking that row re-opens this modal
- *     (open-whats-new window event), so the notes stay reachable forever.
- * ============================================================================
+ * What's New for v9.0.1, followed by the v9.0 release history.
+ * APP_VERSION is the displayed version; WHATS_NEW_VERSION controls the
+ * once-per-release acknowledgement. Closing files the notes in notifications.
  */
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -132,7 +104,7 @@ export function WhatsNewModal() {
                   className="mt-1.5 text-2xl sm:text-[1.75rem] font-black tracking-tighter leading-[1.05]"
                   style={{ letterSpacing: "-0.03em" }}
                 >
-                  v{APP_VERSION} — My Hub &amp; one navigation for every club.
+                  v{APP_VERSION} — smoother touch navigation.
                 </h2>
               </div>
               <button
@@ -148,9 +120,34 @@ export function WhatsNewModal() {
             {/* ── Scrollable body ────────────────────────────────────────── */}
             <div className="overflow-y-auto scrollbar-thin px-6 sm:px-8 pb-6 pt-3">
               <p className="text-sm text-[#f0ebe0]/75 leading-relaxed">
-                One ClubHub, one navigation, every club you belong to —
-                starting with a personal home for it all.
+                A smaller glass bar, cleaner icons and smoother movement —
+                getting around ClubHub now feels better on touchscreens.
               </p>
+
+              <SectionLabel version="v9.0.1" label="A smoother way to move" />
+              <div className="mt-3 divide-y divide-[#f0ebe0]/8">
+                <ReleaseNote emoji="🫧" title="A smaller glass bar">
+                  A compact, floating navigation bar with icons only,
+                  soft reflections and a subtle accent marker. Designed to
+                  look clear in both light and dark mode.
+                </ReleaseNote>
+                <ReleaseNote emoji="👆" title="Slide to switch">
+                  On a touchscreen, slide your finger across Home, Calendar,
+                  Tasks, Messages and More. The glass selection follows your
+                  finger — lift it to open the selected page or menu.
+                  Tapping still works too.
+                </ReleaseNote>
+                <ReleaseNote emoji="✨" title="Smoother motion, quieter details">
+                  The selection settles gently into place, with softer press
+                  feedback and cleaner transitions between icons. Reduced
+                  motion preferences are respected.
+                </ReleaseNote>
+                <ReleaseNote emoji="📱" title="Compact without the cramped taps">
+                  Comfortable touch targets and space above your device&rsquo;s
+                  home indicator keep the bar easy to use. Screen readers
+                  still announce every button, and PC navigation works as before.
+                </ReleaseNote>
+              </div>
 
               {/* –– v9.0 — My Hub –––––––––––––––––––––––––––– */}
               <SectionLabel version="v9.0" label="My Hub — your clubs, one home" />
