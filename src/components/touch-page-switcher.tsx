@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ElementType, type PointerEvent } from "react"
 import { Menu } from "lucide-react"
+import { motion, useReducedMotion } from "framer-motion"
 import { draggedTabIndex, tabPosition } from "@/lib/touch-navigation"
 import type { View } from "@/lib/store"
 
@@ -31,6 +32,7 @@ export function TouchPageSwitcher({
   onMore: () => void
   moreOpen: boolean
 }) {
+  const reduceMotion = useReducedMotion()
   const track = useRef<HTMLDivElement>(null)
   const gesture = useRef<Gesture | null>(null)
   const suppressClickUntil = useRef(0)
@@ -144,10 +146,19 @@ export function TouchPageSwitcher({
       }}
     >
       <div ref={track} className="ch-glass-track">
-        <span
+        <motion.span
           aria-hidden="true"
           className="ch-glass-selection"
-          style={{ width: `${100 / count}%`, transform: `translate3d(${position * 100}%, 0, 0)` }}
+          initial={false}
+          style={{ width: `${100 / count}%` }}
+          animate={{
+            x: `${position * 100}%`,
+            scaleX: dragging && !reduceMotion ? 1.025 : 1,
+            scaleY: dragging && !reduceMotion ? 0.97 : 1,
+          }}
+          transition={reduceMotion || dragging
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 460, damping: 34, mass: 0.8 }}
         />
         {tabs.map((tab, index) => {
           const Icon = tab.icon
@@ -163,7 +174,6 @@ export function TouchPageSwitcher({
               onClick={() => onNavigate(tab.view)}
             >
               <span aria-hidden="true" className="ch-glass-icon"><Icon className="h-5 w-5" /></span>
-              
             </button>
           )
         })}
@@ -172,12 +182,12 @@ export function TouchPageSwitcher({
           className="ch-glass-tab"
           data-selected={highlightedIndex === tabs.length || undefined}
           aria-label="More"
+          title="More"
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
           onClick={onMore}
         >
           <span aria-hidden="true" className="ch-glass-icon"><Menu className="h-5 w-5" /></span>
-          
         </button>
       </div>
     </nav>

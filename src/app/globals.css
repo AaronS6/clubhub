@@ -17,9 +17,9 @@
 }
 @media (any-pointer: coarse) {
   .ch-app {
-    --ch-mobile-nav-height: calc(6rem + env(safe-area-inset-bottom, 0px));
-    --ch-content-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
-    --ch-tablet-nav-height: calc(6rem + env(safe-area-inset-bottom, 0px));
+    --ch-mobile-nav-height: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+    --ch-content-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+    --ch-tablet-nav-height: calc(5.25rem + env(safe-area-inset-bottom, 0px));
   }
   .ch-bottom-navigation { display: none; }
   .ch-glass-dock {
@@ -27,21 +27,21 @@
     position: fixed;
     z-index: 30;
     left: 50%;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
-    width: min(calc(100% - 24px), 430px);
-    padding: 6px;
+    width: min(calc(100% - 40px), 390px);
+    padding: 5px;
     border: 1px solid rgba(255, 255, 255, 0.72);
     border-radius: 9999px;
     background:
       linear-gradient(150deg, rgba(255,255,255,0.5), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0.3)),
       color-mix(in srgb, var(--background) 72%, transparent);
     /* Variable indirection preserves the Safari prefix through CSS optimization. */
-    --ch-dock-filter: blur(28px) saturate(1.8);
+    --ch-dock-filter: blur(24px) saturate(1.65);
     -webkit-backdrop-filter: var(--ch-dock-filter);
     backdrop-filter: var(--ch-dock-filter);
     box-shadow:
-      0 12px 36px -8px rgba(15,23,42,0.24),
+      0 10px 28px -10px rgba(15,23,42,0.22),
       0 2px 8px rgba(15,23,42,0.08),
       inset 0 1px 0 rgba(255,255,255,0.85),
       inset 0 -1px 0 rgba(255,255,255,0.18);
@@ -57,15 +57,46 @@
       linear-gradient(150deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 55%, rgba(255,255,255,0.06)),
       color-mix(in srgb, var(--background) 76%, transparent);
     box-shadow:
-      0 12px 36px -8px rgba(0,0,0,0.5),
+      0 10px 28px -10px rgba(0,0,0,0.45),
       0 2px 8px rgba(0,0,0,0.2),
       inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+  /* Stationary edge reflections keep the surface detailed without looping motion. */
+  .ch-glass-dock::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(115deg, rgba(255,255,255,0.18), transparent 28%, transparent 72%, rgba(255,255,255,0.08));
+  }
+  .ch-glass-selection::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 22%;
+    right: 22%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), transparent);
+    pointer-events: none;
+  }
+  .ch-glass-selection::after {
+    content: "";
+    position: absolute;
+    bottom: 5px;
+    left: calc(50% - 4px);
+    width: 8px;
+    height: 2px;
+    border-radius: 9999px;
+    background: var(--club-ink, var(--foreground));
+    opacity: 0.55;
+    pointer-events: none;
   }
   .ch-glass-track {
     position: relative;
     display: flex;
     width: 100%;
-    height: 58px;
+    height: 48px;
   }
   .ch-glass-selection {
     position: absolute;
@@ -83,7 +114,7 @@
     backdrop-filter: var(--ch-selection-filter);
     pointer-events: none;
     will-change: transform;
-    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), scale 180ms ease;
+    /* Framer Motion owns the transform: direct tracking, then a damped spring. */
   }
   .dark .ch-glass-selection {
     border-color: rgba(255,255,255,0.2);
@@ -92,10 +123,6 @@
       0 2px 8px rgba(0,0,0,0.14),
       inset 0 1px 0 rgba(255,255,255,0.28),
       inset 0 -1px 2px rgba(255,255,255,0.06);
-  }
-  .ch-glass-dock[data-dragging] .ch-glass-selection {
-    scale: 1.035 0.96;
-    transition: scale 120ms ease;
   }
   .ch-glass-tab {
     position: relative;
@@ -107,26 +134,20 @@
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 3px;
-    padding: 4px 0;
+    padding: 0;
     border: 0;
     border-radius: 9999px;
     background: transparent;
     color: var(--muted-foreground);
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 16px;
     cursor: pointer;
-    transition: color 180ms ease;
+    transition: color 220ms ease;
   }
   .ch-glass-tab[data-selected] { color: var(--club-ink, var(--foreground)); }
-  .ch-glass-icon { display: flex; transition: transform 220ms ease; }
-  .ch-glass-tab[data-selected] .ch-glass-icon { transform: translateY(-1px) scale(1.08); }
-  .ch-glass-label {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .ch-glass-icon { display: flex; transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .ch-glass-tab[data-selected] .ch-glass-icon { transform: translateY(-1px) scale(1.06); }
+  /* A short press compresses the glyph; dragging leaves the icons steady. */
+  .ch-glass-dock:not([data-dragging]) .ch-glass-tab:active .ch-glass-icon {
+    transform: scale(0.92);
   }
   .ch-glass-tab:focus-visible {
     outline: 2px solid var(--ring);
@@ -139,8 +160,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ch-glass-selection, .ch-glass-tab, .ch-glass-icon { transition: none !important; }
-  .ch-glass-dock[data-dragging] .ch-glass-selection { scale: 1; }
-  .ch-glass-tab[data-selected] .ch-glass-icon { transform: none; }
+  .ch-glass-tab[data-selected] .ch-glass-icon,
+  .ch-glass-dock:not([data-dragging]) .ch-glass-tab:active .ch-glass-icon { transform: none; }
 }
 
 /* =========================================================================
