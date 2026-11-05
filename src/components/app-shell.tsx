@@ -63,6 +63,7 @@ import { useTheme } from "next-themes"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useSearchShortcutHint } from "@/hooks/use-platform"
+import { TouchPageSwitcher } from "@/components/touch-page-switcher"
 import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
@@ -1108,22 +1109,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                EVERY keystroke — the composer visibly slid down/jumped while
                typing. Here the pane flex-fills this branch exactly, so
                there is nothing to rescroll. No horizontal/bottom wrapper
-               padding; the only clearance is mobile-only, lifting the pane
-               above the shell's fixed bottom tab bar (52px + safe area;
+               padding; bottom clearance lifts the pane above the shell's
+               fixed mobile tab bar and optional touch swipe handle
+               (52px + optional handle + safe area;
                the outer main row's p-3 adds the rest — desktop shows no
-               tab bar, hence md:pb-0). scrollRef stays unattached in this
+               tab bar, only the optional touch handle). scrollRef stays
+               unattached in this
                branch — the scroll-reset effect above already null-guards
                with optional chaining, so it's a no-op here. */
             <div
-              className="ch-view-enter flex-1 min-h-0 flex flex-col pb-[calc(3.25rem_+_env(safe-area-inset-bottom))] md:pb-0"
+              className="ch-view-enter flex-1 min-h-0 flex flex-col pb-[calc(3.25rem_+_var(--ch-swipe-height)_+_var(--ch-tab-safe-area))] md:pb-[var(--ch-swipe-height)]"
               key={`${currentClubId}-${view}`}
             >
               {children}
             </div>
           ) : (
             /* No top padding so view headers connect flush to the app top bar.
-               Bottom padding clears the mobile bottom tab bar (pb-16 on mobile). */
-            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-16 md:pb-6">
+               Bottom padding clears the mobile tabs and optional touch handle. */
+            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-[calc(4rem_+_var(--ch-swipe-height)_+_var(--ch-tab-safe-area))] md:pb-[calc(1.5rem_+_var(--ch-swipe-height))]">
               {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
                   view/club switch (replayed by the remount key below);
                   neutralized under prefers-reduced-motion in globals.css. */}
@@ -1456,12 +1459,14 @@ function PullDownSheet({
  * The five shared destinations, mobile-adapted: the four most important as
  * tabs, everything else (Updates + the club workspace section + MY CLUBS +
  * theme) in the "More" pull-down sheet. Context-aware — the tabs show the
- * active context's version of each page. Hidden below md (the sidebar takes
- * over at md+).
+ * active context's version of each page. Tabs hide at md+ when the sidebar
+ * takes over; the swipe handle also works on larger touchscreens.
  */
 function MobileTabBar() {
   const view = useAppStore((s) => s.view)
   const setView = useAppStore((s) => s.setView)
+  const context = useAppStore((s) => s.context)
+  const currentClub = useAppStore((s) => s.currentClub)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const tabs: { view: View; label: string; icon: any }[] = [
@@ -1471,8 +1476,20 @@ function MobileTabBar() {
     { view: "chat", label: "Messages", icon: MessageSquare },
   ]
 
+  // Start with the visible tabs in their on-screen order, then the actual
+  // pages in More. Never treat More itself as a page or enter an executive
+  // destination that the current member cannot see.
+  const swipePages = [
+    ...tabs,
+    ...SHARED_NAV.filter((item) => !tabs.some((tab) => tab.view === item.view)),
+    ...(context === "club"
+      ? CLUB_NAV_TIERS.flatMap((tier) => tier.items)
+          .filter((item) => !item.execOnly || currentClub?.role === "executive")
+      : []),
+  ]
+
   return (
-    <>
+    <div className="ch-bottom-navigation fixed bottom-0 inset-x-0 z-30 border-t border-border/80 bg-background/80 backdrop-blur-lg backdrop-saturate-[1.1]">
       {/* Mobile tab bar — iOS-style FROSTED glass (bg + blur + saturation).
           Unlike the top bar this one is FIXED over scrolling content, so it
           needs opacity/blur to keep scrolled cards from showing through;
@@ -1483,8 +1500,8 @@ function MobileTabBar() {
           worth it.) */}
       <nav
         aria-label="Primary"
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex items-stretch justify-around border-t border-border/80 bg-background/80 backdrop-blur-lg backdrop-saturate-[1.1]"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="md:hidden flex items-stretch justify-around"
+        style={{ paddingBottom: "var(--ch-tab-safe-area)" }}
       >
         {tabs.map((t) => {
           const active = view === t.view
@@ -1550,7 +1567,14 @@ function MobileTabBar() {
           </div>
         </PullDownSheet>
       </nav>
-    </>
+      <TouchPageSwitcher
+        pages={swipePages}
+        view={view}
+        contextKey={context === "club" ? `club:${currentClub?.clubId ?? ""}` : "hub"}
+        onNavigate={setView}
+        disabled={mobileNavOpen}
+      />
+    </div>
   )
 }
 
