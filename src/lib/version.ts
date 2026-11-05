@@ -26,5 +26,7 @@
  * list) moves between My Hub and each club. Every aggregated item deep-links
  * to its original club location, with real browser back/forward and
  * refresh-safe context.
+ * 9.0.1: compact glass navigation for touchscreens — icons only, drag across
+ * buttons to switch pages, softer reflections and smoother spring transitions.
  */
-export const APP_VERSION = "9.0"
+export const APP_VERSION = "9.0.1"
