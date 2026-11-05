@@ -3,6 +3,50 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The swipe shortcut is capability-gated, never enabled by window width.
+   Normal desktop navigation and its content clearance remain unchanged. */
+.ch-app {
+  --ch-swipe-height: 0px;
+  --ch-tab-safe-area: env(safe-area-inset-bottom, 0px);
+}
+.ch-bottom-navigation { display: none; }
+.ch-page-switcher { display: none; }
+@media (width < 48rem) {
+  .ch-bottom-navigation { display: block; }
+}
+@media (any-pointer: coarse) {
+  .ch-app {
+    --ch-swipe-height: calc(44px + env(safe-area-inset-bottom, 0px));
+    --ch-tab-safe-area: 0px;
+  }
+  .ch-bottom-navigation { display: block; }
+  .ch-page-switcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--ch-swipe-height);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .ch-page-switcher-pill {
+    width: 112px;
+    height: 5px;
+    border-radius: 9999px;
+    background: var(--foreground);
+    opacity: 0.6;
+    transition: transform 180ms ease-out, opacity 180ms ease-out;
+  }
+  .ch-page-switcher[data-dragging] .ch-page-switcher-pill {
+    opacity: 0.9;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-page-switcher-pill { transition: none; }
+}
+
 /* =========================================================================
    ClubHub Design System — see DESIGN.md
    Restraint over decoration. 1px borders, not shadows. Sentence case.
