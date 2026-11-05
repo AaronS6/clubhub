@@ -3,48 +3,144 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* The swipe shortcut is capability-gated, never enabled by window width.
-   Normal desktop navigation and its content clearance remain unchanged. */
+/* Standard desktop navigation remains unchanged. Touch devices use one
+   floating capsule containing the actual navigation buttons. */
 .ch-app {
-  --ch-swipe-height: 0px;
   --ch-tab-safe-area: env(safe-area-inset-bottom, 0px);
+  --ch-mobile-nav-height: calc(3.25rem + var(--ch-tab-safe-area));
+  --ch-content-bottom: calc(4rem + var(--ch-tab-safe-area));
+  --ch-tablet-nav-height: 0px;
 }
-.ch-bottom-navigation { display: none; }
-.ch-page-switcher { display: none; }
+.ch-bottom-navigation, .ch-glass-dock { display: none; }
 @media (width < 48rem) {
   .ch-bottom-navigation { display: block; }
 }
 @media (any-pointer: coarse) {
   .ch-app {
-    --ch-swipe-height: calc(44px + env(safe-area-inset-bottom, 0px));
-    --ch-tab-safe-area: 0px;
+    --ch-mobile-nav-height: calc(6rem + env(safe-area-inset-bottom, 0px));
+    --ch-content-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    --ch-tablet-nav-height: calc(6rem + env(safe-area-inset-bottom, 0px));
   }
-  .ch-bottom-navigation { display: block; }
-  .ch-page-switcher {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: var(--ch-swipe-height);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    touch-action: none;
+  .ch-bottom-navigation { display: none; }
+  .ch-glass-dock {
+    display: block;
+    position: fixed;
+    z-index: 30;
+    left: 50%;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    width: min(calc(100% - 24px), 430px);
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 9999px;
+    background:
+      linear-gradient(150deg, rgba(255,255,255,0.5), rgba(255,255,255,0.08) 55%, rgba(255,255,255,0.3)),
+      color-mix(in srgb, var(--background) 72%, transparent);
+    /* Variable indirection preserves the Safari prefix through CSS optimization. */
+    --ch-dock-filter: blur(28px) saturate(1.8);
+    -webkit-backdrop-filter: var(--ch-dock-filter);
+    backdrop-filter: var(--ch-dock-filter);
+    box-shadow:
+      0 12px 36px -8px rgba(15,23,42,0.24),
+      0 2px 8px rgba(15,23,42,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      inset 0 -1px 0 rgba(255,255,255,0.18);
+    isolation: isolate;
+    touch-action: pan-y pinch-zoom;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
-  .ch-page-switcher-pill {
-    width: 112px;
-    height: 5px;
+  .dark .ch-glass-dock {
+    border-color: rgba(255,255,255,0.17);
+    background:
+      linear-gradient(150deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 55%, rgba(255,255,255,0.06)),
+      color-mix(in srgb, var(--background) 76%, transparent);
+    box-shadow:
+      0 12px 36px -8px rgba(0,0,0,0.5),
+      0 2px 8px rgba(0,0,0,0.2),
+      inset 0 1px 0 rgba(255,255,255,0.16);
+  }
+  .ch-glass-track {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 58px;
+  }
+  .ch-glass-selection {
+    position: absolute;
+    z-index: 0;
+    inset: 0 auto 0 0;
+    border: 1px solid rgba(255,255,255,0.7);
     border-radius: 9999px;
-    background: var(--foreground);
-    opacity: 0.6;
-    transition: transform 180ms ease-out, opacity 180ms ease-out;
+    background: linear-gradient(155deg, rgba(255,255,255,0.72), rgba(255,255,255,0.3));
+    box-shadow:
+      0 2px 8px rgba(15,23,42,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.95),
+      inset 0 -1px 2px rgba(255,255,255,0.35);
+    --ch-selection-filter: blur(10px) saturate(1.6);
+    -webkit-backdrop-filter: var(--ch-selection-filter);
+    backdrop-filter: var(--ch-selection-filter);
+    pointer-events: none;
+    will-change: transform;
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), scale 180ms ease;
   }
-  .ch-page-switcher[data-dragging] .ch-page-switcher-pill {
-    opacity: 0.9;
-    transition: none;
+  .dark .ch-glass-selection {
+    border-color: rgba(255,255,255,0.2);
+    background: linear-gradient(155deg, rgba(255,255,255,0.18), rgba(255,255,255,0.07));
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.14),
+      inset 0 1px 0 rgba(255,255,255,0.28),
+      inset 0 -1px 2px rgba(255,255,255,0.06);
+  }
+  .ch-glass-dock[data-dragging] .ch-glass-selection {
+    scale: 1.035 0.96;
+    transition: scale 120ms ease;
+  }
+  .ch-glass-tab {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1 1 0%;
+    min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    padding: 4px 0;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    cursor: pointer;
+    transition: color 180ms ease;
+  }
+  .ch-glass-tab[data-selected] { color: var(--club-ink, var(--foreground)); }
+  .ch-glass-icon { display: flex; transition: transform 220ms ease; }
+  .ch-glass-tab[data-selected] .ch-glass-icon { transform: translateY(-1px) scale(1.08); }
+  .ch-glass-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ch-glass-tab:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -3px;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .ch-glass-dock, .dark .ch-glass-dock { background: var(--background); }
+    .ch-glass-selection, .dark .ch-glass-selection { background: var(--secondary); }
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ch-page-switcher-pill { transition: none; }
+  .ch-glass-selection, .ch-glass-tab, .ch-glass-icon { transition: none !important; }
+  .ch-glass-dock[data-dragging] .ch-glass-selection { scale: 1; }
+  .ch-glass-tab[data-selected] .ch-glass-icon { transform: none; }
 }
 
 /* =========================================================================

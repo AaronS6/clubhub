@@ -1109,24 +1109,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                EVERY keystroke — the composer visibly slid down/jumped while
                typing. Here the pane flex-fills this branch exactly, so
                there is nothing to rescroll. No horizontal/bottom wrapper
-               padding; bottom clearance lifts the pane above the shell's
-               fixed mobile tab bar and optional touch swipe handle
-               (52px + optional handle + safe area;
-               the outer main row's p-3 adds the rest — desktop shows no
-               tab bar, only the optional touch handle). scrollRef stays
-               unattached in this
+               padding; bottom clearance accounts for the mobile tab bar
+               or floating touch dock, including the device's safe area.
+               Non-touch desktop layouts need no navigation clearance.
+               scrollRef stays unattached in this
                branch — the scroll-reset effect above already null-guards
                with optional chaining, so it's a no-op here. */
             <div
-              className="ch-view-enter flex-1 min-h-0 flex flex-col pb-[calc(3.25rem_+_var(--ch-swipe-height)_+_var(--ch-tab-safe-area))] md:pb-[var(--ch-swipe-height)]"
+              className="ch-view-enter flex-1 min-h-0 flex flex-col pb-[var(--ch-mobile-nav-height)] md:pb-[var(--ch-tablet-nav-height)]"
               key={`${currentClubId}-${view}`}
             >
               {children}
             </div>
           ) : (
             /* No top padding so view headers connect flush to the app top bar.
-               Bottom padding clears the mobile tabs and optional touch handle. */
-            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-[calc(4rem_+_var(--ch-swipe-height)_+_var(--ch-tab-safe-area))] md:pb-[calc(1.5rem_+_var(--ch-swipe-height))]">
+               Bottom padding clears the mobile tabs or floating touch dock. */
+            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-[var(--ch-content-bottom)] md:pb-[calc(1.5rem_+_var(--ch-tablet-nav-height))]">
               {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
                   view/club switch (replayed by the remount key below);
                   neutralized under prefers-reduced-motion in globals.css. */}
@@ -1460,7 +1458,7 @@ function PullDownSheet({
  * tabs, everything else (Updates + the club workspace section + MY CLUBS +
  * theme) in the "More" pull-down sheet. Context-aware — the tabs show the
  * active context's version of each page. Tabs hide at md+ when the sidebar
- * takes over; the swipe handle also works on larger touchscreens.
+ * takes over; the floating glass dock also works on larger touchscreens.
  */
 function MobileTabBar() {
   const view = useAppStore((s) => s.view)
@@ -1476,105 +1474,90 @@ function MobileTabBar() {
     { view: "chat", label: "Messages", icon: MessageSquare },
   ]
 
-  // Start with the visible tabs in their on-screen order, then the actual
-  // pages in More. Never treat More itself as a page or enter an executive
-  // destination that the current member cannot see.
-  const swipePages = [
-    ...tabs,
-    ...SHARED_NAV.filter((item) => !tabs.some((tab) => tab.view === item.view)),
-    ...(context === "club"
-      ? CLUB_NAV_TIERS.flatMap((tier) => tier.items)
-          .filter((item) => !item.execOnly || currentClub?.role === "executive")
-      : []),
-  ]
-
   return (
-    <div className="ch-bottom-navigation fixed bottom-0 inset-x-0 z-30 border-t border-border/80 bg-background/80 backdrop-blur-lg backdrop-saturate-[1.1]">
-      {/* Mobile tab bar — iOS-style FROSTED glass (bg + blur + saturation).
-          Unlike the top bar this one is FIXED over scrolling content, so it
-          needs opacity/blur to keep scrolled cards from showing through;
-          80% + blur-lg reads as premium glass while the atmosphere's bottom
-          orbs glow through it. (The old PERF note avoided blur because a
-          full-width blurred bar re-rastered during sheet-overlay fades —
-          that cost is acceptable for one static bar and the glass look is
-          worth it.) */}
-      <nav
-        aria-label="Primary"
-        className="md:hidden flex items-stretch justify-around"
-        style={{ paddingBottom: "var(--ch-tab-safe-area)" }}
-      >
-        {tabs.map((t) => {
-          const active = view === t.view
-          const Icon = t.icon
-          return (
-            <button
-              key={t.view}
-              onClick={() => setView(t.view)}
-              className={cn(
-                "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,background-color,transform] active:scale-[0.96]",
-                active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-              aria-current={active ? "page" : undefined}
-            >
-              {/* Active indicator — same recipe as the desktop sidebar: the
-                  icon sits on a neutral secondary fill with club-ink glyphs,
-                  and a short club-accent bar rides the tab's top edge (the
-                  bottom-bar transpose of the sidebar's left-edge bar). The
-                  pill pops in with a spring (keyed remount on activation) —
-                  a small "the tap landed" answer. */}
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] w-5 rounded-full bg-club transition-opacity duration-150",
-                  active ? "opacity-100" : "opacity-0"
-                )}
-              />
-              <span
-                aria-hidden
-                key={active ? "on" : "off"}
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150",
-                  active
-                    ? "bg-secondary/80 text-club-ink animate-tab-pop"
-                    : ""
-                )}
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <span>{t.label}</span>
-            </button>
-          )
-        })}
-        {/* More — opens the mobile drawer (full nav + club switcher + theme).
-            PullDownSheet: the whole sheet follows the finger on drag. */}
-        <PullDownSheet
-          open={mobileNavOpen}
-          onOpenChange={setMobileNavOpen}
-          ariaLabel="More navigation"
-          className="rounded-t-xl p-0 flex flex-col max-h-[80dvh] shadow-dialog"
-          trigger={
-            <button
-              className="flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground hover:text-foreground transition-[color,transform,translate,scale,rotate] active:scale-95"
-              aria-label="More"
-            >
-              <Menu className="h-5 w-5" />
-              <span>More</span>
-            </button>
-          }
+    <>
+      {/* Preserve the existing tab bar for narrow, non-touch PC windows.
+          Touch devices instead get the floating capsule below. */}
+      <div className="ch-bottom-navigation fixed bottom-0 inset-x-0 z-30 border-t border-border/80 bg-background/80 backdrop-blur-lg backdrop-saturate-[1.1]">
+        <nav
+          aria-label="Primary"
+          className="md:hidden flex items-stretch justify-around"
+          style={{ paddingBottom: "var(--ch-tab-safe-area)" }}
         >
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
-          </div>
-        </PullDownSheet>
-      </nav>
+          {tabs.map((tab) => {
+            const active = view === tab.view
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.view}
+                type="button"
+                onClick={() => setView(tab.view)}
+                className={cn(
+                  "relative flex flex-col items-center justify-center gap-0.5 flex-1 py-1.5 min-h-[52px] text-xs font-medium transition-[color,background-color,transform] active:scale-[0.96]",
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                )}
+                aria-current={active ? "page" : undefined}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-0 left-1/2 -translate-x-1/2 h-[3px] w-5 rounded-full bg-club transition-opacity duration-150",
+                    active ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                <span
+                  aria-hidden
+                  key={active ? "on" : "off"}
+                  className={cn(
+                    "flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-150",
+                    active ? "bg-secondary/80 text-club-ink animate-tab-pop" : ""
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex flex-col items-center justify-center gap-1 flex-1 py-1.5 min-h-[52px] text-xs font-medium text-muted-foreground hover:text-foreground transition-[color,transform,translate,scale,rotate] active:scale-95"
+            aria-label="More"
+            aria-haspopup="dialog"
+            aria-expanded={mobileNavOpen}
+          >
+            <Menu className="h-5 w-5" />
+            <span>More</span>
+          </button>
+        </nav>
+      </div>
       <TouchPageSwitcher
-        pages={swipePages}
+        tabs={tabs}
         view={view}
         contextKey={context === "club" ? `club:${currentClub?.clubId ?? ""}` : "hub"}
         onNavigate={setView}
-        disabled={mobileNavOpen}
+        onMore={() => setMobileNavOpen(true)}
+        moreOpen={mobileNavOpen}
       />
-    </div>
+      <PullDownSheet
+        open={mobileNavOpen}
+        onOpenChange={(open) => {
+          setMobileNavOpen(open)
+          if (!open) requestAnimationFrame(() => {
+            const dock = window.matchMedia("(any-pointer: coarse)").matches
+              ? ".ch-glass-dock" : ".ch-bottom-navigation"
+            document.querySelector<HTMLButtonElement>(`${dock} [aria-label="More"]`)?.focus({ preventScroll: true })
+          })
+        }}
+        ariaLabel="More navigation"
+        className="rounded-t-xl p-0 flex flex-col max-h-[80dvh] shadow-dialog"
+      >
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          <MobileDrawerNav onPick={(v) => { setView(v); setMobileNavOpen(false) }} />
+        </div>
+      </PullDownSheet>
+    </>
   )
 }
 

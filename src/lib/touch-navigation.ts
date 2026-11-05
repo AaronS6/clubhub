@@ -1,12 +1,21 @@
-/** A deliberate horizontal swipe moves one page; edges never wrap around. */
-export function swipeDestination<T extends string>(
-  pages: readonly T[],
-  current: T,
-  deltaX: number,
-  deltaY: number,
-): T | null {
-  if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return null
-  const index = pages.indexOf(current)
-  if (index < 0) return null
-  return pages[index + (deltaX < 0 ? 1 : -1)] ?? null
+/** Continuous position of a finger across equal-width navigation buttons. */
+export function tabPosition(clientX: number, left: number, width: number, count: number): number {
+  if (width <= 0 || count < 1) return 0
+  return Math.max(0, Math.min(count - 1, ((clientX - left) / width) * count - 0.5))
+}
+
+/** Snap a deliberate horizontal drag to the button under the finger. */
+export function draggedTabIndex(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  left: number,
+  width: number,
+  count: number,
+): number | null {
+  const dx = endX - startX
+  const dy = endY - startY
+  if (width <= 0 || count < 1 || Math.abs(dx) < 16 || Math.abs(dx) < Math.abs(dy) * 1.5) return null
+  return Math.round(tabPosition(endX, left, width, count))
 }
