@@ -639,21 +639,14 @@
     animation: fade-in 220ms var(--motion-ease);
   }
 
-  /* View-enter — one-shot entrance for the main content area when the
-     user switches views (or clubs). "Motion answers the action": upgraded
-     to the Apple-settle feel (§ per-tab polish) — 320ms, 10px rise, a
-     hairline 0.5% scale, opacity + transform only (compositor-friendly,
-     no layout). The remount key on the shell's content wrapper replays it
-     per switch; the reduced-motion kill switch above neutralizes it safely.
-     Fill mode BACKWARDS only: during the (zero-length) delay the from-state
-     applies, and after the animation ends no transform lingers to fight
-     descendants or hover transitions. */
+  /* One short fade for a page change. No transformed ancestor: fixed
+     controls and crop measurements keep their normal coordinate space. */
   @keyframes ch-view-enter {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
   .ch-view-enter {
-    animation: ch-view-enter 320ms var(--motion-ease) backwards;
+    animation: ch-view-enter 180ms ease-out backwards;
   }
 
   /* ── Modern motion accents (sitewide premium pass) ──────────────────── */
@@ -1601,4 +1594,74 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
   --ch-glass-filter: blur(12px) saturate(1.12);
   -webkit-backdrop-filter: var(--ch-glass-filter);
   backdrop-filter: var(--ch-glass-filter);
+}
+
+/* Workspace refresh: a quiet rail around a clear, inset reading surface.
+   Scoped to the signed-in shell; custom club accents and ambient settings
+   continue to come from the existing providers. */
+.ch-workspace {
+  --workspace-line: color-mix(in srgb, var(--border) 70%, transparent);
+}
+.ch-topbar { gap: 1rem; }
+.ch-workspace-sidebar {
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--club-accent) 4%, var(--background));
+}
+.ch-workspace-main {
+  overflow: hidden;
+  border: 1px solid var(--workspace-line);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.025);
+}
+.ch-workspace-sidebar .ch-nav-row[aria-current="page"] {
+  background: var(--card);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+}
+.ch-home-header { padding-block: 0.5rem 0.75rem; }
+.ch-home-greeting {
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 3.2vw, 2.625rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.ch-discover-button { min-height: 44px; box-shadow: none; }
+.ch-home .hub-card-hover {
+  border-color: var(--workspace-line);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--card) 95%, transparent);
+  box-shadow: none;
+  transition: none;
+}
+.ch-home .hub-card-hover:hover {
+  border-color: var(--workspace-line);
+  box-shadow: none;
+}
+.ch-home .ch-next-event {
+  min-height: 220px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--club-accent) 4%, var(--card));
+}
+.ch-overview {
+  overflow: hidden;
+  border: 1px solid var(--workspace-line);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--muted) 32%, var(--card));
+}
+.ch-stat { min-height: 110px; }
+.ch-stat:nth-child(odd) { border-right: 1px solid var(--workspace-line); }
+.ch-stat:nth-child(-n + 2) { border-bottom: 1px solid var(--workspace-line); }
+/* The parent view fades once. Lists do not cascade or postpone reading. */
+.ch-club-home .dash-rise { animation: none; }
+@media (width < 48rem) {
+  .ch-topbar { gap: 0.25rem; }
+  .ch-workspace-main { border-radius: 20px; }
+  .ch-home-header { padding-top: 0.25rem; }
+  .ch-home .ch-next-event { min-height: 180px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-page-scroll { scroll-behavior: auto; }
 }

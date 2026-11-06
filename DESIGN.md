@@ -90,3 +90,26 @@ Respect `prefers-reduced-motion` (disable all non-essential animation).
 
 Subtle tinted background (~0.95 lightness light / ~0.25 dark), 12px medium
 text, optional 6px status dot. No saturated fills.
+
+
+## Workspace refresh (current)
+
+The signed-in app uses a soft, accent-tinted 232px sidebar around an inset
+reading canvas. This replaces the flat-sidebar rule above. Keep the user's
+club accent, theme and ambient choices; do not add a new competing palette.
+
+- Main canvas: 24px corners (20px on phones). Hub sections: 20px corners,
+  quiet hairlines, no hover elevation on non-interactive containers.
+- Personal greeting: Bricolage, 28–42px, sentence case and solid ink. Long
+  names wrap. Body and controls remain Geist.
+- My Hub: greeting and discovery action, next event alongside a compact
+  2×2 overview, then agenda, tasks, updates and clubs. Navigation stays in
+  the shell; avoid duplicating every tab in a second shortcut toolbar.
+- One 180ms opacity transition per page change. No stacked card entrances,
+  looping greeting gradients or counting from zero when totals load.
+- Keep touch navigation in its existing glass dock. Pointer and keyboard
+  navigation use the normal sidebar and controls; retain visible focus.
+- Reduced motion also disables smooth scrolling to the activity section.
+
+The public landing page keeps its photographic identity. This refresh is
+scoped to the everyday workspace, not a replacement of club branding.

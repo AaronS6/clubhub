@@ -858,7 +858,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <nav className="flex flex-col gap-4 px-2.5 py-3" aria-label="Primary">
       {/* Shared navigation — identical rows + order in every context. */}
       <div className="space-y-0.5">
-        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+        <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
           Menu
         </div>
         {SHARED_NAV.map((item) => (
@@ -880,7 +880,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             if (items.length === 0) return null
             return (
               <div key={tier.id} className="space-y-0.5">
-                <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
                   {tier.label}
                 </div>
                 {items.map((item) => (
@@ -905,7 +905,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           each club. */}
       {context === "hub" && (
         <div className="space-y-0.5">
-          <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+          <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">
             My clubs
           </div>
           <button
@@ -975,10 +975,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // atmosphere's top backlight beam glows through this whole strip. (The
   // old bg-background/95 wash hid it.)
   const topBar = (
-    <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-border/70 bg-transparent shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
-      {/* Desktop: page title (display face, 18px) */}
-      <div className="hidden md:flex items-center shrink-0 min-w-0">
-        <h1 className="truncate font-semibold" style={{ fontFamily: "var(--font-display)", fontSize: "1.125rem", lineHeight: "1.5rem", letterSpacing: "-0.018em" }}>{pageTitle}</h1>
+    <header className="ch-topbar flex items-center gap-2 px-4 sm:px-6 h-14 bg-transparent shrink-0 z-30" style={{ paddingTop: "env(safe-area-inset-top)", height: "calc(3.5rem + env(safe-area-inset-top))" }}>
+      {/* Desktop: a quiet location label; each view owns its main heading. */}
+      <div className="hidden md:flex items-center min-w-0 max-w-[38%]">
+        <p className="flex min-w-0 items-center gap-3 text-sm">
+          <span className="shrink-0 font-semibold tracking-tight">ClubHub</span>
+          <span aria-hidden className="text-muted-foreground/50">/</span>
+          <span className="truncate text-muted-foreground">{pageTitle}</span>
+        </p>
       </div>
 
       {/* Mobile: the context selector — compact pill with the club tile (or
@@ -1002,7 +1006,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <button
         type="button"
         onClick={(e) => { openGlobalSearch(); e.currentTarget.blur() }}
-        className="hidden md:flex group items-center gap-2.5 h-9 rounded-full border border-input bg-muted/40 px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
+        className="hidden md:flex group items-center gap-2.5 h-9 rounded-xl border border-transparent bg-muted/60 px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground hover:border-border transition-[background-color,color,border-color] max-w-md flex-1 mx-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-0"
         aria-label={context === "club" && currentClub ? `Search ${currentClub.clubName}` : "Search your clubs"}
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
@@ -1039,7 +1043,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // it to pause background decoration animations while modal overlays are
     // open (decorations rendered inside sheet/dialog PORTALS keep animating,
     // e.g. the settings effect picker previews).
-    <div className="ch-app h-dvh flex flex-col overflow-hidden relative z-10">
+    <div className="ch-app ch-workspace h-dvh flex flex-col overflow-hidden relative z-10">
       {/* The ambient background (CustomizationProvider renders this) sits at
           z-0 behind this z-10 shell. We use `bg-transparent` here so the
           ambient shows through. Cards/surfaces inside use the glassified
@@ -1047,17 +1051,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           light orbs tint them instead of hiding behind opaque slabs. */}
       <UrgentBanner />
       {topBar}
-      <div className="flex flex-1 min-h-0 p-3 gap-3">
-        {/* Sidebar surface — one card formula with everything else in the app:
-            rounded-2xl (16px), 1px hairline border, quiet card shadow.
-            "Glassier nav": a translucent card body + backdrop saturation so
-            the sidebar reads
-            as frosted glass floating over the ambient background (the sidebar
-            is only 240px wide, so the blur cost that disqualified the top bar
-            doesn't apply). A lit top edge (inset 1px highlight) carries the
-            physical elevation language. Club-switcher card pinned at the top,
-            nav in the scrollable middle, theme toggle at the bottom. */}
-        <aside className="hidden md:flex md:w-[244px] flex-col rounded-2xl border border-border/80 bg-card/85 backdrop-blur-md backdrop-saturate-[1.15] overflow-hidden shrink-0 shadow-card dark:bg-card/80">
+      <div className="ch-workspace-layout flex flex-1 min-h-0 gap-2 px-2 pb-2 md:px-3 md:pb-3">
+        {/* Soft workspace rail; the inset main canvas holds the content. */}
+        <aside className="ch-workspace-sidebar hidden md:flex md:w-[232px] flex-col overflow-hidden shrink-0">
           {/* §9 sidebar header — the context selector IS the anchor of the
               sidebar (no brand row above it): My Hub ↔ individual clubs.
               Switcher pinned at the top, nav in the scrollable middle, theme
@@ -1097,7 +1093,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 flex flex-col min-h-0">
+        <main id="main-content" className="ch-workspace-main flex-1 min-w-0 flex flex-col min-h-0">
           {view === "chat" && context === "club" ? (
             /* ── iOS Safari keyboard fix: dedicated NON-scrollable branch ──
                (club chat only — My Hub's combined inbox is a normal page.)
@@ -1124,11 +1120,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ) : (
             /* No top padding so view headers connect flush to the app top bar.
                Bottom padding clears the mobile tabs or floating touch dock. */
-            <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-smooth px-4 md:px-6 pb-[var(--ch-content-bottom)] md:pb-[calc(1.5rem_+_var(--ch-tablet-nav-height))]">
-              {/* ch-view-enter: one-shot 200ms opacity + 6px rise on every
+            <div ref={scrollRef} className="ch-page-scroll flex-1 overflow-y-auto scroll-smooth px-4 md:px-7 lg:px-9 pb-[var(--ch-content-bottom)] md:pb-[calc(1.5rem_+_var(--ch-tablet-nav-height))]">
+              {/* ch-view-enter: one 180ms fade on every
                   view/club switch (replayed by the remount key below);
                   neutralized under prefers-reduced-motion in globals.css. */}
-              <div className="ch-view-enter max-w-7xl mx-auto pt-4 md:pt-6" key={`${context}-${currentClubId ?? ""}-${view}`}>
+              <div className="ch-view-enter max-w-7xl mx-auto pt-5 md:pt-8" key={`${context}-${currentClubId ?? ""}-${view}`}>
                 {children}
               </div>
             </div>
@@ -1269,9 +1265,9 @@ function SharedNavRow({
     <button
       onClick={onSelect}
       className={cn(
-        "group relative flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
+        "ch-nav-row group relative flex h-10 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm transition-[color,background-color,transform] duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 active:scale-[0.98]",
         active
-          ? "bg-secondary/80 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+          ? "bg-card font-medium text-foreground shadow-sm"
           : "font-normal text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
       )}
       aria-current={active ? "page" : undefined}
@@ -1600,7 +1596,7 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
             <div key={`${section.title}-${i}`}>
               {/* Hairline split between sections (none above the first). */}
               {i > 0 && <div aria-hidden className="mx-3 my-2 h-px bg-border/70" />}
-              <div className="px-3 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+              <div className="px-3 pb-1 pt-1 text-xs font-medium text-muted-foreground">
                 {section.title}
               </div>
               <div className="space-y-0.5">
@@ -1638,7 +1634,7 @@ function MobileDrawerNav({ onPick }: { onPick: (v: View) => void }) {
         className="border-t border-border px-2.5 pt-2 pb-4 shrink-0"
         style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
       >
-        <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">My clubs</div>
+        <div className="px-3 pb-1 text-xs font-medium text-muted-foreground">My clubs</div>
         <div className="space-y-0.5">
           <button
             onClick={() => { selectHub(); onPick("dashboard") }}
@@ -4608,7 +4604,7 @@ function NotifSection({
 }) {
   return (
     <section>
-      <div className="px-3 pt-2.5 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+      <div className="px-3 pt-2.5 pb-1 text-xs font-medium text-muted-foreground">
         {label}
       </div>
       <div className="divide-y">{children}</div>

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { useReducedMotion } from "framer-motion"
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import { useAppStore, type View } from "@/lib/store"
@@ -134,56 +133,6 @@ const TILE_COMPACT =
   "border border-border/80 bg-card rounded-xl p-4 shadow-card transition-[box-shadow,border-color,background-color] duration-200 hover:shadow-card-hover hover:border-club/15"
 
 // =========================================================================
-// Aurora greeting — the soft color band that drifts across the greeting
-// line once every 12s. The element styles are applied INLINE and the band
-// is driven by a rAF loop (below in the component) that writes
-// backgroundPosition per frame — NOT by a CSS animation.
-// WHY rAF (verified by live pixel-diff bisection in this environment):
-// Chromium freezes the painted raster of background-clip:text elements
-// driven by CSS background-position animations — computed style keeps
-// advancing but the pixels never repaint (12s/15s durations, ±2.6s/3.25s
-// delays, layered/unlayered keyframes ALL froze on the real greeting; even
-// post-hoc style mutations can't thaw an element rasterized frozen).
-// JS-driven per-frame inline backgroundPosition updates on a freshly
-// mounted element repaint flawlessly (2,816 px of verified sweep motion) —
-// the rAF driver IS the animation. Side benefits: rAF auto-pauses when the
-// tab is hidden, and the wall-clock phase resumes exactly on return.
-// The band (club accent → teal → violet, each mixed toward the ink so it
-// never goes neon) rides a 260%-wide gradient: most of the cycle the glyphs
-// read as plain ink, and roughly once per 12s the colorful core crosses
-// left→right — noticeable when it passes, invisible when it doesn't. The
-// WIDENED band (40→62%, up from 42→60%) is the "slower, lingers longer"
-// tuning: the colorful core spends ~2.9s per crossing instead of ~2.4s.
-// START-FAST: the driver starts with a 2.6s virtual head start, so the
-// band is already across the leading glyphs at the greeting's first paint
-// (position ≈ 78% — color within ~0.05s, not after a run-up).
-// =========================================================================
-const AURORA_GRADIENT =
-  "linear-gradient(110deg, " +
-  "var(--foreground) 0%, var(--foreground) 40%, " +
-  "color-mix(in oklab, var(--foreground) 62%, var(--club-accent)) 47%, " +
-  "color-mix(in oklab, var(--foreground) 22%, #14b8a6) 52%, " +
-  "color-mix(in oklab, var(--foreground) 60%, #a78bfa) 57%, " +
-  "var(--foreground) 62%, var(--foreground) 100%)"
-
-/** Aurora cycle length + the virtual head start (see comment above). */
-const AURORA_CYCLE_S = 12
-const AURORA_HEAD_START_S = 2.6
-
-const auroraTextStyle = (): CSSProperties => ({
-  backgroundImage: AURORA_GRADIENT,
-  backgroundSize: "260% 100%",
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "100% 0",
-  WebkitBackgroundClip: "text",
-  backgroundClip: "text",
-  color: "transparent",
-  WebkitTextFillColor: "transparent",
-  // NOTE: no CSS `animation` here — see the block comment above. The rAF
-  // effect inside DashboardView drives backgroundPosition every frame.
-})
-
-// =========================================================================
 // Main component
 // =========================================================================
 export function DashboardView() {
@@ -194,17 +143,7 @@ export function DashboardView() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const [memberOnboardingDismissed, setMemberOnboardingDismissed] = useState(false)
 
-  // ── Time-based greeting (§ v7.2) ──────────────────────────────────────────
-  // "Good morning/afternoon/evening, <first name>." The hour is computed ONCE
-  // on mount (lazy initializer — no interval, no re-greeting mid-session); the
-  // NAME is read from the next-auth session user (re-renders resolve once it
-  // hydrates) and falls back to a nameless greeting when unavailable. The whole
-  // line wears the inline aurora styles (see AURORA_GRADIENT above): a soft
-  // aurora band in the club's accent quietly drifts across the letters. Under
-  // prefers-reduced-motion the animation is skipped and the line is plain ink.
-  const prefersReducedMotion = useReducedMotion() ?? false
-  const auroraRef = useRef<HTMLParagraphElement | null>(null)
-
+  // A personal greeting, kept still so the club content gets the attention.
   const [greetingWord] = useState(() => {
     const h = new Date().getHours()
     return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"
@@ -246,34 +185,6 @@ export function DashboardView() {
   useEffect(() => {
     if (error) toast.error((error as Error).message || "Failed to load dashboard")
   }, [error])
-
-  // §Aurora rAF driver — THE animation (see the AURORA comment block for why
-  // this is JS-driven and not a CSS animation). Writes backgroundPosition on
-  // the greeting element every frame with a 2.6s virtual head start so the
-  // band is already on the glyphs at first paint. rAF pauses when the tab is
-  // hidden and the wall-clock phase resumes exactly on return.
-  // Lives AFTER the query + re-runs on `isLoading` because the greeting
-  // element only mounts once data lands (the skeleton early-return below
-  // renders first) — a mount-only effect would see a null ref and never
-  // re-arm.
-  useEffect(() => {
-    if (prefersReducedMotion || isLoading) return
-    const el = auroraRef.current
-    if (!el) return
-    let raf = 0
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const t =
-        (((now - t0) / 1000 + AURORA_HEAD_START_S) % AURORA_CYCLE_S +
-          AURORA_CYCLE_S) %
-        AURORA_CYCLE_S
-      const pos = 100 - (t / AURORA_CYCLE_S) * 100
-      el.style.backgroundPosition = `${pos.toFixed(3)}% 0`
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [prefersReducedMotion, isLoading])
 
   if (!clubId) {
     return (
@@ -754,15 +665,13 @@ export function DashboardView() {
   )
 
   return (
-    <div className="space-y-4 sm:space-y-5 min-w-0">
+    <div className="ch-club-home space-y-4 sm:space-y-5 min-w-0">
       {/* Row 0 — Time-based greeting header. Sits above the banner as the
           dashboard's page header. Mobile matches the banner's 20px identity
           scale; sm+ matches the app's 28px page-title scale. */}
       <header className="min-w-0">
         <p
-          ref={auroraRef}
-          style={auroraTextStyle()}
-          className="aurora-fallback font-display text-[1.25rem] sm:text-[1.75rem] leading-tight font-semibold tracking-[-0.022em]"
+          className="ch-home-greeting"
         >
           {greetingWord}
           {firstName ? `, ${firstName}` : ""}.
