@@ -8,7 +8,7 @@ import { format, isToday, isTomorrow, isYesterday } from "date-fns"
 import {
   CalendarDays, CalendarCheck, CheckSquare, Megaphone, Clock, Compass, ChevronRight,
   MapPin, Pin, Zap, BarChart3, Heart, MessageSquare, Trophy, ArrowRight,
-  CheckCircle2, Circle, Loader2, PartyPopper, Search, Users,
+  CheckCircle2, Circle, Loader2, PartyPopper, Users,
 } from "lucide-react"
 import { api } from "@/lib/api/client"
 import { useAppStore } from "@/lib/store"
@@ -16,98 +16,20 @@ import { usePollingFallback } from "@/lib/realtime-store"
 import { openInClub, openClubHome } from "@/lib/hub-nav"
 import type { HubOverview, HubMeeting, HubTask, HubAnnouncement, HubClubSummary } from "@/lib/hub-types"
 import { ClubTile, ClubChip, ClubDot } from "@/components/shared/club-badge-chip"
-import { openGlobalSearch } from "@/components/global-search"
-import { ResilientImage } from "@/components/ui/resilient-image"
 import { DecoratedAvatar } from "@/components/shared/decorated-avatar"
 import { relativeTime } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-/**
- * MY HUB — the student's personal, cross-club home.
- *
- * The default view of the entire ClubHub experience: one glance answers
- * "what's happening in my clubs?", "what do I need to do?", "what should I
- * pay attention to?" and "what opportunities do I have?". Every item is
- * REAL data aggregated from the student's memberships (GET /api/hub) and
- * every click jumps to the item's original home inside its club workspace —
- * My Hub never duplicates club functionality, it lenses it.
- *
- * Layout (desktop, 12-col rhythm — MASONRY: two independent columns so a
- * short card never strands empty space; every section sizes to its OWN
- * content, empty sections are a single quiet line):
- *   Row 0  greeting header (aurora ink, date)
- *   Row 1  Quick Jump — slim pill toolbar: club chips + icon quick actions
- *   Row 2  Next up hero + four stat cards. The hero holds the next
- *          un-responded event; RSVPing confirms the chip, holds ~2s, then
- *          the following event EXPANDS into the hero (keyed remount). When
- *          nothing remains it collapses to "No more events currently".
- *   Row 3  compact suggestion chips (a whisper, not a second hero)
- *   Left column (7): Your week, Recent updates
- *   Right column (5): My tasks, My clubs — a short/empty My tasks pulls
- *          My clubs straight up into the freed space.
- *   Full width: Your Activity strip.
- *
- * Visual language: every section is a hub-card (hairline border/60,
- * layered shadow scale, hover lift + accent-tinted border, 180ms motion
- * ease) so the page reads as one family; section headers are tight (h-10)
- * with tinted icon chips and pill header actions; the suggestion chips
- * are 28px-tall pills with 12px text; big numbers use the display face.
- * Motion: the whole page cascades in (stagger-in, replayed by the shell's
- * per-view remount key), the greeting wears the same aurora band as the
- * club dashboard, stat numerals count up from zero when data lands, the
- * shortcuts bar is one snap-scroll rail on mobile, and the hero swap uses
- * animate-hero-in. Everything is neutralized under prefers-reduced-motion.
+/** Personal home: one next event, a compact overview, then the week's
+ * agenda and tasks. Keep the data and actions in their original club context.
+ * The shell supplies the only page entrance; content is immediately readable.
  */
 
 const RSVP_LABEL: Record<string, string> = {
   going: "Going",
   maybe: "Maybe",
   not_going: "Not going",
-}
-
-// =========================================================================
-// Aurora greeting — the same soft color band that drifts across the club
-// dashboard's greeting line, ported verbatim (rAF-driven inline
-// backgroundPosition; see dashboard-view.tsx for the full "why rAF and not
-// a CSS animation" post-mortem). In My Hub the accent slot resolves to the
-// default emerald, so the band reads emerald → teal → violet — colorful
-// without belonging to any one club.
-// =========================================================================
-const AURORA_GRADIENT =
-  "linear-gradient(110deg, " +
-  "var(--foreground) 0%, var(--foreground) 40%, " +
-  "color-mix(in oklab, var(--foreground) 62%, var(--club-accent)) 47%, " +
-  "color-mix(in oklab, var(--foreground) 22%, #14b8a6) 52%, " +
-  "color-mix(in oklab, var(--foreground) 60%, #a78bfa) 57%, " +
-  "var(--foreground) 62%, var(--foreground) 100%)"
-
-const AURORA_CYCLE_S = 12
-const AURORA_HEAD_START_S = 2.6
-
-const auroraTextStyle = (): React.CSSProperties => ({
-  backgroundImage: AURORA_GRADIENT,
-  backgroundSize: "260% 100%",
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "100% 0",
-  WebkitBackgroundClip: "text",
-  backgroundClip: "text",
-  color: "transparent",
-  WebkitTextFillColor: "transparent",
-})
-
-/** Time-of-day line under the greeting — mirrors the club dashboard's
- *  "next up" sentence so both homes speak the same language. */
-function nextUpSentence(meetings: HubMeeting[]) {
-  const next = meetings[0]
-  if (!next) return null
-  const d = new Date(next.startTime)
-  const when = isToday(d)
-    ? format(d, "h:mm a")
-    : isTomorrow(d)
-      ? `tomorrow ${format(d, "h:mm a")}`
-      : format(d, "EEE, MMM d")
-  return `Next up: ${next.title} · ${next.club.clubName} · ${when}`
 }
 
 export function HubView() {
@@ -127,80 +49,44 @@ export function HubView() {
   const firstName = session?.user?.name?.split(" ")[0]
 
   const prefersReducedMotion = useReducedMotion() ?? false
-  const auroraRef = useRef<HTMLHeadingElement | null>(null)
-
-  // §Aurora rAF driver — writes backgroundPosition every frame with a 2.6s
-  // virtual head start so the band is already on the glyphs at first paint.
-  // rAF pauses when the tab is hidden; wall-clock phase resumes on return.
-  useEffect(() => {
-    if (prefersReducedMotion) return
-    const el = auroraRef.current
-    if (!el) return
-    let raf = 0
-    const t0 = performance.now()
-    const tick = (now: number) => {
-      const t =
-        (((now - t0) / 1000 + AURORA_HEAD_START_S) % AURORA_CYCLE_S +
-          AURORA_CYCLE_S) %
-        AURORA_CYCLE_S
-      const pos = 100 - (t / AURORA_CYCLE_S) * 100
-      el.style.backgroundPosition = `${pos.toFixed(3)}% 0`
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [prefersReducedMotion])
 
   return (
-    <div className="space-y-5 pb-2">
-      {/* ── A. Personalized header — aurora ink greeting ───────────────── */}
-      <header
-        className="stagger-in flex flex-wrap items-end justify-between gap-4"
-        style={{ "--stagger-i": 0 } as React.CSSProperties}
-      >
-        <div className="min-w-0">
-          <p className="text-caption-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+    <div className="ch-home space-y-6 pb-2">
+      <header className="ch-home-header flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-64">
+          <p className="text-sm text-muted-foreground">
             {format(new Date(), "EEEE, MMMM d")}
           </p>
-          <h1
-            ref={auroraRef}
-            style={prefersReducedMotion ? undefined : auroraTextStyle()}
-            className="aurora-fallback font-display mt-1 truncate text-[1.625rem] font-semibold leading-10 sm:text-[2.25rem] sm:leading-[2.625rem] tracking-[-0.025em]"
-          >
-            {greeting}{firstName ? `, ${firstName}` : ""}
+          <h1 className="ch-home-greeting mt-2">
+            {greeting}{firstName ? `, ${firstName}` : ""}.
           </h1>
-          <p className="text-body text-muted-foreground mt-1">
-            {clubs.length === 1 ? "Your club at a glance." : `Your ${clubs.length} clubs at a glance.`}
+          <p className="mt-3 text-body text-muted-foreground">
+            {clubs.length === 1 ? "Here’s what’s happening in your club." : "Here’s what’s happening in your clubs."}
           </p>
         </div>
+        <Button
+          variant="outline"
+          className="ch-discover-button rounded-full gap-2"
+          onClick={() => window.dispatchEvent(new CustomEvent("clubhub:open-join"))}
+        >
+          <Compass className="h-4 w-4" /> Find a club
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+        </Button>
       </header>
-
-      {/* Soft gradient hairline — closes the greeting with quiet structure
-          instead of a hard rule; fades out at both ends. */}
-      <span aria-hidden className="hairline-soft block" />
-
-      {/* ── B. Quick Jump — club chips + quick actions ──────────────────── */}
-      <QuickJump
-        clubs={clubs}
-        unreadUpdates={isLoading ? null : data?.stats.unreadUpdates ?? 0}
-        unreadMessages={isLoading ? null : data?.stats.unreadMessages ?? 0}
-        stagger={1}
-      />
 
       {/* ── C. Next up hero + overview statistics ─────────────────────────
           items-start so the stat rail doesn't stretch to a tall hero (and
           vice versa) — each column keeps its own natural height. */}
-      <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-12 xl:gap-4">
-        <div className="xl:col-span-5">
-          <NextUpHero meetings={data?.week ?? []} loading={isLoading} stagger={2} />
+      <div className="grid grid-cols-1 items-stretch gap-4 xl:grid-cols-5">
+        <div className="xl:col-span-3">
+          <NextUpHero meetings={data?.week ?? []} loading={isLoading} />
         </div>
-        <div className="grid grid-cols-2 content-start gap-3 xl:col-span-7 xl:grid-cols-4">
+        <div className="ch-overview grid grid-cols-2 xl:col-span-2">
           <StatCard
             icon={<CalendarDays className="h-4 w-4" />}
             label="Upcoming events"
             value={isLoading ? null : data?.stats.upcomingEvents ?? 0}
             hint="next 30 days"
-            stagger={3}
             onClick={() => setView("meetings")}
           />
           <StatCard
@@ -208,7 +94,6 @@ export function HubView() {
             label="Pending tasks"
             value={isLoading ? null : data?.stats.pendingTasks ?? 0}
             hint="assigned to you"
-            stagger={4}
             onClick={() => setView("tasks")}
           />
           <StatCard
@@ -216,7 +101,6 @@ export function HubView() {
             label="Unread updates"
             value={isLoading ? null : data?.stats.unreadUpdates ?? 0}
             hint="announcements"
-            stagger={5}
             onClick={() => setView("announcements")}
           />
           <StatCard
@@ -229,16 +113,15 @@ export function HubView() {
                 ? `${data.stats.pendingHours}h pending review`
                 : "approved"
             }
-            stagger={6}
             onClick={() =>
-              document.getElementById("hub-activity")?.scrollIntoView({ behavior: "smooth", block: "start" })
+              document.getElementById("hub-activity")?.scrollIntoView({ behavior: prefersReducedMotion ? "instant" : "smooth", block: "start" })
             }
           />
         </div>
       </div>
 
       {/* ── D. Smart suggestions — one clear "what should I do next" row ── */}
-      <SuggestionRow data={data} loading={isLoading} stagger={7} />
+      <SuggestionRow data={data} loading={isLoading} />
 
       {/* ── Rows 4–5: two independent columns, not grid rows ──────────────
           Left (7): Your week + Recent updates. Right (5): My tasks + My
@@ -250,8 +133,7 @@ export function HubView() {
         <div className="space-y-4 lg:col-span-7">
           {/* E. Your Week */}
           <section
-            className="stagger-in hub-card-hover"
-            style={{ "--stagger-i": 8 } as React.CSSProperties}
+            className="hub-card-hover"
             aria-label="Your week"
           >
             <SectionHeader
@@ -268,8 +150,7 @@ export function HubView() {
 
           {/* G. Recent Updates */}
           <section
-            className="stagger-in hub-card-hover"
-            style={{ "--stagger-i": 9 } as React.CSSProperties}
+            className="hub-card-hover"
             aria-label="Recent updates"
           >
             <SectionHeader
@@ -288,8 +169,7 @@ export function HubView() {
         <div className="space-y-4 lg:col-span-5">
           {/* F. My Tasks */}
           <section
-            className="stagger-in hub-card-hover"
-            style={{ "--stagger-i": 10 } as React.CSSProperties}
+            className="hub-card-hover"
             aria-label="My tasks"
           >
             <SectionHeader
@@ -306,8 +186,7 @@ export function HubView() {
 
           {/* H. My Clubs */}
           <section
-            className="stagger-in hub-card-hover"
-            style={{ "--stagger-i": 11 } as React.CSSProperties}
+            className="hub-card-hover"
             aria-label="My clubs"
           >
             <SectionHeader icon={<PartyPopper />} title="My clubs" />
@@ -319,8 +198,7 @@ export function HubView() {
       {/* ── I. Your Activity ───────────────────────────────────────────── */}
       <section
         id="hub-activity"
-        className="stagger-in hub-card-hover"
-        style={{ "--stagger-i": 12 } as React.CSSProperties}
+        className="hub-card-hover"
         aria-label="Your activity"
       >
         <SectionHeader icon={<BarChart3 />} title="Your activity" />
@@ -334,9 +212,9 @@ export function HubView() {
 
 function SectionHeader({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
+    <div className="ch-section-header flex items-center justify-between gap-2 px-5 pt-4 pb-2">
       <h2 className="flex items-center gap-2 text-body-medium font-semibold text-foreground">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted/70 text-muted-foreground [&_svg]:h-3.5 [&_svg]:w-3.5">
+        <span className="flex items-center justify-center text-muted-foreground [&_svg]:h-4 [&_svg]:w-4">
           {icon}
         </span>
         {title}
@@ -363,149 +241,6 @@ function SectionLink({ children, onClick, ariaLabel }: { children: React.ReactNo
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
- * QUICK JUMP — the shortcuts bar.
- *
- * ONE slim pill toolbar (a single rounded-full surface, not a boxy strip):
- *   • club chips — logo + name, the club's accent as a soft dot, hover
- *     lift + accent-tinted background — one tap lands in that club's
- *     workspace. Ordered by the store's club order (join order), which is
- *     also the sidebar order.
- *   • icon-only quick actions with tooltip titles; unread counts render
- *     as a tiny accent dot pinned to the icon's corner (the messages
- *     count itself lives on the sidebar's Messages item, so the toolbar
- *     stays calm).
- *   • a trailing "Discover" circular accent button.
- *
- * The whole bar scrolls as ONE snap rail on every breakpoint — no two
- * stacked rails, no wrap. Height is fixed at 48px so it reads as a
- * control strip, distinct from the content cards below.
- * ═══════════════════════════════════════════════════════════════════════ */
-function QuickJump({
-  clubs,
-  unreadUpdates,
-  unreadMessages,
-  stagger,
-}: {
-  clubs: { clubId: string; clubName: string; logoUrl: string | null; accentColor: string }[]
-  unreadUpdates: number | null
-  unreadMessages: number | null
-  stagger: number
-}) {
-  const setView = useAppStore((s) => s.setView)
-
-  const actions = useMemo(
-    () => [
-      {
-        key: "search",
-        icon: <Search className="h-4 w-4" />,
-        label: "Search",
-        dot: false,
-        onClick: () => openGlobalSearch(),
-      },
-      {
-        key: "messages",
-        icon: <MessageSquare className="h-4 w-4" />,
-        label: "Messages",
-        dot: (unreadMessages ?? 0) > 0,
-        onClick: () => setView("chat"),
-      },
-      {
-        key: "updates",
-        icon: <Megaphone className="h-4 w-4" />,
-        label: "Updates",
-        dot: (unreadUpdates ?? 0) > 0,
-        onClick: () => setView("announcements"),
-      },
-      {
-        key: "tasks",
-        icon: <CheckSquare className="h-4 w-4" />,
-        label: "My tasks",
-        dot: false,
-        onClick: () => setView("tasks"),
-      },
-      {
-        key: "calendar",
-        icon: <CalendarDays className="h-4 w-4" />,
-        label: "Calendar",
-        dot: false,
-        onClick: () => setView("meetings"),
-      },
-    ],
-    [setView, unreadUpdates, unreadMessages]
-  )
-
-  return (
-    <div
-      className="stagger-in scrollbar-thin relative flex h-12 snap-x items-center gap-1.5 overflow-x-auto rounded-full border border-border/70 bg-muted/40 px-1.5 shadow-card backdrop-blur-sm"
-      style={{ "--stagger-i": stagger } as React.CSSProperties}
-      role="toolbar"
-      aria-label="Quick jump shortcuts"
-    >
-      {clubs.map((c) => (
-        <button
-          key={c.clubId}
-          type="button"
-          onClick={() => openClubHome(c.clubId)}
-          title={`Open ${c.clubName}`}
-          className="group flex h-9 shrink-0 snap-start items-center gap-2 rounded-full border border-transparent pl-1 pr-3 text-caption-medium font-medium text-foreground/90 transition-[background-color,border-color,transform,box-shadow] duration-150 hover:-translate-y-px hover:bg-background hover:shadow-sm active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        >
-          <span
-            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold text-white ring-1 ring-black/5 transition-shadow duration-150 group-hover:ring-2"
-            style={{ backgroundColor: c.accentColor, ...(c.logoUrl ? {} : { boxShadow: "none" }) }}
-          >
-            <ResilientImage src={c.logoUrl} alt="" name={c.clubName} className="h-full w-full object-cover" />
-          </span>
-          <span className="whitespace-nowrap">{c.clubName}</span>
-        </button>
-      ))}
-
-      {clubs.length > 0 && <span className="h-5 w-px shrink-0 bg-border/70" aria-hidden />}
-
-      {actions.map((a) => (
-        <button
-          key={a.key}
-          type="button"
-          onClick={a.onClick}
-          title={a.label}
-          aria-label={a.label}
-          className="group relative flex h-9 shrink-0 snap-start items-center gap-1.5 rounded-full px-2.5 text-muted-foreground transition-[color,background-color,transform] duration-150 hover:-translate-y-px hover:bg-background hover:text-foreground active:translate-y-0 active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:px-2"
-        >
-          {a.icon}
-          {/* Label appears on roomier screens so the rail teaches itself;
-              icon-only on mobile keeps the strip within a thumb's scroll. */}
-          <span className="hidden whitespace-nowrap text-caption-medium font-medium lg:inline">
-            {a.label}
-          </span>
-          {a.dot && (
-            <span
-              className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-club ring-2 ring-muted group-hover:ring-background"
-              aria-hidden
-            />
-          )}
-        </button>
-      ))}
-
-      <button
-        type="button"
-        onClick={() => window.dispatchEvent(new CustomEvent("clubhub:open-join"))}
-        title="Discover clubs"
-        aria-label="Discover clubs"
-        className="ml-auto flex h-9 shrink-0 snap-start items-center gap-1.5 rounded-full bg-club px-3.5 text-caption-medium font-semibold text-club-foreground shadow-sm transition-[transform,box-shadow,filter] duration-150 hover:-translate-y-px hover:shadow-md hover:brightness-110 active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-      >
-        <Compass className="h-4 w-4" />
-        <span className="hidden whitespace-nowrap sm:inline">Discover</span>
-      </button>
-
-      {/* Edge fade — signals the bar scrolls on narrow screens. */}
-      <span
-        className="pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-full bg-gradient-to-l from-muted/90 to-transparent sm:hidden"
-        aria-hidden
-      />
-    </div>
-  )
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
  * NEXT UP HERO — the single next thing on the student's calendar.
  *
  * A wide accent-tinted card (the club's accent, like a club tile grown
@@ -527,7 +262,7 @@ function QuickJump({
  * ═══════════════════════════════════════════════════════════════════════ */
 const ADVANCE_HOLD_MS = 2000
 
-function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; loading: boolean; stagger: number }) {
+function NextUpHero({ meetings, loading }: { meetings: HubMeeting[]; loading: boolean }) {
   const qc = useQueryClient()
   const setView = useAppStore((s) => s.setView)
 
@@ -595,8 +330,7 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
   if (loading) {
     return (
       <div
-        className="stagger-in flex min-h-[168px] flex-col justify-between rounded-xl border border-border/80 bg-card p-4 shadow-card"
-        style={{ "--stagger-i": stagger } as React.CSSProperties}
+        className="ch-next-event flex min-h-[220px] flex-col justify-between rounded-xl border border-border/80 bg-card p-5"
         role="status"
         aria-label="Loading next event"
       >
@@ -620,15 +354,14 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
     const anyAtAll = meetings.length > 0
     return (
       <div
-        className="stagger-in flex min-h-[76px] flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-dashed border-border/70 bg-card/60 p-4 shadow-card"
-        style={{ "--stagger-i": stagger } as React.CSSProperties}
+        className="ch-next-event flex min-h-[220px] flex-wrap content-center items-center gap-x-3 gap-y-2 rounded-xl border border-border/70 bg-card/60 p-5"
         aria-label={anyAtAll ? "No more events need responses" : "Nothing coming up"}
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/70 text-muted-foreground">
           {anyAtAll ? <CalendarCheck className="h-4 w-4" /> : <CalendarDays className="h-4 w-4" />}
         </span>
         <p className="text-body-medium font-medium text-foreground/90">
-          {anyAtAll ? "No more events currently need responses" : "Nothing coming up yet"}
+          {anyAtAll ? "You’re all set for your next events." : "A little breathing room. No events yet."}
         </p>
         <button
           type="button"
@@ -652,8 +385,7 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
 
   return (
     <div
-      className="stagger-in group relative overflow-hidden rounded-xl border border-border/60 bg-card p-4 shadow-[var(--shadow-hero)] transition-[box-shadow,border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-card-hover"
-      style={{ "--stagger-i": stagger } as React.CSSProperties}
+      className="ch-next-event group relative h-full overflow-hidden rounded-xl border border-border/60 bg-card p-5 sm:p-6"
     >
       {/* Club accent wash — a soft diagonal tint from the club's accent so
           the card carries the club's identity without stealing the show. */}
@@ -672,12 +404,12 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
 
       {/* Keyed by meeting id: answering an event swaps in the next one and
           the content block replays hero-in (rise + settle). */}
-      <div key={shown.id} className={cn("relative flex flex-col", !reduced && "animate-hero-in")}>
+      <div key={shown.id} className={cn("relative flex h-full flex-col justify-center", !reduced && "animate-hero-in")}>
         <div className="flex items-start gap-3">
           {/* Time block */}
           <div className="flex w-14 shrink-0 flex-col items-center justify-center rounded-xl border border-border/70 bg-muted/30 py-2 leading-none">
-            <span className="text-[17px] font-bold tabular-nums">{format(start, "d")}</span>
-            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="font-display text-2xl font-semibold tabular-nums">{format(start, "d")}</span>
+            <span className="mt-1 text-xs font-medium text-muted-foreground">
               {format(start, "MMM")}
             </span>
           </div>
@@ -687,8 +419,8 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
             className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset rounded-lg"
             aria-label={`Open ${shown.title} in ${shown.club.clubName}`}
           >
-            <p className="text-caption-medium uppercase tracking-[0.12em] text-muted-foreground/80">Next up</p>
-            <p className="mt-0.5 truncate text-[15px] font-semibold leading-snug">{shown.title}</p>
+            <p className="text-caption-medium text-muted-foreground">Coming up next</p>
+            <p className="mt-1 text-xl font-semibold leading-snug tracking-tight break-words">{shown.title}</p>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground">
               <ClubChip club={shown.club} className="py-0" />
               <span className="font-medium text-foreground/70">{when}</span>
@@ -785,7 +517,7 @@ function NextUpHero({ meetings, loading, stagger }: { meetings: HubMeeting[]; lo
  * titles (urgent announcements) truncate at ~32ch; titles that already
  * start with "URGENT" are not double-prefixed.
  * ═══════════════════════════════════════════════════════════════════════ */
-function SuggestionRow({ data, loading, stagger }: { data: HubOverview | undefined; loading: boolean; stagger: number }) {
+function SuggestionRow({ data, loading }: { data: HubOverview | undefined; loading: boolean }) {
   const setView = useAppStore((s) => s.setView)
 
   const suggestions = useMemo(() => {
@@ -869,8 +601,7 @@ function SuggestionRow({ data, loading, stagger }: { data: HubOverview | undefin
   if (suggestions.length === 0) {
     return (
       <div
-        className="stagger-in flex items-center gap-2 rounded-full border border-success-subtle bg-success-subtle/40 px-3 py-1.5"
-        style={{ "--stagger-i": stagger } as React.CSSProperties}
+        className="flex items-center gap-2 rounded-full border border-success-subtle bg-success-subtle/40 px-3 py-1.5"
         role="status"
       >
         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success-foreground" />
@@ -890,8 +621,7 @@ function SuggestionRow({ data, loading, stagger }: { data: HubOverview | undefin
 
   return (
     <div
-      className="stagger-in scrollbar-thin flex snap-x items-center gap-1.5 overflow-x-auto pb-0.5"
-      style={{ "--stagger-i": stagger } as React.CSSProperties}
+      className="scrollbar-thin flex snap-x items-center gap-1.5 overflow-x-auto pb-0.5"
       aria-label="Suggested next actions"
     >
       {suggestions.map((s) => (
@@ -915,56 +645,14 @@ function SuggestionRow({ data, loading, stagger }: { data: HubOverview | undefin
   )
 }
 
-/** Count-up numeral — the stat number rises from 0 (or its previous value)
- *  over ~600ms with an ease-out curve. Writes textContent directly via rAF
- *  (no per-frame React state), skips straight to the final value under
- *  prefers-reduced-motion, and animates FROM the previous value when the
- *  stats refresh so the motion reads as "updated", not "reset". */
-function CountUp({ to, suffix }: { to: number; suffix?: string }) {
-  const ref = useRef<HTMLSpanElement | null>(null)
-  const fromRef = useRef(0)
-  const reduced = useReducedMotion() ?? false
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const final = `${to}${suffix ?? ""}`
-    if (reduced) {
-      el.textContent = final
-      fromRef.current = to
-      return
-    }
-    let raf = 0
-    const from = fromRef.current
-    const t0 = performance.now()
-    const dur = 620
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - t0) / dur)
-      const eased = 1 - Math.pow(1 - p, 3)
-      el.textContent = `${Math.round(from + (to - from) * eased)}${suffix ?? ""}`
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else fromRef.current = to
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [to, suffix, reduced])
-
-  return (
-    <span ref={ref} className="tabular-nums">
-      {`${to}${suffix ?? ""}`}
-    </span>
-  )
-}
-
 function StatCard({
-  icon, label, value, suffix, hint, stagger, onClick,
+  icon, label, value, suffix, hint, onClick,
 }: {
   icon: React.ReactNode
   label: string
   value: number | null
   suffix?: string
   hint?: string
-  stagger?: number
   onClick?: () => void
 }) {
   const loading = value === null
@@ -974,28 +662,27 @@ function StatCard({
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "stagger-in group relative flex flex-col items-start gap-2 rounded-xl border border-border/60 bg-card p-3.5 text-left shadow-card transition-[border-color,background-color,transform,box-shadow] duration-200 hover:border-club/40 hover:bg-accent/40 hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-club/50 disabled:pointer-events-none"
+        "ch-stat group relative flex min-w-0 flex-col items-start gap-2 p-4 text-left transition-colors duration-150 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none"
       )}
-      style={{ "--stagger-i": stagger ?? 0 } as React.CSSProperties}
     >
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary/70 text-club-ink transition-[background-color,transform] duration-200 group-hover:scale-105 group-hover:bg-club-muted [&_svg]:h-4 [&_svg]:w-4">
+      <span className="absolute right-4 top-4 text-muted-foreground [&_svg]:h-4 [&_svg]:w-4">
         {icon}
       </span>
       {loading ? (
         <span className="h-8 w-12 rounded skeleton-shimmer" aria-label="Loading" />
       ) : (
-        <span className="font-display text-[1.625rem] font-bold leading-none tracking-[-0.03em] tabular-nums">
-          <CountUp to={value ?? 0} suffix={suffix} />
+        <span className="font-display pr-6 text-[1.875rem] font-semibold leading-none tracking-[-0.03em] tabular-nums">
+          {value}{suffix}
         </span>
       )}
       <span className="text-caption-medium text-muted-foreground">
         {label}
-        {hint ? <span className="text-muted-foreground/60"> · {hint}</span> : null}
+        {hint ? <span className="mt-0.5 block text-xs text-muted-foreground">{hint}</span> : null}
       </span>
       {/* A quiet chevron, revealed on hover/focus — signals the whole card
           is a shortcut into that view (the affordance users otherwise only
           discover by accident). */}
-      <ChevronRight className="absolute right-3 top-3.5 h-3.5 w-3.5 text-muted-foreground/0 transition-colors duration-200 group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70" aria-hidden />
+      <ChevronRight className="absolute right-3 bottom-3.5 h-3.5 w-3.5 text-muted-foreground/0 transition-colors duration-200 group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70" aria-hidden />
     </button>
   )
 }
