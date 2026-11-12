@@ -68,6 +68,7 @@ import { CreateClubDialog } from "@/components/auth/create-club-dialog"
 import { CropAvatarDialog } from "@/components/profile/crop-avatar-dialog"
 import { authenticateSocket, getRealtimeSocket, onRealtimeEvent } from "@/lib/realtime-client"
 import { openGlobalSearch } from "@/components/global-search"
+import { BrandMark } from "@/components/brand-mark"
 // Lazy-load the GlobalSearch command palette (heavy: bundles cmdk). It's
 // only opened on Cmd+K / `/` / header click, so deferring it keeps the
 // initial chunk lean. The component still mounts on the client shortly after
@@ -1021,6 +1022,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Right side: search icon (mobile), bell, profile avatar (mobile only —
           desktop accounts live in the sidebar footer). */}
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
+        <span className="ch-sync-pill hidden sm:inline-flex" aria-label="ClubHub is synced">
+          <span className="ch-sync-dot" aria-hidden />
+          Synced
+        </span>
         <Button
           variant="ghost"
           size="icon"
@@ -1058,7 +1063,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               sidebar (no brand row above it): My Hub ↔ individual clubs.
               Switcher pinned at the top, nav in the scrollable middle, theme
               toggle at the bottom. */}
-          <div className="p-3 shrink-0">
+          <div className="ch-sidebar-brand px-4 pt-4 pb-3 shrink-0">
+            <BrandMark size={36} className="ch-brand-mark" />
+            <div className="min-w-0">
+              <p className="ch-brand-name">ClubHub</p>
+              <p className="ch-brand-caption">Your club command center</p>
+            </div>
+          </div>
+          <div className="px-3 pb-3 shrink-0">
             <ContextSwitcher
               clubs={clubs}
               context={context}
