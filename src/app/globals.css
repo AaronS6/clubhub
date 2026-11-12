@@ -1665,3 +1665,376 @@ body:has([data-slot="alert-dialog-overlay"][data-state="open"]) .ch-app .ch-deco
 @media (prefers-reduced-motion: reduce) {
   .ch-page-scroll { scroll-behavior: auto; }
 }
+
+/* =========================================================================
+   ClubHub Next — editorial workspace pass
+   A cooler, more dimensional surface system with a distinctive aurora
+   identity. Existing utility classes and behavior remain intact; these
+   selectors only tune the signed-in shell and dashboard surfaces.
+   ========================================================================= */
+
+:root {
+  --background: #f4f7fb;
+  --foreground: #101828;
+  --card: #ffffff;
+  --card-foreground: #101828;
+  --popover: #ffffff;
+  --popover-foreground: #101828;
+  --secondary: #edf2f8;
+  --secondary-foreground: #101828;
+  --muted: #edf2f8;
+  --muted-foreground: #667085;
+  --accent: #e9eff8;
+  --accent-foreground: #101828;
+  --border: #dce5f0;
+  --input: #dce5f0;
+  --ring: #3f8cff;
+  --sidebar: #fbfcfe;
+  --sidebar-foreground: #101828;
+  --sidebar-accent: #edf2f8;
+  --sidebar-accent-foreground: #101828;
+  --sidebar-border: #dce5f0;
+  --ch-indigo: #635bff;
+  --ch-cyan: #25c7d9;
+  --ch-violet: #b08cff;
+  --ch-ink-soft: #475467;
+}
+
+.dark {
+  --background: #080c14;
+  --foreground: #f2f5f9;
+  --card: #101722;
+  --card-foreground: #f2f5f9;
+  --popover: #101722;
+  --popover-foreground: #f2f5f9;
+  --secondary: #172131;
+  --secondary-foreground: #f2f5f9;
+  --muted: #172131;
+  --muted-foreground: #98a6b8;
+  --accent: #1b293b;
+  --accent-foreground: #f2f5f9;
+  --border: rgba(210, 225, 245, 0.14);
+  --input: rgba(210, 225, 245, 0.16);
+  --ring: #72a8ff;
+  --sidebar: #0d131e;
+  --sidebar-foreground: #f2f5f9;
+  --sidebar-accent: #172131;
+  --sidebar-accent-foreground: #f2f5f9;
+  --sidebar-border: rgba(210, 225, 245, 0.12);
+  --ch-ink-soft: #b2bdd0;
+}
+
+.ch-workspace {
+  --ch-surface-line: color-mix(in srgb, var(--border) 78%, transparent);
+  --ch-surface: color-mix(in srgb, var(--card) 92%, transparent);
+  --ch-rail: color-mix(in srgb, var(--sidebar) 90%, transparent);
+  isolation: isolate;
+  padding: 0 14px 14px;
+  background:
+    radial-gradient(900px 460px at 8% 0%, color-mix(in srgb, var(--ch-indigo) 10%, transparent), transparent 65%),
+    radial-gradient(820px 480px at 92% 6%, color-mix(in srgb, var(--ch-cyan) 8%, transparent), transparent 64%),
+    linear-gradient(180deg, color-mix(in srgb, var(--background) 90%, transparent), var(--background));
+}
+
+.ch-workspace::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.26;
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--foreground) 3%, transparent) 1px, transparent 1px), linear-gradient(color-mix(in srgb, var(--foreground) 3%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, black, transparent 68%);
+}
+
+.ch-workspace > .ch-topbar {
+  width: 100%;
+  height: calc(4.25rem + env(safe-area-inset-top));
+  min-height: calc(4.25rem + env(safe-area-inset-top));
+  margin: 12px 0 14px;
+  padding-inline: 18px;
+  border: 1px solid var(--ch-surface-line);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--card) 76%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.24);
+  backdrop-filter: blur(24px) saturate(1.24);
+  box-shadow: 0 14px 42px color-mix(in srgb, #08101f 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 66%, transparent);
+}
+
+.dark .ch-workspace > .ch-topbar {
+  background: color-mix(in srgb, var(--card) 78%, transparent);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.ch-topbar > div:first-child p {
+  gap: 10px;
+  color: var(--ch-ink-soft);
+  font-size: 0.78rem;
+  letter-spacing: 0.015em;
+}
+
+.ch-topbar > div:first-child p span:first-child {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.ch-topbar button[aria-label*="Search"] {
+  border-color: var(--ch-surface-line);
+  background: color-mix(in srgb, var(--muted) 66%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 36%, transparent);
+  transition: transform 180ms var(--motion-ease), border-color 180ms var(--motion-ease), background-color 180ms var(--motion-ease), box-shadow 180ms var(--motion-ease);
+}
+
+.ch-topbar button[aria-label*="Search"]:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--club-accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--card) 82%, var(--club-accent) 6%);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--club-accent) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 48%, transparent);
+}
+
+.ch-sync-pill {
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--success) 22%, var(--border));
+  border-radius: 999px;
+  color: var(--success-foreground);
+  background: color-mix(in srgb, var(--success-subtle) 64%, transparent);
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+}
+
+.ch-sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.ch-workspace-layout {
+  gap: 14px;
+  padding: 0;
+}
+
+.ch-workspace-sidebar {
+  width: 248px;
+  border: 1px solid var(--ch-surface-line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sidebar) 94%, transparent), color-mix(in srgb, var(--sidebar) 82%, transparent));
+  -webkit-backdrop-filter: blur(22px) saturate(1.12);
+  backdrop-filter: blur(22px) saturate(1.12);
+  box-shadow: 0 18px 48px color-mix(in srgb, #101828 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 56%, transparent);
+}
+
+.dark .ch-workspace-sidebar {
+  background: linear-gradient(180deg, rgba(16, 23, 34, 0.92), rgba(10, 15, 24, 0.82));
+  box-shadow: 0 22px 56px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.ch-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.ch-brand-mark {
+  border-radius: 12px !important;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--club-accent) 24%, transparent), inset 0 1px 0 rgba(255,255,255,0.28);
+}
+
+.ch-brand-name {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.ch-brand-caption {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  letter-spacing: 0.01em;
+}
+
+.ch-workspace-sidebar .ch-nav-row {
+  height: 42px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  padding-inline: 12px;
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+}
+
+.ch-workspace-sidebar .ch-nav-row:hover {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--card) 54%, transparent);
+  color: var(--foreground);
+  transform: translateX(2px);
+}
+
+.ch-workspace-sidebar .ch-nav-row[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--club-accent) 22%, var(--border));
+  background: linear-gradient(105deg, color-mix(in srgb, var(--club-accent) 14%, var(--card)), color-mix(in srgb, var(--card) 78%, transparent));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--club-accent) 10%, transparent), inset 0 1px 0 rgba(255,255,255,0.44);
+}
+
+.ch-workspace-sidebar .ch-nav-row[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  right: 11px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--club-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--club-accent) 12%, transparent);
+}
+
+.ch-workspace-sidebar nav > div > div:first-child,
+.ch-workspace-sidebar nav > div > div[class*="text-xs"] {
+  padding-inline: 12px;
+  color: color-mix(in srgb, var(--muted-foreground) 78%, transparent);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ch-workspace-sidebar .border-t {
+  border-color: var(--ch-surface-line);
+}
+
+.ch-workspace-main {
+  border: 1px solid var(--ch-surface-line);
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--card) 60%, transparent);
+  box-shadow: 0 18px 58px color-mix(in srgb, #101828 10%, transparent), inset 0 1px 0 color-mix(in srgb, white 54%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.06);
+  backdrop-filter: blur(18px) saturate(1.06);
+}
+
+.dark .ch-workspace-main {
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  box-shadow: 0 24px 66px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.ch-page-scroll {
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
+}
+
+.ch-page-scroll > .ch-view-enter {
+  padding-top: 30px;
+}
+
+.ch-club-home {
+  padding-bottom: 8px;
+}
+
+.ch-home-greeting {
+  position: relative;
+  display: inline-block;
+  padding-right: 26px;
+  color: var(--foreground);
+  font-size: clamp(2rem, 3.8vw, 3.35rem);
+  letter-spacing: -0.065em;
+}
+
+.ch-home-greeting::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 15%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ch-indigo), var(--ch-cyan));
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--ch-indigo) 12%, transparent), 0 0 22px color-mix(in srgb, var(--ch-cyan) 40%, transparent);
+}
+
+.ch-club-home .dash-rise > section,
+.ch-club-home .dash-rise > div > section {
+  border-color: var(--ch-surface-line);
+  box-shadow: 0 10px 30px color-mix(in srgb, #101828 7%, transparent), inset 0 1px 0 color-mix(in srgb, white 42%, transparent);
+}
+
+.ch-club-home .dash-rise > section:hover,
+.ch-club-home .dash-rise > div > section:hover {
+  border-color: color-mix(in srgb, var(--club-accent) 26%, var(--border));
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--club-accent) 12%, transparent), inset 0 1px 0 color-mix(in srgb, white 54%, transparent);
+  transform: translateY(-2px);
+}
+
+.ch-club-home .dash-rise > section,
+.ch-club-home .dash-rise > div > section,
+.ch-club-home .ch-home .hub-card-hover {
+  transition: transform 220ms var(--motion-ease), box-shadow 220ms var(--motion-ease), border-color 220ms var(--motion-ease), background-color 220ms var(--motion-ease);
+}
+
+.ch-club-home .ch-home .hub-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--club-accent) 24%, var(--border));
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--club-accent) 12%, transparent);
+}
+
+.ch-club-home .ch-home .ch-next-event,
+.ch-club-home .ch-overview {
+  border-color: color-mix(in srgb, var(--club-accent) 20%, var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--club-accent) 8%, var(--card)), color-mix(in srgb, var(--card) 85%, transparent));
+}
+
+.ch-club-home .text-numeral {
+  letter-spacing: -0.07em;
+  text-shadow: 0 8px 28px color-mix(in srgb, var(--club-accent) 18%, transparent);
+}
+
+.ch-club-home .rounded-xl.border.bg-card,
+.ch-club-home .rounded-xl.border.bg-card\/50 {
+  border-color: var(--ch-surface-line);
+}
+
+@media (max-width: 767px) {
+  .ch-workspace {
+    padding: 0 8px 8px;
+  }
+  .ch-workspace > .ch-topbar {
+    height: calc(3.9rem + env(safe-area-inset-top));
+    min-height: calc(3.9rem + env(safe-area-inset-top));
+    margin: 8px 0 8px;
+    padding-inline: 10px;
+    border-radius: 18px;
+  }
+  .ch-workspace-layout {
+    gap: 0;
+  }
+  .ch-workspace-main {
+    border-radius: 22px;
+  }
+  .ch-page-scroll > .ch-view-enter {
+    padding-top: 22px;
+  }
+  .ch-home-greeting {
+    font-size: clamp(1.9rem, 9.5vw, 2.5rem);
+  }
+  .ch-club-home .dash-rise > section:hover,
+  .ch-club-home .dash-rise > div > section:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ch-club-home .dash-rise > section:hover,
+  .ch-club-home .dash-rise > div > section:hover,
+  .ch-club-home .ch-home .hub-card-hover:hover,
+  .ch-workspace-sidebar .ch-nav-row:hover,
+  .ch-topbar button[aria-label*="Search"]:hover {
+    transform: none;
+  }
+}
